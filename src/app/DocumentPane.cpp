@@ -118,9 +118,9 @@ void DocumentPane::draw(cairo_t* cr) {
         cairo_set_line_width(cr, 1.0);
         cairo_stroke(cr);
 
-        // FALSE = screen rendering (not the print pipeline); this gboolean
-        // overload is stable across poppler-glib releases.
-        poppler_page_render(layout.page, cr, FALSE);
+        // Screen-rendering overload (print pipeline lives in
+        // poppler_page_render_for_printing); stable across releases.
+        poppler_page_render(layout.page, cr);
         cairo_restore(cr);
     }
 }
