@@ -5,7 +5,11 @@ add_library(fluidcore STATIC
     workspace/WorkspaceModel.cpp
     graph/GraphTopology.cpp
     storage/ProjectStore.cpp
+    storage/XoppDocument.cpp
 )
+
+find_package(ZLIB REQUIRED)
+target_link_libraries(fluidcore PRIVATE ZLIB::ZLIB)
 
 target_include_directories(fluidcore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_features(fluidcore PUBLIC cxx_std_20)
@@ -37,4 +41,8 @@ if(BUILD_TESTING)
     add_executable(workspace_model_test tests/workspace/WorkspaceModelTest.cpp)
     target_link_libraries(workspace_model_test PRIVATE fluidcore)
     add_test(NAME WorkspaceModelTest COMMAND workspace_model_test)
+
+    add_executable(xopp_document_test tests/storage/XoppDocumentTest.cpp)
+    target_link_libraries(xopp_document_test PRIVATE fluidcore)
+    add_test(NAME XoppDocumentTest COMMAND xopp_document_test)
 endif()

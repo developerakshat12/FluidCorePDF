@@ -1,0 +1,31 @@
+id: TASK-2.4-xopp-persistence-loop
+title: ".xopp persistence loop — parse/serialize legacy Xournal++ documents in libfluidcore"
+milestone: M1
+workspace: D:\Reference Repos\fluidcore-platform
+specs:
+  - specs/system-architecture.md (storage layer, SQLite WAL section — context only; this task is the legacy .xopp bridge)
+  - specs/file-function-map.md (LoadHandler row — upstream .xopp reference implementation)
+  - skills/cpp-core-dev/SKILL.md
+dependencies: []
+deliverables:
+  - src/libfluidcore/storage/XoppDocument.{h,cpp} — pure C++20 model (pages,
+    strokes: points/width/color/tool) plus a .xopp reader/writer. .xopp files are
+    gzipped XML (XJournal tag root); use zlib for inflate/deflate. Parser must be
+    tolerant of attributes it does not understand (forward-compatible).
+  - src/libfluidcore/tests/storage/XoppDocumentTest.cpp — headless round-trip
+    test: build document -> write -> read -> assert structural equality; also a
+    malformed-input test (must fail gracefully, no crash).
+  - src/libfluidcore/CMakeLists.txt — link zlib (find_package(ZLIB)), add new sources/test.
+  - specs/file-function-map.md — new rows for XoppDocument.
+acceptance_checks:
+  - "cmake --build build && ctest --test-dir build --output-on-failure all green locally or in CI build jobs"
+  - "Round-trip test passes: written file parses back to identical pages/strokes"
+  - "Malformed/truncated .xopp input returns an error, never crashes"
+  - "clang-format --dry-run --Werror clean on all touched files"
+  - "python ops/scripts/check_invariants.py passes"
+  - "No GTK/GDK/GLib/Cairo/Poppler headers anywhere under src/libfluidcore/"
+constraints:
+  - Stdlib + zlib only (zlib is already a transitive dep of the ecosystem; no new heavy deps)
+  - Do not modify src/app/ — app wiring into DocumentPane is a later integration task
+  - Do not modify the Xournal++ submodule; reference its xojfile reader only for format understanding
+  - Commit means commit AND push; every commit carries -s (DCO)

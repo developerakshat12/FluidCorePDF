@@ -87,6 +87,7 @@ graph TD
 | `libfluidcore/graph/GraphTopology.cpp` | `class GraphTopology` | Maintains the bi-directional relational multi-graph $G=(V, E)$ between excerpt cards, notes, and document source anchors. |
 | `libfluidcore/graph/ElasticLinkEdge.cpp` | `class ElasticLinkEdge` | Directed link edge computing dynamic cubic Bezier splines between moving workspace nodes. |
 | `libfluidcore/storage/ProjectStore.cpp` | `class ProjectStore` | Manages SQLite 3 WAL transactions, `.ltproj` runtime directory bundle mounting, archive packing/unpacking, and schema migrations. |
+| `libfluidcore/storage/XoppDocument.h/.cpp` | `structs XoppPoint / XoppStroke / XoppBackground / XoppLayer / XoppPage`, `class XoppDocument` | Legacy `.xopp` bridge (TASK-2.4): pure C++20 model of pages/layers/strokes (points/width/color/tool) plus reader/writer over gzipped `<xournal>` XML using zlib (`parse()` on raw XML, `load()`/`save()` on disk files). Tolerant of unknown attributes and unknown/misplaced elements (forward-compatible); malformed input returns an error via `LoadResult`, never crashes. Clean-room implementation against the file format — no GPL code or symbols linked into the engine. |
 | `libfluidcore/storage/SqliteWalDb.cpp` | `class SqliteWalDb` | Embedded SQLite connection wrapper enforcing WAL journaling and sub-500ms crash-safe debouncing. |
 | `libfluidcore/storage/FtsSearchEngine.cpp` | `class FtsSearchEngine` | SQLite FTS5 inverted full-text search engine indexing PDF text streams, excerpt notes, and typed text boxes. |
 
@@ -144,7 +145,7 @@ graph TD
 |---|---|---|
 | `src/core/control/ltproj/LtProjLoader.cpp` | `class LtProjLoader` | Mounts `.ltproj` runtime directory bundles (or unpacks `.ltproj.zip` archives), initializes `libfluidcore::ProjectStore`, and verifies SQLite WAL consistency. |
 | `src/core/control/ltproj/LtProjSaver.cpp` | `class LtProjSaver` | Coordinates SQLite WAL checkpoint commits (`PRAGMA wal_checkpoint(TRUNCATE)` before packaging so the archived `-wal` file is empty) and DEFLATE compression via `libzip` for portable standalone `.ltproj.zip` export. |
-| [`src/core/control/xojfile/LoadHandler.cpp`](file:///c:/Users/ASUS/OneDrive/Desktop/Reference%20Repos/xournalpp/src/core/control/xojfile/LoadHandler.cpp) | `class LoadHandler` | Legacy loader for standard `.xopp` / `.xoj` individual document files. |
+| [`src/core/control/xojfile/LoadHandler.cpp`](file:///c:/Users/ASUS/OneDrive/Desktop/Reference%20Repos/xournalpp/src/core/control/xojfile/LoadHandler.cpp) | `class LoadHandler` | Legacy loader for standard `.xopp` / `.xoj` individual document files. Upstream format reference for the clean-room `libfluidcore/storage/XoppDocument` bridge (TASK-2.4). |
 
 ---
 
