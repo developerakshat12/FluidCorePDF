@@ -8,6 +8,9 @@ add_executable(fluidcore_app
     main.cpp
     DocumentPane.cpp
     InkOverlay.cpp
+    PageTileCache.cpp
+    ThumbnailCache.cpp
+    ThumbnailSidebar.cpp
     WorkspaceView.cpp
 )
 
@@ -19,4 +22,34 @@ if(MSVC)
     target_compile_options(fluidcore_app PRIVATE /W4 /permissive-)
 else()
     target_compile_options(fluidcore_app PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+if(BUILD_TESTING)
+    add_executable(thumbnail_layout_test ThumbnailLayoutTest.cpp)
+    target_include_directories(thumbnail_layout_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    if(MSVC)
+        target_compile_options(thumbnail_layout_test PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(thumbnail_layout_test PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    add_test(NAME ThumbnailLayoutTest COMMAND thumbnail_layout_test)
+
+    add_executable(damage_rect_test DamageRectTest.cpp)
+    target_include_directories(damage_rect_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    if(MSVC)
+        target_compile_options(damage_rect_test PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(damage_rect_test PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    add_test(NAME DamageRectTest COMMAND damage_rect_test)
+
+    add_executable(page_tile_cache_test PageTileCacheTest.cpp PageTileCache.cpp)
+    target_include_directories(page_tile_cache_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(page_tile_cache_test PRIVATE PkgConfig::CAIRO PkgConfig::POPPLER_GLIB)
+    if(MSVC)
+        target_compile_options(page_tile_cache_test PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(page_tile_cache_test PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    add_test(NAME PageTileCacheTest COMMAND page_tile_cache_test)
 endif()

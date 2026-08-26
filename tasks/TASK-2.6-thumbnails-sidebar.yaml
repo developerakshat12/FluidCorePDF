@@ -1,0 +1,40 @@
+id: TASK-2.6-thumbnails-sidebar
+title: Page thumbnails sidebar in DocumentPane with caching and click navigation
+milestone: M1
+workspace: D:\Reference Repos\fluidcore-platform
+specs:
+  - specs/integration.md (section 1 — scoped-down shell)
+  - specs/system-architecture.md (Poppler/Cairo layer, view controllers)
+  - specs/file-function-map.md (DocumentPane, ThumbnailSidebar rows)
+  - skills/gtk-frontend/SKILL.md
+dependencies:
+  - TASK-2.1-poppler-document-pane
+  - TASK-2.5-ink-annotations-on-pdf
+deliverables:
+  - src/app/ThumbnailLayout.h — pure C++20 geometry, aspect-ratio scaling, hit-testing,
+    and midpoint-to-center active page resolution (zero GUI/Poppler headers).
+  - src/app/ThumbnailLayoutTest.cpp — unit test suite for ThumbnailLayout.
+  - src/app/ThumbnailCache.{h,cpp} — surface cache for rendered thumbnail Cairo surfaces
+    keyed by page index to prevent per-frame Poppler rasterization.
+  - src/app/ThumbnailSidebar.{h,cpp} — GtkScrolledWindow hosting a GtkDrawingArea
+    rendering cached page thumbnails, page number badges, active page highlight,
+    and handling click-to-scroll navigation.
+  - src/app/DocumentPane.{h,cpp} modifications — host ThumbnailSidebar and continuous
+    document viewport in a horizontal GtkPaned with draggable divider; synchronize
+    scroll position with active page highlighting.
+  - src/app/CMakeLists.txt — link new sources and register ThumbnailLayoutTest.
+  - specs/file-function-map.md — new rows for ThumbnailSidebar, ThumbnailCache, ThumbnailLayout.
+acceptance_checks:
+  - "clang-format --dry-run --Werror clean on all touched files"
+  - "python ops/scripts/check_invariants.py passes (no GUI includes in libfluidcore)"
+  - "pushed commit has fully green CI including the app-shell job (gh run list)"
+  - "ctest passes 100% including new ThumbnailLayoutTest"
+  - "GtkPaned horizontal split allows interactive drag-resizing of thumbnail sidebar"
+  - "Thumbnail rendering uses persistent Cairo image surfaces (cached per page)"
+  - "Active page is selected deterministically by minimizing midpoint-to-center distance"
+  - "Clicking any thumbnail scrolls the main viewport to the target page"
+constraints:
+  - Do not modify src/libfluidcore/ (ADR-0001 clean separation)
+  - Do not touch the Xournal++ submodule
+  - Commit means commit AND push; every commit carries -s (DCO)
+  - Standard GTK3 event conventions matching InkOverlay (GDK_BUTTON_PRESS_MASK)

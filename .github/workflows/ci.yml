@@ -88,3 +88,5 @@ jobs:
             -DFLUIDCORE_BUILD_APP=ON
       - name: Compile-link app target (no runtime test)
         run: cmake --build build --target fluidcore_app
+      - name: Test (ctest)
+        run: ctest --test-dir build --output-on-failure

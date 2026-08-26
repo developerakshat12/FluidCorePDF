@@ -1,5 +1,6 @@
 #pragma once
 
+#include "PageTileCache.h"
 #include "storage/AnnotationStore.h"
 
 #include <cstddef>
@@ -13,10 +14,13 @@
 namespace FluidCoreApp {
 
 class InkOverlay;
+class ThumbnailSidebar;
 
-// Left-pane document viewport (specs/integration.md §1, scoped-down shell):
-// a GtkScrolledWindow hosting a GtkOverlay containing the Poppler-rendered
-// PDF DrawingArea and the interactive InkOverlay for live annotation.
+// Left-pane document viewport (specs/integration.md §1, M1 Reader Core):
+// A horizontal GtkPaned hosting the ThumbnailSidebar on the left (with draggable divider)
+// and a GtkScrolledWindow on the right containing the continuous Poppler PDF DrawingArea
+// and the interactive InkOverlay for live annotation.
+// Uses PageTileCache with LRU byte budgeting and visible-page pinning for instant blits.
 // On open <file>.pdf, automatically loads companion <file>.xopp if present;
 // on close or explicit save (Ctrl+S), writes companion .xopp via AnnotationStore.
 class DocumentPane {
@@ -36,10 +40,13 @@ class DocumentPane {
     DocumentPane(const DocumentPane&) = delete;
     DocumentPane& operator=(const DocumentPane&) = delete;
 
-    GtkWidget* widget() const { return m_scroller; }
+    GtkWidget* widget() const { return m_paned ? m_paned : m_scroller; }
 
     bool save() { return saveAnnotations(); }
     bool saveAnnotations();
+
+    void scrollToPage(std::size_t pageIndex);
+    void clearCache() { m_pageTileCache.clear(); }
 
     const std::string& pdfPath() const { return m_pdfPath; }
     const std::vector<PageLayout>& pages() const { return m_pages; }
@@ -49,12 +56,17 @@ class DocumentPane {
     FluidCore::AnnotationStore& annotationStore() { return m_annotationStore; }
     const FluidCore::AnnotationStore& annotationStore() const { return m_annotationStore; }
     InkOverlay* inkOverlay() const { return m_inkOverlay.get(); }
+    ThumbnailSidebar* thumbnailSidebar() const { return m_thumbnailSidebar.get(); }
+    PageTileCache& pageTileCache() { return m_pageTileCache; }
 
   private:
     static void drawCallback(GtkWidget* area, cairo_t* cr, gpointer userData);
     void draw(cairo_t* cr);
 
+    static void onScrollValueChanged(GtkAdjustment* adj, gpointer userData);
+
     std::string m_pdfPath;
+    GtkWidget* m_paned = nullptr;
     GtkWidget* m_scroller = nullptr;
     GtkWidget* m_overlay = nullptr;
     GtkWidget* m_area = nullptr;
@@ -63,8 +75,10 @@ class DocumentPane {
     double m_layoutWidth = 0.0;
     double m_layoutHeight = 0.0;
 
+    PageTileCache m_pageTileCache;
     FluidCore::AnnotationStore m_annotationStore;
     std::unique_ptr<InkOverlay> m_inkOverlay;
+    std::unique_ptr<ThumbnailSidebar> m_thumbnailSidebar;
 };
 
 } // namespace FluidCoreApp

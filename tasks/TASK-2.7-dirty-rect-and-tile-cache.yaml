@@ -1,0 +1,40 @@
+id: TASK-2.7-dirty-rect-and-tile-cache
+title: Cairo dirty-rect inking damage pipeline and byte-budgeted LRU page tile cache
+milestone: M1
+workspace: D:\Reference Repos\fluidcore-platform
+specs:
+  - specs/integration.md (section 1 — scoped-down shell)
+  - specs/system-architecture.md (Poppler/Cairo layer, dirty-rect pipeline, tile cache)
+  - specs/file-function-map.md (DocumentPane, PageTileCache, InkOverlay, DamageRect rows)
+  - skills/gtk-frontend/SKILL.md
+dependencies:
+  - TASK-2.1-poppler-document-pane
+  - TASK-2.5-ink-annotations-on-pdf
+  - TASK-2.6-thumbnails-sidebar
+deliverables:
+  - src/app/DamageRect.h — pure C++20 geometry for stroke segment and point damage
+    bounding box computation with pixel integer rounding (zero GUI/Poppler headers).
+  - src/app/DamageRectTest.cpp — unit test suite for DamageRect.
+  - src/app/PageTileCache.{h,cpp} — byte-budgeted LRU surface cache with RAII
+    CairoSurfaceHandle reference counting and visible-page pinning.
+  - src/app/PageTileCacheTest.cpp — unit test suite for PageTileCache.
+  - src/app/InkOverlay.{h,cpp} modifications — partial-region invalidation via
+    gtk_widget_queue_draw_area on pointer motion/stroke events (<= 20ms inking latency).
+  - src/app/DocumentPane.{h,cpp} modifications — render cached page image surfaces
+    via PageTileCache; pin visible pages during draw; clear on zoom/resize.
+  - src/app/CMakeLists.txt — link new sources and register new test executables.
+  - specs/file-function-map.md — new rows for PageTileCache and DamageRect.
+  - planning/roadmap.yaml & planning/ROADMAP.md — mark Cairo dirty-rect + tile cache complete.
+acceptance_checks:
+  - "clang-format --dry-run --Werror clean on all touched files"
+  - "python ops/scripts/check_invariants.py passes (no GUI includes in libfluidcore)"
+  - "all registered CTest targets pass (100%)"
+  - "Inking uses gtk_widget_queue_draw_area for sub-segment bounding box damage"
+  - "PageTileCache bounds memory consumption by bytes (256 MB default budget)"
+  - "PageTileCache uses RAII refcounted surface handles to prevent use-after-free"
+  - "PageTileCache pins active visible pages to prevent cache thrashing during scroll"
+constraints:
+  - Do not modify src/libfluidcore/ (ADR-0001 clean separation)
+  - Do not touch the Xournal++ submodule
+  - Commit means commit AND push; every commit carries -s (DCO)
+  - Frontend targets GTK 3.24+ standard APIs

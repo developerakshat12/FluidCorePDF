@@ -54,9 +54,11 @@ gantt
 > or modifies the Xournal++ stack. Until then nothing reads the submodule, so this is a no-op.
 
 ### M1 — Reader Core (Weeks 5–14)
-- [x] Poppler-GLib document loading, page thumbnails, continuous scroll *(TASK-2.1: DocumentPane with continuous page column; thumbnails deferred)*
-- [ ] Cairo dirty-rect rendering pipeline with LRU tile cache (see TRD §caching)
-- [ ] Vector ink tools (pen/highlighter) with stroke stabilizer; ≤ 20 ms input-to-photon latency *(engine-side `.xopp` persistence bridge landed via TASK-2.4; ink input + pane wiring pending)*
+- [x] Poppler-GLib document loading, page thumbnails, continuous scroll *(complete: DocumentPane continuous scroll + ThumbnailSidebar with Cairo surface caching and click navigation via TASK-2.1, TASK-2.6)*
+- [x] Cairo dirty-rect rendering pipeline with LRU tile cache *(complete: DamageRect partial invalidation in InkOverlay [<= 20ms latency] + 256MB byte-budgeted PageTileCache with visible-page pinning in DocumentPane via TASK-2.7)*
+- [x] `.xopp` companion persistence (`AnnotationStore`) *(complete: XoppDocument + AnnotationStore round-trip, coord mapping, stroke add/remove via TASK-2.4, TASK-2.5)*
+- [x] Live ink overlay (stylus + mouse) *(complete: InkOverlay over GtkOverlay, pressure-scaled width, Cairo alpha blending, DocumentPane wiring + Ctrl+S save via TASK-2.5)*
+- [ ] Stroke stabilizer (Catmull-Rom/Bezier, ≤ 20 ms latency) *(pending: not yet started, tracked separately from TASK-2.5's raw input capture)*
 - [ ] Undo/redo command framework extended for fluid objects
 - [ ] Basic text selection + copy
 - **Demo gate**: annotate a 500-page PDF, restart app, annotations persist via existing Xournal++ save path.

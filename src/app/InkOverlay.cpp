@@ -1,4 +1,5 @@
 #include "InkOverlay.h"
+#include "DamageRect.h"
 #include "DocumentPane.h"
 
 #include <algorithm>
@@ -67,7 +68,8 @@ gboolean InkOverlay::onButtonPress(GdkEventButton* event) {
     const auto& pages = m_pane.pages();
     for (std::size_t i = 0; i < pages.size(); ++i) {
         const auto& layout = pages[i];
-        if (event->y >= layout.y && event->y <= layout.y + layout.height) {
+        if (event->y >= layout.y && event->y <= layout.y + layout.height && event->x >= pageX &&
+            event->x <= pageX + layout.width) {
             m_isDrawing = true;
             m_activePageIndex = i;
 
@@ -89,7 +91,10 @@ gboolean InkOverlay::onButtonPress(GdkEventButton* event) {
             const double yp = event->y - layout.y;
             m_activeStroke.points.push_back({xp, yp});
 
-            gtk_widget_queue_draw(m_widget);
+            // Partial invalidation for initial touch/click point
+            const auto damage = DamageRect::computePointDamage({event->x, event->y},
+                                                               m_activeStroke.width * pressure);
+            gtk_widget_queue_draw_area(m_widget, damage.x, damage.y, damage.width, damage.height);
             return TRUE;
         }
     }
@@ -128,11 +133,27 @@ gboolean InkOverlay::onMotionNotify(GdkEventMotion* event) {
         pressure = 1.0;
     }
 
+    const std::size_t prevPointCount = m_activeStroke.points.size();
     m_activeStroke.pressures.push_back(pressure);
     m_activeStroke.points.push_back({xp, yp});
-    m_lastPressure = pressure;
 
-    gtk_widget_queue_draw(m_widget);
+    // Dirty-rectangle partial damage invalidation (bounds current stroke segment)
+    if (prevPointCount >= 1) {
+        const double p0x = pageX + m_activeStroke.points[prevPointCount - 1].x;
+        const double p0y = layout.y + m_activeStroke.points[prevPointCount - 1].y;
+        const double p1x = event->x;
+        const double p1y = event->y;
+        const double maxP = std::max(m_lastPressure, pressure);
+        const auto damage =
+            DamageRect::computeSegmentDamage({p0x, p0y}, {p1x, p1y}, m_activeStroke.width * maxP);
+        gtk_widget_queue_draw_area(m_widget, damage.x, damage.y, damage.width, damage.height);
+    } else {
+        const auto damage =
+            DamageRect::computePointDamage({event->x, event->y}, m_activeStroke.width * pressure);
+        gtk_widget_queue_draw_area(m_widget, damage.x, damage.y, damage.width, damage.height);
+    }
+
+    m_lastPressure = pressure;
     return TRUE;
 }
 
@@ -150,11 +171,26 @@ gboolean InkOverlay::onButtonRelease(GdkEventButton* event) {
             m_activeStroke.pressures.resize(numPoints > 0 ? numPoints - 1 : 0);
         }
 
+        // Final segment partial damage invalidation
+        if (numPoints >= 2 && m_activePageIndex < m_pane.pages().size()) {
+            const auto& layout = m_pane.pages()[m_activePageIndex];
+            GtkAllocation allocation;
+            gtk_widget_get_allocation(m_widget, &allocation);
+            const double pageX =
+                kPageMargin + std::max(0.0, (allocation.width - m_pane.layoutWidth()) / 2.0);
+            const double p0x = pageX + m_activeStroke.points[numPoints - 2].x;
+            const double p0y = layout.y + m_activeStroke.points[numPoints - 2].y;
+            const double p1x = pageX + m_activeStroke.points[numPoints - 1].x;
+            const double p1y = layout.y + m_activeStroke.points[numPoints - 1].y;
+            const auto damage = DamageRect::computeSegmentDamage(
+                {p0x, p0y}, {p1x, p1y}, m_activeStroke.width * m_lastPressure);
+            gtk_widget_queue_draw_area(m_widget, damage.x, damage.y, damage.width, damage.height);
+        }
+
         m_annotationStore.addStroke(m_activePageIndex, std::move(m_activeStroke));
     }
 
     m_activeStroke = FluidCore::Stroke{};
-    gtk_widget_queue_draw(m_widget);
     return TRUE;
 }
 
