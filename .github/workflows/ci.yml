@@ -76,11 +76,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - name: Install toolchain + GTK3 dev headers
+      - name: Install toolchain + GTK3/Poppler/Cairo dev headers
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            ninja-build g++ pkg-config libgtk-3-dev
+            ninja-build g++ pkg-config libgtk-3-dev libpoppler-glib-dev libcairo2-dev
       - name: Configure
         run: |
           cmake -S . -B build -G Ninja \

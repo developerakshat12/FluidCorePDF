@@ -1,14 +1,18 @@
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GTK3 REQUIRED IMPORTED_TARGET gtk+-3.0)
+pkg_check_modules(POPPLER_GLIB REQUIRED IMPORTED_TARGET poppler-glib)
+pkg_check_modules(CAIRO REQUIRED IMPORTED_TARGET cairo)
 
 # Target name avoids the global CMake namespace of the `fluidcore` library.
 add_executable(fluidcore_app
     main.cpp
+    DocumentPane.cpp
     WorkspaceView.cpp
 )
 
 target_include_directories(fluidcore_app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(fluidcore_app PRIVATE fluidcore PkgConfig::GTK3)
+target_link_libraries(fluidcore_app PRIVATE fluidcore PkgConfig::GTK3 PkgConfig::POPPLER_GLIB
+                                            PkgConfig::CAIRO)
 
 if(MSVC)
     target_compile_options(fluidcore_app PRIVATE /W4 /permissive-)

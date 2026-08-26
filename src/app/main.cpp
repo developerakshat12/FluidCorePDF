@@ -1,3 +1,4 @@
+#include "DocumentPane.h"
 #include "FluidCoreEngine.h"
 
 #include "WorkspaceView.h"
@@ -34,12 +35,22 @@ void seedDemoContent(FluidCoreAPI& api) {
     api.insertNode(std::make_unique<SampleNode>("note-b", Rectangle{260.0, 340.0, 200.0, 120.0}));
 }
 
+struct AppContext {
+    FluidCoreAPI* api = nullptr;
+    const std::string* pdfPath = nullptr;
+};
+
 void onActivate(GtkApplication* app, gpointer userData) {
-    auto* api = static_cast<FluidCoreAPI*>(userData);
+    auto* context = static_cast<AppContext*>(userData);
 
     // Widgets may only be created after gtk_init(), which happens inside
-    // g_application_run() — so WorkspaceView is built here, not in main().
-    auto* workspace = new FluidCoreApp::WorkspaceView(*api);
+    // g_application_run() — so views are built here, not in main().
+    auto* documentPane = new FluidCoreApp::DocumentPane(*context->pdfPath);
+    g_object_set_data_full(
+        G_OBJECT(app), "document-pane", documentPane,
+        +[](gpointer data) { delete static_cast<FluidCoreApp::DocumentPane*>(data); });
+
+    auto* workspace = new FluidCoreApp::WorkspaceView(*context->api);
     g_object_set_data_full(
         G_OBJECT(app), "workspace-view", workspace,
         +[](gpointer data) { delete static_cast<FluidCoreApp::WorkspaceView*>(data); });
@@ -49,9 +60,9 @@ void onActivate(GtkApplication* app, gpointer userData) {
     gtk_window_set_default_size(GTK_WINDOW(window), 1200, 800);
 
     GtkWidget* paned = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
-    GtkWidget* documentPane = gtk_label_new("Document pane (Wave 2: Xournal++ host)");
-    gtk_widget_set_size_request(documentPane, 360, -1);
-    gtk_paned_pack1(GTK_PANED(paned), documentPane, TRUE, FALSE);
+    GtkWidget* documentWidget = documentPane->widget();
+    gtk_widget_set_size_request(documentWidget, 360, -1);
+    gtk_paned_pack1(GTK_PANED(paned), documentWidget, TRUE, FALSE);
     gtk_paned_pack2(GTK_PANED(paned), workspace->widget(), TRUE, TRUE);
     // GtkPaned defaults to a collapsed divider (position 0); open the split so
     // the workspace canvas is visible without a manual drag.
@@ -67,8 +78,12 @@ int main(int argc, char** argv) {
     FluidCoreEngine engine("default-project");
     seedDemoContent(engine);
 
+    // Capture before g_application_run(): GApplication may consume argv.
+    const std::string pdfPath = argc > 1 ? argv[1] : "";
+    AppContext context{&engine, &pdfPath};
+
     GtkApplication* app = gtk_application_new("org.fluidcore.platform", G_APPLICATION_NON_UNIQUE);
-    g_signal_connect(app, "activate", G_CALLBACK(onActivate), &engine);
+    g_signal_connect(app, "activate", G_CALLBACK(onActivate), &context);
     const int status = g_application_run(G_APPLICATION(app), argc, argv);
     g_object_unref(app);
     return status;
