@@ -42,17 +42,21 @@ gantt
 
 ## 3. Milestone Detail
 
-### M0 — Bootstrap (Weeks 1–4)
-- [ ] Fork/vendor Xournal++; strip unused plugins; establish `libfluidcore/` as standalone C++20 CMake library target
-- [ ] CI: GitHub Actions — build matrix (GCC 12+, Clang 16+), clang-format, sanitizers (ASan/UBSan) on unit tests
-- [ ] License decision (GPL-2.0-or-later inherited from Xournal++ core; `libfluidcore` dual-tracked if kept clean of GPL symbols — see GOVERNANCE.md)
-- [ ] `CONTRIBUTING.md`, issue templates, ADR (Architecture Decision Record) process started
+### M0 — Bootstrap (Weeks 1–4) — EXITED ✅
+- [x] Fork/vendor Xournal++; strip unused plugins; establish `libfluidcore/` as standalone C++20 CMake library target *(submodule registered; plugin stripping done on fork branch `fluidcore-integration` — gitlink pin bump deferred, see note below)*
+- [x] CI: GitHub Actions — build matrix (GCC 12+, Clang 16+), clang-format, sanitizers (ASan/UBSan) on unit tests
+- [x] License decision (GPL-2.0-or-later inherited from Xournal++ core; `libfluidcore` dual-tracked if kept clean of GPL symbols — see GOVERNANCE.md)
+- [x] `CONTRIBUTING.md`, issue templates, ADR (Architecture Decision Record) process started
 - **Demo gate**: blank GTK window hosting an empty `WorkspaceView` drawing from `libfluidcore`.
 
+> **Deferred chore**: the submodule gitlink still points at stock master. Bumping it to the
+> stripped `fluidcore-integration` branch is step one of whichever future task first compiles
+> or modifies the Xournal++ stack. Until then nothing reads the submodule, so this is a no-op.
+
 ### M1 — Reader Core (Weeks 5–14)
-- [ ] Poppler-GLib document loading, page thumbnails, continuous scroll
+- [x] Poppler-GLib document loading, page thumbnails, continuous scroll *(TASK-2.1: DocumentPane with continuous page column; thumbnails deferred)*
 - [ ] Cairo dirty-rect rendering pipeline with LRU tile cache (see TRD §caching)
-- [ ] Vector ink tools (pen/highlighter) with stroke stabilizer; ≤ 20 ms input-to-photon latency
+- [ ] Vector ink tools (pen/highlighter) with stroke stabilizer; ≤ 20 ms input-to-photon latency *(engine-side `.xopp` persistence bridge landed via TASK-2.4; ink input + pane wiring pending)*
 - [ ] Undo/redo command framework extended for fluid objects
 - [ ] Basic text selection + copy
 - **Demo gate**: annotate a 500-page PDF, restart app, annotations persist via existing Xournal++ save path.

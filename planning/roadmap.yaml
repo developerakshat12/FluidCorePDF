@@ -7,25 +7,25 @@ milestones:
   - id: M0
     name: bootstrap
     window_weeks: [1, 4]
-    status: pending
+    status: complete
     exit_criteria: any contributor builds + runs ctest on Linux in <= 15 min
     items:
-      - vendor Xournal++; create standalone libfluidcore CMake target   # in_progress: standalone target + FluidCoreAPI.h + headless smoke test landed; Xournal++ vendoring pending
-      - GitHub Actions matrix (GCC12/Clang16) + sanitizers              # in_progress: ci.yml written (invariants/format/build jobs); not yet green on remote
+      - vendor Xournal++; create standalone libfluidcore CMake target   # complete: submodule registered (third_party/xournalpp), CI recursive checkout live; plugin stripping done on fork branch fluidcore-integration — gitlink pin bump deferred until first task touches the X++ stack
+      - GitHub Actions matrix (GCC12/Clang16) + sanitizers              # complete: green incl. app-shell job
       - license boundary ADR-0001                                       # complete
       - CONTRIBUTING.md + issue templates                               # complete
-    demo_gate: GTK window hosting empty WorkspaceView driven by libfluidcore
+    demo_gate: GTK window hosting empty WorkspaceView driven by libfluidcore  # met; M0 exited
 
   - id: M1
     name: reader-core
     window_weeks: [5, 14]
-    status: pending
+    status: in_progress
     items:
-      - Poppler loading + thumbnails + continuous scroll
-      - Cairo dirty-rect pipeline + LRU tile cache
-      - ink tools w/ stabilizer (<= 20ms latency)
-      - undo/redo for fluid objects
-      - text selection & copy
+      - Poppler loading + thumbnails + continuous scroll                # partial: DocumentPane continuous scroll landed (TASK-2.1); thumbnails pending
+      - Cairo dirty-rect pipeline + LRU tile cache                      # pending
+      - ink tools w/ stabilizer (<= 20ms latency)                       # partial: .xopp persistence bridge in engine landed (TASK-2.4); ink input + DocumentPane wiring pending
+      - undo/redo for fluid objects                                     # pending
+      - text selection & copy                                           # pending
 
   - id: M2
     name: squeeze-engine
