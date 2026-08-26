@@ -15,7 +15,6 @@ void drawBackgroundGrid(cairo_t* cr, double originX, double originY, double zoom
 
     cairo_set_source_rgb(cr, 0.906, 0.906, 0.894);
     cairo_set_line_width(cr, 1.0);
-    cairo_begin_path(cr);
 
     double startX = std::fmod(-originX * zoom, step);
     if (startX < 0)
