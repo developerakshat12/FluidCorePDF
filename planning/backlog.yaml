@@ -1,0 +1,38 @@
+# Post-1.0 backlog. Nothing here blocks v1.0 (see MVP-SPEC.md section 3).
+# priority: P1 > P2 > P3. status: idea | specced | scheduled
+updated: 2026-08-26
+
+items:
+  - id: macos-port
+    title: macOS port (GTK quartz backend)
+    priority: P1
+    status: idea
+    rationale: 2nd largest active-reading demographic
+
+  - id: handwriting-ocr
+    title: Local handwriting OCR search (ONNX Runtime / tesseract)
+    priority: P1
+    status: idea
+    rationale: air-gapped constraint forbids cloud OCR
+
+  - id: plugin-api
+    title: Plugin API for libfluidcore (C ABI)
+    priority: P2
+    status: idea
+    depends_on: ADR on engine relicensing (GOVERNANCE section 3)
+
+  - id: zotero-import
+    title: Zotero / Better-BibTeX import bridge
+    priority: P2
+    status: idea
+
+  - id: epub-docx-ingest
+    title: EPUB/DOCX ingest via format adapters
+    priority: P3
+    status: idea
+
+  - id: lan-crdt-sync
+    title: Collaborative CRDT layer (LAN-only peer sync)
+    priority: P3
+    status: idea
+    constraint: must remain offline-first optional feature

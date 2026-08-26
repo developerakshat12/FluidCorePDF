@@ -1,0 +1,87 @@
+# Machine-readable milestone state. Update alongside planning/ROADMAP.md.
+# status values: pending | in_progress | demo_gate_pending | complete
+project: fluidcore-platform
+updated: 2026-08-26
+
+milestones:
+  - id: M0
+    name: bootstrap
+    window_weeks: [1, 4]
+    status: pending
+    exit_criteria: any contributor builds + runs ctest on Linux in <= 15 min
+    items:
+      - vendor Xournal++; create standalone libfluidcore CMake target   # in_progress: standalone target + FluidCoreAPI.h + headless smoke test landed; Xournal++ vendoring pending
+      - GitHub Actions matrix (GCC12/Clang16) + sanitizers              # in_progress: ci.yml written (invariants/format/build jobs); not yet green on remote
+      - license boundary ADR-0001                                       # complete
+      - CONTRIBUTING.md + issue templates                               # complete
+    demo_gate: GTK window hosting empty WorkspaceView driven by libfluidcore
+
+  - id: M1
+    name: reader-core
+    window_weeks: [5, 14]
+    status: pending
+    items:
+      - Poppler loading + thumbnails + continuous scroll
+      - Cairo dirty-rect pipeline + LRU tile cache
+      - ink tools w/ stabilizer (<= 20ms latency)
+      - undo/redo for fluid objects
+      - text selection & copy
+
+  - id: M2
+    name: squeeze-engine
+    window_weeks: [15, 24]
+    status: pending
+    perf_gates: { squeeze_fps_min: 30 }
+    items:
+      - SqueezeEngine piecewise mapper + headless tests
+      - touch pinch / Ctrl+Shift+Scroll / margin fold pins
+      - slice-clipping render path
+      - search-driven squeeze via FTS5 hit intervals
+
+  - id: M3
+    name: workspace-excerpts
+    window_weeks: [25, 38]
+    status: pending
+    items:
+      - infinite canvas pan/zoom + R*-tree index
+      - drag-out excerpts (text + image)
+      - ExcerptCardNode live re-render
+      - bi-directional anchors + ReturnAnchorPill
+
+  - id: M4
+    name: links-stacks-search
+    window_weeks: [39, 48]
+    status: pending
+    items:
+      - ink connectors -> GraphEdge + Bezier routing
+      - card snapping/stacking (16pt proximity)
+      - project-wide FTS5 search (async ingestion)
+      - export flattened annotated PDF + Markdown outline
+
+  - id: M5
+    name: hardening
+    window_weeks: [49, 58]
+    status: pending
+    perf_gates: { cold_load_50pdf_s_max: 8, ram_gb_max: 1.2 }
+    items:
+      - .ltproj WAL finalization + kill -9 recovery suite
+      - palm rejection tuning + stylus matrix
+      - keyboard-only accessibility pass
+      - i18n framework (EN, DE, ZH)
+
+  - id: M6
+    name: v1.0-release
+    window_weeks: [59, 62]
+    status: pending
+    items:
+      - Flatpak/AppImage/deb; Windows beta
+      - docs site + persona screencasts
+      - offline security audit
+      - v1.0 tag + launch
+
+perf_budgets:
+  inking_latency_ms_max: 20
+  squeeze_fps_min: 30
+  spatial_query_p99_ms_max: 1
+  cold_load_50pdf_s_max: 8
+  ram_working_set_gb_max: 1.2

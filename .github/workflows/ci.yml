@@ -1,0 +1,64 @@
+name: ci
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+jobs:
+  invariants:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Boundary + offline scans (ADR-0001, GOVERNANCE §5)
+        run: python3 ops/scripts/check_invariants.py
+      - name: DCO sign-off check (GOVERNANCE §3)
+        if: github.event_name == 'pull_request'
+        run: python3 ops/scripts/check_invariants.py --check-dco "origin/${{ github.base_ref }}..HEAD"
+
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install clang-format
+        run: pipx install clang-format==17.0.6
+      - name: Check formatting
+        run: |
+          find src -name '*.h' -o -name '*.hpp' -o -name '*.cpp' -o -name '*.cc' \
+            | xargs clang-format --dry-run --Werror
+
+  build:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - compiler: gcc-12
+            cc: gcc-12
+            cxx: g++-12
+            sanitize: OFF
+          - compiler: clang-16
+            cc: clang-16
+            cxx: clang++-16
+            sanitize: ON
+    name: build (${{ matrix.compiler }})
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build ${{ matrix.cc }} ${{ matrix.cxx }}
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_C_COMPILER=${{ matrix.cc }} \
+            -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} \
+            -DFLUIDCORE_SANITIZERS=${{ matrix.sanitize }}
+      - name: Build
+        run: cmake --build build
+      - name: Test (headless ctest)
+        run: ctest --test-dir build --output-on-failure

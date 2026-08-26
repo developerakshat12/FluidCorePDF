@@ -1,0 +1,36 @@
+project:
+  name: fluidcore-platform
+  codename: Fluid Document Synthesis Platform
+  description: Open-source, offline-first alternative to LiquidText. Fluid PDF reader + infinite 2D synthesis workspace.
+  version: 0.0.0-docs
+  status: pre-alpha
+  license: GPL-2.0-or-later
+  engine_relicense_candidate: LGPL-2.1-or-later
+  created: 2026-08-26
+
+stack:
+  language: C++20
+  build: [CMake >= 3.20, Ninja]
+  compilers: ["GCC >= 12", "Clang >= 16"]
+  gui: GTK3
+  rendering: Cairo
+  pdf: Poppler-GLib ">= 22"
+  storage: SQLite3-WAL-FTS5
+  base_codebase: Xournal++ (vendored)
+
+workspaces:
+  planning: { purpose: product truth — PRD/TRD/ROADMAP/MVP/ADRs, context_file: planning/CONTEXT.md }
+  specs:    { purpose: how it works — features/architecture/flows, context_file: specs/CONTEXT.md }
+  src:      { purpose: code — libfluidcore engine + GTK app, context_file: src/CONTEXT.md }
+  ops:      { purpose: CI/benchmarks/packaging/release, context_file: ops/CONTEXT.md }
+  references: { purpose: read-only background, context_file: references/CONTEXT.md }
+
+invariants:
+  - libfluidcore never includes GTK headers (ADR-0001)
+  - zero runtime network calls (CI syscall audit)
+  - perf budgets in ROADMAP §5 are merge gates
+  - every touch gesture has a mouse/keyboard equivalent (MVP D2)
+  - .ltproj schema forward-readable across versions
+
+current_milestone: M0-bootstrap
+milestone_source: planning/roadmap.yaml
