@@ -53,6 +53,9 @@ void onActivate(GtkApplication* app, gpointer userData) {
     gtk_widget_set_size_request(documentPane, 360, -1);
     gtk_paned_pack1(GTK_PANED(paned), documentPane, TRUE, FALSE);
     gtk_paned_pack2(GTK_PANED(paned), workspace->widget(), TRUE, TRUE);
+    // GtkPaned defaults to a collapsed divider (position 0); open the split so
+    // the workspace canvas is visible without a manual drag.
+    gtk_paned_set_position(GTK_PANED(paned), 480);
 
     gtk_container_add(GTK_CONTAINER(window), paned);
     gtk_widget_show_all(window);
