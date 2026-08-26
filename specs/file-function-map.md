@@ -116,6 +116,8 @@ graph TD
 
 | File / Path | Key Symbols & Classes | Primary Responsibilities & Connectivity |
 |---|---|---|
+| `app/main.cpp` | `main()`, `SampleNode` | Wave-1 standalone shell (integration.md §1 scoped down): `GtkApplication` → window → `GtkPaned`; left pane placeholder, right pane hosts `WorkspaceView`. Seeds demo nodes through the abstract `FluidCoreAPI` boundary only. Replaced by the Xournal++ host (`MainWindow::initXournalWidget()` split) in Wave 2. |
+| `app/WorkspaceView.h/.cpp` | `class WorkspaceView` | Standalone right-pane canvas: `GtkDrawingArea` whose Cairo pass draws a background grid + node rectangles from `FluidCoreAPI::queryVisibleNodes(viewportBounds)`. Holds the M_view transform (world→screen, identity until M1 pan/zoom). No engine logic in callbacks. |
 | [`src/core/gui/MainWindow.cpp`](file:///c:/Users/ASUS/OneDrive/Desktop/Reference%20Repos/xournalpp/src/core/gui/MainWindow.cpp) | `class MainWindow` | Top-level GTK3 Application window. Houses the `GtkPaned` dual-viewport splitter (`winXournal` document pane and `winWorkspace` canvas). |
 | `src/core/gui/workspace/WorkspaceView.cpp` | `class WorkspaceView` | Custom GTK3 widget (`GtkDrawingArea`) rendering the infinite 2D workspace canvas via Cairo, handling spatial panning, pinch zoom ($10\%$ to $1000\%$), and card interactions. |
 | `src/core/gui/widgets/ReturnAnchorPill.cpp` | `class ReturnAnchorPill` | Interactive floating overlay component rendered in the document viewport Cairo pass. Receives clicks via custom hit-testing inside the parent `XournalView::button-press-event` to provide instant return navigation to workspace excerpts. |

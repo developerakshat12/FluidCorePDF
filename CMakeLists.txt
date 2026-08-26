@@ -11,7 +11,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(FLUIDCORE_SANITIZERS "Enable ASan/UBSan on supported compilers" OFF)
-option(FLUIDCORE_BUILD_APP "Build the GTK3 frontend (src/app). Off until M1 wiring exists." OFF)
+option(FLUIDCORE_BUILD_APP "Build the GTK3 frontend (src/app). Requires gtk+-3.0 via pkg-config." OFF)
 
 include(CTest)
 
