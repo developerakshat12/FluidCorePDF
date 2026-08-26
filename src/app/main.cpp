@@ -40,10 +40,9 @@ void onActivate(GtkApplication* app, gpointer userData) {
     // Widgets may only be created after gtk_init(), which happens inside
     // g_application_run() — so WorkspaceView is built here, not in main().
     auto* workspace = new FluidCoreApp::WorkspaceView(*api);
-    g_object_set_data_full(G_OBJECT(app), "workspace-view", workspace,
-                           +[](gpointer data) {
-                               delete static_cast<FluidCoreApp::WorkspaceView*>(data);
-                           });
+    g_object_set_data_full(
+        G_OBJECT(app), "workspace-view", workspace,
+        +[](gpointer data) { delete static_cast<FluidCoreApp::WorkspaceView*>(data); });
 
     GtkWidget* window = gtk_application_window_new(app);
     gtk_window_set_title(GTK_WINDOW(window), "FluidCore");
