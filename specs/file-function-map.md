@@ -70,12 +70,17 @@ graph TD
 > M0 status: `FluidCoreAPI.h` (TRD §4.1 signatures, persistence stub-only per ADR-0002) and
 > module stubs for `SqueezeEngine`, `WorkspaceModel`/`RTreeIndex`, `GraphTopology`,
 > `ProjectStore` exist and compile; headless smoke test passes via ctest.
+> Wave-1 slice: `FluidCoreEngine` implements the spatial scene-graph methods
+> (`insertNode`, `updateNodePosition`, `removeNode`, `queryVisibleNodes`, geometry
+> getters) over a working `WorkspaceModel` + dynamic R-tree `RTreeIndex`; squeeze,
+> edge routing, and persistence remain milestone-stubbed (M2/M4/M5).
 
 | File / Path | Key Symbols & Classes | Primary Responsibilities & Connectivity |
 |---|---|---|
 | `libfluidcore/FluidCoreAPI.h` | `class FluidCoreAPI` | Pure abstract C++ interface exposing document geometry registration, coordinate transforms, UUID-based node registry, spatial range queries, graph edges, and pure geometry getters (node bounds, positions, spline control points) to the GUI frontend. No Cairo/GTK types cross this boundary — all rendering lives in the GTK layer. |
-| `libfluidcore/workspace/WorkspaceModel.cpp` | `class WorkspaceModel` | Thread-safe spatial scene graph managing polymorphic `WorkspaceNode` entities, R*-Tree index, 5-level stack depth validation, and dirty region tracking. |
-| `libfluidcore/workspace/RTreeIndex.h` | `class RTreeIndex` | High-performance $O(\log N)$ R*-Tree indexing axis-aligned bounding boxes (AABB) of workspace nodes, ink strokes, and excerpt cards. |
+| `libfluidcore/FluidCoreEngine.cpp` | `class FluidCoreEngine : FluidCoreAPI` | Concrete facade consumed by the GUI. Delegates the live spatial slice to `WorkspaceModel`; squeeze/graph/persistence delegate points are no-op stubs until M2/M4/M5. |
+| `libfluidcore/workspace/WorkspaceModel.cpp` | `class WorkspaceModel` | Spatial scene graph managing polymorphic `WorkspaceNode` entities keyed by their own UUID ids, tracking authoritative node positions/sizes and viewport queries via the index. Thread safety, stack-depth validation, and dirty-region tracking land with later waves. |
+| `libfluidcore/workspace/RTreeIndex.h/.cpp` | `class RTreeIndex` | Dynamic R-tree over AABBs with quadratic split (stable handles for insert/remove/update/query). R*-tree heuristics + bulk load for the ROADMAP §5 query-p99 budget arrive in M3. |
 | `libfluidcore/workspace/nodes/ExcerptCardNode.cpp` | `class ExcerptCardNode` | Extracted PDF snippet card entity holding source document UUID, page number, normalized rectangle, and text snippet (multi-anchor synthesis enabled). |
 | `libfluidcore/workspace/nodes/CardStackNode.cpp` | `class CardStackNode` | Hierarchical accordion container managing collapsible stacks of child excerpt cards. |
 | `libfluidcore/squeeze/SqueezeEngine.cpp` | `class SqueezeEngine` | Evaluates the continuous piecewise deformation function $\mathcal{T}(Y_{doc})$ from registered `PageGeometry` data to map document coordinates to screen coordinates. |
