@@ -1,0 +1,27 @@
+id: TASK-2.1-poppler-document-pane
+title: Poppler-GLib document pane in the standalone shell (left pane shows a real PDF)
+milestone: M1
+workspace: D:\Reference Repos\fluidcore-platform
+specs:
+  - specs/integration.md (section 1, scoped-down shell)
+  - specs/system-architecture.md (Poppler/Cairo layer)
+  - skills/gtk-frontend/SKILL.md
+dependencies: []
+deliverables:
+  - src/app/DocumentPane.{h,cpp} — GtkScrolledWindow hosting a GtkDrawingArea that
+    renders PDF pages via poppler_page_render onto Cairo
+  - src/app/main.cpp — left pane replaced by DocumentPane; PDF path from argv[1]
+    (empty state label when no argument)
+  - src/app/CMakeLists.txt — add poppler-glib + cairo to pkg_check_modules
+  - .github/workflows/ci.yml — app-shell job installs libpoppler-glib-dev
+  - specs/file-function-map.md — new rows for DocumentPane
+acceptance_checks:
+  - "clang-format --dry-run --Werror clean on all touched files"
+  - "python ops/scripts/check_invariants.py passes (no GUI includes in libfluidcore)"
+  - "pushed commit has fully green CI including the app-shell job (gh run list)"
+  - "no GTK/Poppler headers added anywhere under src/libfluidcore/"
+  - "business logic stays out of GTK callbacks (rendering only in the draw pass)"
+constraints:
+  - Do not modify src/libfluidcore/ beyond what compile errors force
+  - Do not touch the Xournal++ submodule
+  - Commit means commit AND push; every commit carries -s (DCO)

@@ -1,0 +1,22 @@
+id: TASK-2.2-xopp-plugin-stripping
+title: Strip unused plugins from the Xournal++ fork (fluidcore-integration branch)
+milestone: M1
+workspace: D:\Reference Repos\xournalpp
+specs:
+  - references/xournalpp-upstream.md
+  - specs/integration.md (rebase strategy — keep the patch series small and reviewable)
+dependencies: []
+deliverables:
+  - Local git branch fluidcore-integration (off master) in D:\Reference Repos\xournalpp
+    with plugin removal commits
+  - Summary report of removed directories/files and why each is safe to drop
+acceptance_checks:
+  - "Branch exists locally with clean commits (one logical removal per commit)"
+  - "git status clean on the branch"
+  - "core rendering/input/storage code untouched — only plugins/ and optional
+     addon surfaces removed"
+  - "NO PUSH — branch stays local for human review; do not run git push"
+constraints:
+  - Do not modify the fluidcore-platform repo
+  - Do not push to any remote (user reviews the series before it lands on the fork)
+  - Do not rebase or rewrite upstream history

@@ -1,0 +1,23 @@
+id: TASK-2.3-check-budgets-script
+title: ops/scripts/check_budgets.py — mechanical perf-budget verifier (Wave 3 enabler)
+milestone: M2
+workspace: D:\Reference Repos\fluidcore-platform
+specs:
+  - ops/CONTEXT.md (standing gates table)
+  - planning/ROADMAP.md section 5 (budget definitions)
+  - skills/perf-gate/SKILL.md
+dependencies: []
+deliverables:
+  - ops/scripts/check_budgets.py — validates a bench-<area>.md artifact against the
+    ROADMAP section 5 budgets (inking latency <= 20 ms, squeeze FPS >= 30 @1080p,
+    spatial query p99 <= 1 ms @ 1e5 items, cold load 50-PDF <= 8 s, RAM <= 1.2 GB)
+  - Unit-style self-test mode (--self-test) with fixture data, runnable headless
+acceptance_checks:
+  - "python ops/scripts/check_budgets.py --self-test exits 0"
+  - "script exits non-zero when a bench artifact claims a value over budget"
+  - "script exits non-zero when a required metric section is missing"
+  - "python ops/scripts/check_invariants.py still passes"
+constraints:
+  - Stdlib only (no pip installs)
+  - Follow the existing style of ops/scripts/check_invariants.py
+  - Commit means commit AND push; every commit carries -s (DCO)
