@@ -30,6 +30,7 @@ Open-source, offline-first alternative to LiquidText: fluid PDF reader + infinit
 
 ## Rules
 - Read this file first on every new task; follow the routing table — do NOT read every doc
+- When the user says "commit", that means commit AND push (both, every time)
 - `libfluidcore/` must never include GTK headers (ADR-0001)
 - Perf budgets in planning/ROADMAP.md §5 are merge gates
 - Never introduce network calls at runtime (offline-first guarantee)
