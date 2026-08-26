@@ -4,7 +4,9 @@
 
 #include "workspace/WorkspaceModel.h"
 
+#include <memory>
 #include <string>
+#include <vector>
 
 namespace FluidCore {
 
