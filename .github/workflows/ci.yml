@@ -86,7 +86,7 @@ jobs:
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             -DFLUIDCORE_BUILD_APP=ON
-      - name: Compile-link app target (no runtime test)
-        run: cmake --build build --target fluidcore_app
+      - name: Build
+        run: cmake --build build
       - name: Test (ctest)
         run: ctest --test-dir build --output-on-failure
