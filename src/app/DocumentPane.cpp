@@ -12,7 +12,6 @@ constexpr double kPageGap = 12.0;
 
 GtkWidget* makeStatusLabel(const gchar* text) {
     GtkWidget* label = gtk_label_new(text);
-    gtk_label_set_wrap(GTK_LABEL(label), TRUE);
     gtk_label_set_justify(GTK_LABEL(label), GTK_JUSTIFY_CENTER);
     gtk_widget_set_valign(label, GTK_ALIGN_CENTER);
     gtk_widget_set_margin_start(label, 24);
@@ -35,9 +34,10 @@ DocumentPane::DocumentPane(const std::string& pdfPath) {
     }
 
     GError* error = nullptr;
-    GFile* file = g_file_new_for_path(pdfPath.c_str());
-    m_document = poppler_document_new_from_gfile(file, POPPLER_LOAD_REQUEST_NONE, nullptr, &error);
-    g_object_unref(file);
+    // poppler-glib expects a URI here across all supported versions.
+    gchar* uri = g_filename_to_uri(pdfPath.c_str(), nullptr, nullptr);
+    m_document = poppler_document_new_from_file(uri, nullptr, &error);
+    g_free(uri);
     if (!m_document) {
         gchar* message = g_strdup_printf("Could not open PDF:\n%s\n\n(%s)", pdfPath.c_str(),
                                          error ? error->message : "unknown error");
@@ -118,7 +118,9 @@ void DocumentPane::draw(cairo_t* cr) {
         cairo_set_line_width(cr, 1.0);
         cairo_stroke(cr);
 
-        poppler_page_render(layout.page, cr, POPPLER_RENDER_ANNOTATIONS);
+        // FALSE = screen rendering (not the print pipeline); this gboolean
+        // overload is stable across poppler-glib releases.
+        poppler_page_render(layout.page, cr, FALSE);
         cairo_restore(cr);
     }
 }
