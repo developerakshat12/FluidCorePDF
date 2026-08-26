@@ -12,6 +12,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          submodules: recursive
       - name: Boundary + offline scans (ADR-0001, GOVERNANCE §5)
         run: python3 ops/scripts/check_invariants.py
       - name: DCO sign-off check (GOVERNANCE §3)
@@ -22,6 +23,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - name: Install clang-format
         run: pipx install clang-format==18.1.8
       - name: Check formatting
@@ -46,6 +49,8 @@ jobs:
     name: build (${{ matrix.compiler }})
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - name: Install toolchain
         run: |
           sudo apt-get update
@@ -62,3 +67,24 @@ jobs:
         run: cmake --build build
       - name: Test (headless ctest)
         run: ctest --test-dir build --output-on-failure
+
+  app-shell:
+    # GUI code compiles on runners but cannot open displays: compile-link only.
+    # Runtime/visual verification happens locally (WSLg / dev container).
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install toolchain + GTK3 dev headers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build g++ pkg-config libgtk-3-dev
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DFLUIDCORE_BUILD_APP=ON
+      - name: Compile-link app target (no runtime test)
+        run: cmake --build build --target fluidcore_app
