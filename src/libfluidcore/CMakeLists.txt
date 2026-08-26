@@ -6,6 +6,7 @@ add_library(fluidcore STATIC
     graph/GraphTopology.cpp
     storage/ProjectStore.cpp
     storage/XoppDocument.cpp
+    storage/AnnotationStore.cpp
 )
 
 find_package(ZLIB REQUIRED)
@@ -45,4 +46,8 @@ if(BUILD_TESTING)
     add_executable(xopp_document_test tests/storage/XoppDocumentTest.cpp)
     target_link_libraries(xopp_document_test PRIVATE fluidcore)
     add_test(NAME XoppDocumentTest COMMAND xopp_document_test)
+
+    add_executable(annotation_store_test tests/storage/AnnotationStoreTest.cpp)
+    target_link_libraries(annotation_store_test PRIVATE fluidcore)
+    add_test(NAME AnnotationStoreTest COMMAND annotation_store_test)
 endif()

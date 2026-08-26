@@ -1,6 +1,5 @@
 #include "DocumentPane.h"
 #include "FluidCoreEngine.h"
-
 #include "WorkspaceView.h"
 
 #include <gtk/gtk.h>
@@ -58,6 +57,36 @@ void onActivate(GtkApplication* app, gpointer userData) {
     GtkWidget* window = gtk_application_window_new(app);
     gtk_window_set_title(GTK_WINDOW(window), "FluidCore");
     gtk_window_set_default_size(GTK_WINDOW(window), 1200, 800);
+
+    // Wire Ctrl+S accelerator to save annotations to companion .xopp file
+    GSimpleAction* saveAction = g_simple_action_new("save", nullptr);
+    g_signal_connect(saveAction, "activate",
+                     G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
+                         auto* pane = static_cast<FluidCoreApp::DocumentPane*>(data);
+                         if (pane) {
+                             pane->save();
+                         }
+                     }),
+                     documentPane);
+    g_action_map_add_action(G_ACTION_MAP(window), G_ACTION(saveAction));
+
+    const gchar* accels[] = {"<Primary>s", "<Control>s", nullptr};
+    gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.save", accels);
+
+    // Direct key-press fallback for window-level shortcut handling
+    g_signal_connect(window, "key-press-event",
+                     G_CALLBACK(+[](GtkWidget*, GdkEventKey* event, gpointer data) -> gboolean {
+                         if ((event->state & GDK_CONTROL_MASK) &&
+                             (event->keyval == GDK_KEY_s || event->keyval == GDK_KEY_S)) {
+                             auto* pane = static_cast<FluidCoreApp::DocumentPane*>(data);
+                             if (pane) {
+                                 pane->save();
+                             }
+                             return TRUE;
+                         }
+                         return FALSE;
+                     }),
+                     documentPane);
 
     GtkWidget* paned = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
     GtkWidget* documentWidget = documentPane->widget();

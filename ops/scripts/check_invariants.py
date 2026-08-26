@@ -85,9 +85,9 @@ def scan_network_calls() -> list[str]:
 
 def check_dco(range_spec: str) -> list[str]:
     result = subprocess.run(
-        ["git", "-C", str(REPO_ROOT), "log", "--format=%x00%an%x00%ae%x00%B"],
-        range_spec, "--",
-        capture_output=True, text=True,
+        ["git", "-C", str(REPO_ROOT), "log", "--format=%x00%an%x00%ae%x00%B", range_spec, "--"],
+        capture_output=True,
+        text=True,
     )
     if result.returncode != 0:
         return [f"git log failed: {result.stderr.strip()}"]

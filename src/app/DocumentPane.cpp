@@ -1,4 +1,5 @@
 #include "DocumentPane.h"
+#include "InkOverlay.h"
 
 #include <algorithm>
 
@@ -21,7 +22,7 @@ GtkWidget* makeStatusLabel(const gchar* text) {
 
 } // namespace
 
-DocumentPane::DocumentPane(const std::string& pdfPath) {
+DocumentPane::DocumentPane(const std::string& pdfPath) : m_pdfPath(pdfPath) {
     m_scroller = gtk_scrolled_window_new(nullptr, nullptr);
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(m_scroller), GTK_POLICY_AUTOMATIC,
                                    GTK_POLICY_AUTOMATIC);
@@ -60,26 +61,50 @@ DocumentPane::DocumentPane(const std::string& pdfPath) {
         layout.y = y;
         y += layout.height + kPageGap;
         m_layoutWidth = std::max(m_layoutWidth, layout.width);
+        m_annotationStore.setPageDimensions(static_cast<std::size_t>(i), layout.width,
+                                            layout.height);
         m_pages.push_back(layout);
     }
     m_layoutWidth += 2.0 * kPageMargin;
     m_layoutHeight = y;
 
+    m_overlay = gtk_overlay_new();
+    gtk_widget_set_size_request(m_overlay, static_cast<int>(m_layoutWidth),
+                                static_cast<int>(m_layoutHeight));
+
     m_area = gtk_drawing_area_new();
     gtk_widget_set_size_request(m_area, static_cast<int>(m_layoutWidth),
                                 static_cast<int>(m_layoutHeight));
     g_signal_connect(m_area, "draw", G_CALLBACK(DocumentPane::drawCallback), this);
+    gtk_container_add(GTK_CONTAINER(m_overlay), m_area);
 
-    gtk_container_add(GTK_CONTAINER(m_scroller), m_area);
+    m_inkOverlay = std::make_unique<InkOverlay>(*this, m_annotationStore);
+    gtk_overlay_add_overlay(GTK_OVERLAY(m_overlay), m_inkOverlay->widget());
+    gtk_overlay_set_overlay_pass_through(GTK_OVERLAY(m_overlay), m_inkOverlay->widget(), FALSE);
+
+    gtk_container_add(GTK_CONTAINER(m_scroller), m_overlay);
+
+    // Auto-load companion .xopp if present
+    m_annotationStore.loadAnnotations(m_pdfPath);
 }
 
 DocumentPane::~DocumentPane() {
+    if (!m_pdfPath.empty() && !m_annotationStore.strokes().empty()) {
+        saveAnnotations();
+    }
     for (PageLayout& layout : m_pages) {
         if (layout.page)
             g_object_unref(layout.page);
     }
     if (m_document)
         g_object_unref(m_document);
+}
+
+bool DocumentPane::saveAnnotations() {
+    if (m_pdfPath.empty()) {
+        return false;
+    }
+    return m_annotationStore.saveAnnotations(m_pdfPath);
 }
 
 void DocumentPane::drawCallback(GtkWidget*, cairo_t* cr, gpointer userData) {

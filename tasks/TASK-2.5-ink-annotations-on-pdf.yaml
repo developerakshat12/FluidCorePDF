@@ -1,0 +1,43 @@
+id: TASK-2.5-ink-annotations-on-pdf
+title: Wire XoppDocument into DocumentPane — ink annotations on PDF with .xopp round-trip
+milestone: M1
+workspace: D:\Reference Repos\fluidcore-platform
+specs:
+  - specs/integration.md (section 1 — scoped-down shell; section 4 — search context for future)
+  - specs/system-architecture.md (Poppler/Cairo layer, storage layer)
+  - specs/file-function-map.md (DocumentPane, XoppDocument rows)
+  - skills/gtk-frontend/SKILL.md
+  - skills/cpp-core-dev/SKILL.md
+dependencies:
+  - TASK-2.1-poppler-document-pane
+  - TASK-2.4-xopp-persistence-loop
+deliverables:
+  - src/app/InkOverlay.{h,cpp} — GtkDrawingArea overlay on DocumentPane capturing
+    pointer/stylus input, building stroke geometry (points + pressure + timestamp),
+    rendering live in Cairo during draw; delegates stroke persistence to engine.
+  - src/libfluidcore/storage/AnnotationStore.{h,cpp} — thin C++20 wrapper around
+    XoppDocument that maps FluidCore workspace strokes ↔ XoppPage strokes; API:
+    `loadAnnotations(pdfPath)`, `saveAnnotations(pdfPath, strokes)`,
+    `addStroke(pageIdx, Stroke)`, `removeStroke(strokeId)`.
+  - src/app/DocumentPane.cpp modifications — host InkOverlay, wire save/load:
+    on open `<file>.pdf`, auto-load `<file>.xopp` if present; on close or explicit
+    save (Ctrl+S), write companion .xopp via AnnotationStore.
+  - src/app/main.cpp — add Ctrl+S accelerator for save; pass PDF path to DocumentPane.
+  - src/app/CMakeLists.txt — link new sources.
+  - specs/file-function-map.md — new rows for InkOverlay, AnnotationStore.
+acceptance_checks:
+  - "clang-format --dry-run --Werror clean on all touched files"
+  - "python ops/scripts/check_invariants.py passes (no GUI includes in libfluidcore)"
+  - "pushed commit has fully green CI including the app-shell job (gh run list)"
+  - "Manual smoke: open a PDF, draw a few strokes with mouse, Ctrl+S, quit, reopen —
+    strokes render at correct positions on the same pages"
+  - "No GTK/Poppler headers added anywhere under src/libfluidcore/"
+  - "Business logic stays out of GTK callbacks (input → stroke model in InkOverlay;
+    persistence only in AnnotationStore)"
+constraints:
+  - Do not modify src/libfluidcore/ beyond AnnotationStore + its test
+  - Do not touch the Xournal++ submodule
+  - Commit means commit AND push; every commit carries -s (DCO)
+  - Stroke model must be serializable to XoppDocument without loss (pressure, color,
+    tool, timestamp preserved)
+  - Input handling: mouse + stylus (GDK_SOURCE_PEN); ignore touch for now

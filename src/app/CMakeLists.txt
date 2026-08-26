@@ -7,6 +7,7 @@ pkg_check_modules(CAIRO REQUIRED IMPORTED_TARGET cairo)
 add_executable(fluidcore_app
     main.cpp
     DocumentPane.cpp
+    InkOverlay.cpp
     WorkspaceView.cpp
 )
 
