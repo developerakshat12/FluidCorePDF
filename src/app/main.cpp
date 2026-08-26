@@ -35,7 +35,15 @@ void seedDemoContent(FluidCoreAPI& api) {
 }
 
 void onActivate(GtkApplication* app, gpointer userData) {
-    auto* workspace = static_cast<FluidCoreApp::WorkspaceView*>(userData);
+    auto* api = static_cast<FluidCoreAPI*>(userData);
+
+    // Widgets may only be created after gtk_init(), which happens inside
+    // g_application_run() — so WorkspaceView is built here, not in main().
+    auto* workspace = new FluidCoreApp::WorkspaceView(*api);
+    g_object_set_data_full(G_OBJECT(app), "workspace-view", workspace,
+                           +[](gpointer data) {
+                               delete static_cast<FluidCoreApp::WorkspaceView*>(data);
+                           });
 
     GtkWidget* window = gtk_application_window_new(app);
     gtk_window_set_title(GTK_WINDOW(window), "FluidCore");
@@ -57,10 +65,8 @@ int main(int argc, char** argv) {
     FluidCoreEngine engine("default-project");
     seedDemoContent(engine);
 
-    FluidCoreApp::WorkspaceView workspace(engine);
-
     GtkApplication* app = gtk_application_new("org.fluidcore.platform", G_APPLICATION_NON_UNIQUE);
-    g_signal_connect(app, "activate", G_CALLBACK(onActivate), &workspace);
+    g_signal_connect(app, "activate", G_CALLBACK(onActivate), &engine);
     const int status = g_application_run(G_APPLICATION(app), argc, argv);
     g_object_unref(app);
     return status;
