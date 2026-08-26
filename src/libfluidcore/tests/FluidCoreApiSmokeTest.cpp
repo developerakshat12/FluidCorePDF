@@ -20,10 +20,14 @@ namespace {
 using namespace FluidCore;
 
 class StubApi final : public FluidCoreAPI {
-public:
+  public:
     void registerDocumentGeometry(const std::string&, const std::vector<PageGeometry>&) override {}
-    CoordinateTransformResult mapDocumentYToScreen(double, const std::string&) const override { return {}; }
-    CoordinateTransformResult mapScreenYToDocument(double, const std::string&) const override { return {}; }
+    CoordinateTransformResult mapDocumentYToScreen(double, const std::string&) const override {
+        return {};
+    }
+    CoordinateTransformResult mapScreenYToDocument(double, const std::string&) const override {
+        return {};
+    }
     void setSqueezeRegion(const std::string&, double, double, double) override {}
     void resetSqueeze(const std::string&) override {}
 
@@ -35,7 +39,9 @@ public:
     Rectangle getNodeBounds(const std::string&) const override { return {}; }
     Point getNodePosition(const std::string&) const override { return {}; }
 
-    std::string createInkLink(const std::string&, const std::string&, const Color&) override { return {}; }
+    std::string createInkLink(const std::string&, const std::string&, const Color&) override {
+        return {};
+    }
     BezierSpline getEdgeGeometry(const std::string&) const override { return {}; }
     std::vector<std::string> getConnectedEdges(const std::string&) const override { return {}; }
 
@@ -46,16 +52,15 @@ public:
 };
 
 class StubNode final : public WorkspaceNode {
-public:
+  public:
     const std::string& id() const override { return m_id; }
     Rectangle bounds() const override { return {}; }
 
-private:
+  private:
     std::string m_id{"stub-node"};
 };
 
-int check(bool condition, const char* what)
-{
+int check(bool condition, const char* what) {
     if (!condition) {
         std::cerr << "FAIL: " << what << "\n";
         return 1;
@@ -65,15 +70,15 @@ int check(bool condition, const char* what)
 
 } // namespace
 
-int main()
-{
+int main() {
     int failures = 0;
 
     failures += check(std::strcmp(kFluidCoreVersion, "0.0.0-bootstrap") == 0, "version constant");
 
     StubApi api;
     api.registerDocumentGeometry("doc-1", {{0, 612.0, 792.0, 0.0}});
-    failures += check(api.mapDocumentYToScreen(100.0, "doc-1").alpha == 1.0, "default alpha is unsqueezed");
+    failures +=
+        check(api.mapDocumentYToScreen(100.0, "doc-1").alpha == 1.0, "default alpha is unsqueezed");
 
     auto node = std::make_unique<StubNode>();
     failures += check(api.insertNode(std::move(node)).empty() || true, "insertNode callable");

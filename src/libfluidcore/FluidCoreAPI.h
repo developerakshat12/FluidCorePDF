@@ -65,28 +65,33 @@ struct SearchResult {
 };
 
 class WorkspaceNode {
-public:
+  public:
     virtual ~WorkspaceNode() = default;
     virtual const std::string& id() const = 0;
     virtual Rectangle bounds() const = 0;
 };
 
 class FluidCoreAPI {
-public:
+  public:
     virtual ~FluidCoreAPI() = default;
 
     // Document Geometry & Squeeze Layout API (Pure C++ - No Poppler/GTK Dependencies)
-    virtual void registerDocumentGeometry(const std::string& docId, const std::vector<PageGeometry>& pages) = 0;
-    virtual CoordinateTransformResult mapDocumentYToScreen(double docY, const std::string& docId) const = 0;
-    virtual CoordinateTransformResult mapScreenYToDocument(double screenY, const std::string& docId) const = 0;
-    virtual void setSqueezeRegion(const std::string& docId, double yStart, double yEnd, double alpha) = 0;
+    virtual void registerDocumentGeometry(const std::string& docId,
+                                          const std::vector<PageGeometry>& pages) = 0;
+    virtual CoordinateTransformResult mapDocumentYToScreen(double docY,
+                                                           const std::string& docId) const = 0;
+    virtual CoordinateTransformResult mapScreenYToDocument(double screenY,
+                                                           const std::string& docId) const = 0;
+    virtual void setSqueezeRegion(const std::string& docId, double yStart, double yEnd,
+                                  double alpha) = 0;
     virtual void resetSqueeze(const std::string& docId) = 0;
 
     // Spatial Scene Graph API (UUID-based Identifiers matching SQLite Schema)
     virtual std::string insertNode(std::unique_ptr<WorkspaceNode> node) = 0;
     virtual void updateNodePosition(const std::string& nodeId, double x, double y) = 0;
     virtual void removeNode(const std::string& nodeId) = 0;
-    virtual std::vector<WorkspaceNode*> queryVisibleNodes(const Rectangle& viewportBounds) const = 0;
+    virtual std::vector<WorkspaceNode*>
+    queryVisibleNodes(const Rectangle& viewportBounds) const = 0;
 
     // Pure Geometry Exposure Contract: libfluidcore never receives or returns Cairo/GTK types.
     // The frontend reads geometry (bounds, positions, spline control points via getEdgeGeometry)
@@ -95,7 +100,8 @@ public:
     virtual Point getNodePosition(const std::string& nodeId) const = 0;
 
     // Bi-Directional Relational Graph & Live Ink Link API
-    virtual std::string createInkLink(const std::string& sourceNodeId, const std::string& targetNodeId, const Color& color) = 0;
+    virtual std::string createInkLink(const std::string& sourceNodeId,
+                                      const std::string& targetNodeId, const Color& color) = 0;
     virtual BezierSpline getEdgeGeometry(const std::string& edgeId) const = 0;
     virtual std::vector<std::string> getConnectedEdges(const std::string& nodeId) const = 0;
 

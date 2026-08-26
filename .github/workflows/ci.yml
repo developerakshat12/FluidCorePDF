@@ -23,7 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install clang-format
-        run: pipx install clang-format==17.0.6
+        run: pipx install clang-format==18.1.8
       - name: Check formatting
         run: |
           find src -name '*.h' -o -name '*.hpp' -o -name '*.cpp' -o -name '*.cc' \
