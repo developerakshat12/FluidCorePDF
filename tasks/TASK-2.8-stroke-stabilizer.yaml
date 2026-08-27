@@ -1,0 +1,35 @@
+id: TASK-2.8-stroke-stabilizer
+title: Centripetal Catmull-Rom stroke stabilizer with velocity-adaptive deadzone and <= 20ms latency
+milestone: M1
+workspace: D:\Reference Repos\fluidcore-platform
+specs:
+  - specs/system-architecture.md (Poppler/Cairo layer, StrokeStabilizer)
+  - specs/file-function-map.md (StrokeStabilizer row)
+  - skills/gtk-frontend/SKILL.md
+dependencies:
+  - TASK-2.5-ink-annotations-on-pdf
+  - TASK-2.7-dirty-rect-and-tile-cache
+deliverables:
+  - src/app/DamageRect.h — extended with computeBezierDamage (convex-hull bounding for cubic curves).
+  - src/app/DamageRectTest.cpp — tests for Bezier curve damage rectangles.
+  - src/app/StrokeStabilizer.{h,cpp} — pure C++20 stabilizer engine with Centripetal Catmull-Rom
+    spline fitting, velocity-adaptive deadzone with dt guards, incremental streaming, and short-stroke fallbacks.
+  - src/app/StrokeStabilizerTest.cpp — unit test suite with synthetic 125Hz/240Hz timing benchmarks.
+  - src/app/InkOverlay.{h,cpp} modifications — streaming stabilizer integration, wet leading-edge feedback,
+    Cairo group isolation for translucent ink, and K=3 pressure-tapered Bezier rendering.
+  - src/app/CMakeLists.txt — link StrokeStabilizer and register stroke_stabilizer_test in CTest.
+  - specs/file-function-map.md — new row for StrokeStabilizer.
+  - planning/roadmap.yaml & planning/ROADMAP.md — mark stroke stabilizer complete.
+acceptance_checks:
+  - "clang-format --dry-run --Werror clean on all touched files"
+  - "python ops/scripts/check_invariants.py passes (0 violations)"
+  - "all registered CTest targets pass (100%)"
+  - "Perceptual inking latency <= 20ms (<= 1 sample lookahead lag / 8ms at 125Hz, < 0.05ms compute overhead)"
+  - "Centripetal parameterization prevents cusps and loops on sharp corners"
+  - "Translucent / highlighter ink uses Cairo group isolation to prevent joint double-blending"
+  - "Short strokes (taps/dots, N < 4 points) degrade cleanly without lost points"
+constraints:
+  - Do not modify src/libfluidcore/ (ADR-0001 clean separation)
+  - Do not touch the Xournal++ submodule
+  - Commit means commit AND push; every commit carries -s (DCO)
+  - Frontend targets GTK 3.24+ standard APIs

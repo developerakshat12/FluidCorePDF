@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <initializer_list>
 
 namespace FluidCoreApp {
 
@@ -38,6 +39,24 @@ class DamageRect {
         const double minY = std::min(p0.y, p1.y) - radius;
         const double maxX = std::max(p0.x, p1.x) + radius;
         const double maxY = std::max(p0.y, p1.y) + radius;
+
+        const int x = static_cast<int>(std::floor(minX));
+        const int y = static_cast<int>(std::floor(minY));
+        const int w = static_cast<int>(std::ceil(maxX - minX));
+        const int h = static_cast<int>(std::ceil(maxY - minY));
+
+        return {x, y, std::max(1, w), std::max(1, h)};
+    }
+
+    // Computes bounding box covering the convex hull of a cubic Bezier curve's 4 control points.
+    // Guarantees all curved bulges and pressure expansion are fully invalidated.
+    static DamageBox computeBezierDamage(Point2D b0, Point2D b1, Point2D b2, Point2D b3,
+                                         double strokeWidth, double padding = 4.0) {
+        const double radius = std::max(1.0, (strokeWidth * 0.5) + padding);
+        const double minX = std::min({b0.x, b1.x, b2.x, b3.x}) - radius;
+        const double minY = std::min({b0.y, b1.y, b2.y, b3.y}) - radius;
+        const double maxX = std::max({b0.x, b1.x, b2.x, b3.x}) + radius;
+        const double maxY = std::max({b0.y, b1.y, b2.y, b3.y}) + radius;
 
         const int x = static_cast<int>(std::floor(minX));
         const int y = static_cast<int>(std::floor(minY));

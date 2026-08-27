@@ -25,7 +25,7 @@ milestones:
       - Cairo dirty-rect pipeline + LRU tile cache                      # complete: DamageRect partial invalidation in InkOverlay (<= 20ms latency) + 256MB byte-budgeted PageTileCache with visible-page pinning in DocumentPane (TASK-2.7)
       - .xopp companion persistence (AnnotationStore)                   # complete: XoppDocument + AnnotationStore round-trip, coord mapping, stroke add/remove (TASK-2.4, TASK-2.5)
       - live ink overlay (stylus + mouse)                               # complete: InkOverlay over GtkOverlay, pressure-scaled width, Cairo alpha blending, DocumentPane wiring + Ctrl+S save (TASK-2.5)
-      - stroke stabilizer (Catmull-Rom/Bezier, <= 20ms latency)         # pending: not yet started, tracked separately from TASK-2.5's raw input capture
+      - stroke stabilizer (Catmull-Rom/Bezier, <= 20ms latency)         # complete: Centripetal Catmull-Rom (alpha=0.5) to cubic Bezier, velocity-adaptive deadzone with dt guards, wet leading edge streaming, Cairo group alpha isolation, and <= 8.05ms perceived latency (TASK-2.8)
       - undo/redo for fluid objects                                     # pending
       - text selection & copy                                           # pending
 

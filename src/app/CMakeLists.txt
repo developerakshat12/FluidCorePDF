@@ -9,6 +9,7 @@ add_executable(fluidcore_app
     DocumentPane.cpp
     InkOverlay.cpp
     PageTileCache.cpp
+    StrokeStabilizer.cpp
     ThumbnailCache.cpp
     ThumbnailSidebar.cpp
     WorkspaceView.cpp
@@ -52,4 +53,13 @@ if(BUILD_TESTING)
         target_compile_options(page_tile_cache_test PRIVATE -Wall -Wextra -Wpedantic)
     endif()
     add_test(NAME PageTileCacheTest COMMAND page_tile_cache_test)
+
+    add_executable(stroke_stabilizer_test StrokeStabilizerTest.cpp StrokeStabilizer.cpp)
+    target_include_directories(stroke_stabilizer_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    if(MSVC)
+        target_compile_options(stroke_stabilizer_test PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(stroke_stabilizer_test PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    add_test(NAME StrokeStabilizerTest COMMAND stroke_stabilizer_test)
 endif()

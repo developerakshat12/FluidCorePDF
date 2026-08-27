@@ -1,5 +1,6 @@
 #pragma once
 
+#include "StrokeStabilizer.h"
 #include "storage/AnnotationStore.h"
 
 #include <cairo.h>
@@ -15,8 +16,9 @@ namespace FluidCoreApp {
 class DocumentPane;
 
 // GtkDrawingArea overlay on DocumentPane capturing pointer/stylus input,
-// building stroke geometry (points + pressure + timestamp), rendering live
-// in Cairo during draw, and delegating stroke persistence to AnnotationStore.
+// streaming coordinates through StrokeStabilizer (Centripetal Catmull-Rom),
+// rendering live with wet leading edge and Cairo group alpha isolation,
+// and delegating stroke persistence to AnnotationStore.
 class InkOverlay {
   public:
     InkOverlay(DocumentPane& pane, FluidCore::AnnotationStore& store);
@@ -36,6 +38,8 @@ class InkOverlay {
     void setStrokeWidth(double width) { m_currentWidth = width; }
     double strokeWidth() const { return m_currentWidth; }
 
+    StrokeStabilizer& stabilizer() { return m_stabilizer; }
+
   private:
     static void drawCallback(GtkWidget* area, cairo_t* cr, gpointer userData);
     static gboolean buttonPressCallback(GtkWidget* widget, GdkEventButton* event,
@@ -51,6 +55,9 @@ class InkOverlay {
     gboolean onButtonRelease(GdkEventButton* event);
 
     void renderStroke(cairo_t* cr, const FluidCore::Stroke& stroke) const;
+    void renderActiveLiveStroke(cairo_t* cr) const;
+    void renderBezierSegment(cairo_t* cr, const StrokeStabilizer::BezierSegment& seg,
+                             double baseWidth) const;
 
     DocumentPane& m_pane;
     FluidCore::AnnotationStore& m_annotationStore;
@@ -60,6 +67,11 @@ class InkOverlay {
     std::size_t m_activePageIndex = 0;
     FluidCore::Stroke m_activeStroke;
     double m_lastPressure = 1.0;
+
+    StrokeStabilizer m_stabilizer;
+    std::vector<StrokeStabilizer::BezierSegment> m_activeBezierSegments;
+    StrokeStabilizer::Point2D m_wetTip;
+    bool m_hasWetSegment = false;
 
     std::string m_currentTool = "pen";
     std::uint32_t m_currentColor = 0x000000;

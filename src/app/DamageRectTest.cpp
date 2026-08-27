@@ -53,6 +53,24 @@ void testSegmentDamage() {
     std::cout << "[PASS] testSegmentDamage\n";
 }
 
+void testBezierDamage() {
+    // Cubic Bezier with bulging control points
+    // B0 = (10, 10), B1 = (20, 80), B2 = (80, 20), B3 = (90, 90)
+    // strokeWidth = 2.0, padding = 4.0 -> radius = 5.0
+    // minX = min(10, 20, 80, 90) - 5 = 5
+    // maxX = max(10, 20, 80, 90) + 5 = 95 -> width = 90
+    // minY = min(10, 80, 20, 90) - 5 = 5
+    // maxY = max(10, 80, 20, 90) + 5 = 95 -> height = 90
+    auto box = DamageRect::computeBezierDamage({10.0, 10.0}, {20.0, 80.0}, {80.0, 20.0},
+                                               {90.0, 90.0}, 2.0, 4.0);
+    expect(box.x == 5, "bezier x mismatch");
+    expect(box.y == 5, "bezier y mismatch");
+    expect(box.width == 90, "bezier width mismatch");
+    expect(box.height == 90, "bezier height mismatch");
+
+    std::cout << "[PASS] testBezierDamage\n";
+}
+
 void testNegativeCoordinates() {
     auto box = DamageRect::computePointDamage({-10.5, -20.5}, 2.0, 4.0);
     // radius = 5.0
@@ -69,6 +87,7 @@ void testNegativeCoordinates() {
 int main() {
     testPointDamage();
     testSegmentDamage();
+    testBezierDamage();
     testNegativeCoordinates();
     std::cout << "All DamageRect tests passed successfully!\n";
     return 0;

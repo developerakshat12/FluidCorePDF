@@ -58,7 +58,7 @@ gantt
 - [x] Cairo dirty-rect rendering pipeline with LRU tile cache *(complete: DamageRect partial invalidation in InkOverlay [<= 20ms latency] + 256MB byte-budgeted PageTileCache with visible-page pinning in DocumentPane via TASK-2.7)*
 - [x] `.xopp` companion persistence (`AnnotationStore`) *(complete: XoppDocument + AnnotationStore round-trip, coord mapping, stroke add/remove via TASK-2.4, TASK-2.5)*
 - [x] Live ink overlay (stylus + mouse) *(complete: InkOverlay over GtkOverlay, pressure-scaled width, Cairo alpha blending, DocumentPane wiring + Ctrl+S save via TASK-2.5)*
-- [ ] Stroke stabilizer (Catmull-Rom/Bezier, ≤ 20 ms latency) *(pending: not yet started, tracked separately from TASK-2.5's raw input capture)*
+- [x] Stroke stabilizer (Catmull-Rom/Bezier, ≤ 20 ms latency) *(complete: Centripetal Catmull-Rom [alpha=0.5] to cubic Bezier, velocity-adaptive deadzone with dt guards, wet leading edge streaming, Cairo group alpha isolation, and <= 8.05ms perceived latency via TASK-2.8)*
 - [ ] Undo/redo command framework extended for fluid objects
 - [ ] Basic text selection + copy
 - **Demo gate**: annotate a 500-page PDF, restart app, annotations persist via existing Xournal++ save path.
