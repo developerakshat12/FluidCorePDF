@@ -18,7 +18,7 @@ class DocumentPane;
 // GtkDrawingArea overlay on DocumentPane capturing pointer/stylus input,
 // streaming coordinates through StrokeStabilizer (Centripetal Catmull-Rom),
 // rendering live with wet leading edge and Cairo group alpha isolation,
-// and delegating stroke persistence to AnnotationStore.
+// and dispatching AddStrokeCommand/RemoveStrokeCommand to DocumentPane's UndoStack.
 class InkOverlay {
   public:
     InkOverlay(DocumentPane& pane, FluidCore::AnnotationStore& store);
@@ -39,6 +39,9 @@ class InkOverlay {
     double strokeWidth() const { return m_currentWidth; }
 
     StrokeStabilizer& stabilizer() { return m_stabilizer; }
+
+    void invalidateStroke(const FluidCore::Stroke& stroke);
+    void invalidatePage(std::size_t pageIdx);
 
   private:
     static void drawCallback(GtkWidget* area, cairo_t* cr, gpointer userData);

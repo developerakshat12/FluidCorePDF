@@ -1,6 +1,7 @@
 #include "InkOverlay.h"
 #include "DamageRect.h"
 #include "DocumentPane.h"
+#include "undo/AnnotationCommands.h"
 
 #include <algorithm>
 #include <cmath>
@@ -24,6 +25,74 @@ StrokeStabilizer::Point2D evalCubicBezier(const StrokeStabilizer::Point2D& b0,
             uuu * b0.y + 3.0 * uu * t * b1.y + 3.0 * u * tt * b2.y + ttt * b3.y};
 }
 
+double distSqPointToSegment(double px, double py, double x1, double y1, double x2, double y2) {
+    const double dx = x2 - x1;
+    const double dy = y2 - y1;
+    const double lenSq = dx * dx + dy * dy;
+    if (lenSq < 1e-6) {
+        const double dpx = px - x1;
+        const double dpy = py - y1;
+        return dpx * dpx + dpy * dpy;
+    }
+    const double t = std::clamp(((px - x1) * dx + (py - y1) * dy) / lenSq, 0.0, 1.0);
+    const double projX = x1 + t * dx;
+    const double projY = y1 + t * dy;
+    const double dpx = px - projX;
+    const double dpy = py - projY;
+    return dpx * dpx + dpy * dpy;
+}
+
+bool strokeIntersectsEraser(const FluidCore::Stroke& stroke,
+                            const std::vector<StrokeStabilizer::StabilizedSample>& eraserSamples,
+                            double eraserRadius) {
+    if (stroke.points.empty() || eraserSamples.empty()) {
+        return false;
+    }
+
+    // Fast AABB rejection
+    double sMinX = stroke.points[0].x, sMaxX = stroke.points[0].x;
+    double sMinY = stroke.points[0].y, sMaxY = stroke.points[0].y;
+    for (const auto& pt : stroke.points) {
+        sMinX = std::min(sMinX, pt.x);
+        sMaxX = std::max(sMaxX, pt.x);
+        sMinY = std::min(sMinY, pt.y);
+        sMaxY = std::max(sMaxY, pt.y);
+    }
+
+    double eMinX = eraserSamples[0].point.x, eMaxX = eraserSamples[0].point.x;
+    double eMinY = eraserSamples[0].point.y, eMaxY = eraserSamples[0].point.y;
+    for (const auto& sm : eraserSamples) {
+        eMinX = std::min(eMinX, sm.point.x);
+        eMaxX = std::max(eMaxX, sm.point.x);
+        eMinY = std::min(eMinY, sm.point.y);
+        eMaxY = std::max(eMaxY, sm.point.y);
+    }
+
+    const double pad = stroke.width + eraserRadius;
+    if (sMaxX + pad < eMinX || sMinX - pad > eMaxX || sMaxY + pad < eMinY || sMinY - pad > eMaxY) {
+        return false;
+    }
+
+    const double thresholdSq = (pad * 0.5 + 4.0) * (pad * 0.5 + 4.0);
+    for (const auto& sm : eraserSamples) {
+        for (std::size_t i = 0; i + 1 < stroke.points.size(); ++i) {
+            if (distSqPointToSegment(sm.point.x, sm.point.y, stroke.points[i].x, stroke.points[i].y,
+                                     stroke.points[i + 1].x,
+                                     stroke.points[i + 1].y) <= thresholdSq) {
+                return true;
+            }
+        }
+        if (stroke.points.size() == 1) {
+            const double dx = sm.point.x - stroke.points[0].x;
+            const double dy = sm.point.y - stroke.points[0].y;
+            if (dx * dx + dy * dy <= thresholdSq) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 } // namespace
 
 InkOverlay::InkOverlay(DocumentPane& pane, FluidCore::AnnotationStore& store)
@@ -45,6 +114,57 @@ InkOverlay::InkOverlay(DocumentPane& pane, FluidCore::AnnotationStore& store)
 }
 
 InkOverlay::~InkOverlay() = default;
+
+void InkOverlay::invalidateStroke(const FluidCore::Stroke& stroke) {
+    if (stroke.points.empty()) {
+        return;
+    }
+
+    const auto& pages = m_pane.pages();
+    if (stroke.pageIndex >= pages.size()) {
+        return;
+    }
+
+    GtkAllocation allocation;
+    gtk_widget_get_allocation(m_widget, &allocation);
+    const double pageX =
+        kPageMargin + std::max(0.0, (allocation.width - m_pane.layoutWidth()) / 2.0);
+    const double pageY = pages[stroke.pageIndex].y;
+
+    double minX = stroke.points[0].x, maxX = stroke.points[0].x;
+    double minY = stroke.points[0].y, maxY = stroke.points[0].y;
+    for (const auto& pt : stroke.points) {
+        minX = std::min(minX, pt.x);
+        maxX = std::max(maxX, pt.x);
+        minY = std::min(minY, pt.y);
+        maxY = std::max(maxY, pt.y);
+    }
+
+    const double pad = std::max(8.0, stroke.width * 2.0);
+    const int rx = std::max(0, static_cast<int>(std::floor(pageX + minX - pad)));
+    const int ry = std::max(0, static_cast<int>(std::floor(pageY + minY - pad)));
+    const int rw = static_cast<int>(std::ceil(maxX - minX + 2.0 * pad));
+    const int rh = static_cast<int>(std::ceil(maxY - minY + 2.0 * pad));
+
+    gtk_widget_queue_draw_area(m_widget, rx, ry, rw, rh);
+}
+
+void InkOverlay::invalidatePage(std::size_t pageIdx) {
+    const auto& pages = m_pane.pages();
+    if (pageIdx >= pages.size()) {
+        return;
+    }
+
+    GtkAllocation allocation;
+    gtk_widget_get_allocation(m_widget, &allocation);
+    const double pageX =
+        kPageMargin + std::max(0.0, (allocation.width - m_pane.layoutWidth()) / 2.0);
+    const auto& layout = pages[pageIdx];
+
+    gtk_widget_queue_draw_area(
+        m_widget, static_cast<int>(std::floor(pageX)), static_cast<int>(std::floor(layout.y)),
+        static_cast<int>(std::ceil(layout.width)), static_cast<int>(std::ceil(layout.height)));
+}
 
 void InkOverlay::drawCallback(GtkWidget*, cairo_t* cr, gpointer userData) {
     static_cast<InkOverlay*>(userData)->draw(cr);
@@ -215,7 +335,34 @@ gboolean InkOverlay::onButtonRelease(GdkEventButton* event) {
         }
 
         const auto& samples = m_stabilizer.rawSamples();
-        if (!samples.empty()) {
+        if (m_activeStroke.tool == "eraser") {
+            // Eraser tool: hit-test against existing page strokes and dispatch RemoveStrokeCommand
+            const auto existingStrokes = m_annotationStore.strokesForPage(m_activePageIndex);
+            std::vector<FluidCore::Stroke> erasedStrokes;
+            for (const auto& s : existingStrokes) {
+                if (strokeIntersectsEraser(s, samples,
+                                           std::max(12.0, m_activeStroke.width * 4.0))) {
+                    erasedStrokes.push_back(s);
+                }
+            }
+
+            if (!erasedStrokes.empty()) {
+                if (erasedStrokes.size() == 1) {
+                    invalidateStroke(erasedStrokes[0]);
+                    m_pane.undoStack().pushAndExecute(
+                        std::make_unique<FluidCore::RemoveStrokeCommand>(
+                            m_annotationStore, m_activePageIndex, erasedStrokes[0]));
+                } else {
+                    auto compound = std::make_unique<FluidCore::CompoundCommand>("Erase Strokes");
+                    for (const auto& s : erasedStrokes) {
+                        invalidateStroke(s);
+                        compound->addCommand(std::make_unique<FluidCore::RemoveStrokeCommand>(
+                            m_annotationStore, m_activePageIndex, s));
+                    }
+                    m_pane.undoStack().pushAndExecute(std::move(compound));
+                }
+            }
+        } else if (!samples.empty()) {
             m_activeStroke.points.clear();
             m_activeStroke.pressures.clear();
             m_activeStroke.points.reserve(samples.size());
@@ -230,7 +377,9 @@ gboolean InkOverlay::onButtonRelease(GdkEventButton* event) {
                 }
             }
 
-            m_annotationStore.addStroke(m_activePageIndex, std::move(m_activeStroke));
+            // Dispatch AddStrokeCommand through DocumentPane UndoStack
+            m_pane.undoStack().pushAndExecute(std::make_unique<FluidCore::AddStrokeCommand>(
+                m_annotationStore, m_activePageIndex, std::move(m_activeStroke)));
         }
     }
 
@@ -394,7 +543,7 @@ void InkOverlay::draw(cairo_t* cr) {
             renderStroke(cr, stroke);
         }
 
-        if (m_isDrawing && m_activePageIndex == i) {
+        if (m_isDrawing && m_activePageIndex == i && m_activeStroke.tool != "eraser") {
             const double r = ((m_activeStroke.color >> 16) & 0xFF) / 255.0;
             const double g = ((m_activeStroke.color >> 8) & 0xFF) / 255.0;
             const double b = (m_activeStroke.color & 0xFF) / 255.0;

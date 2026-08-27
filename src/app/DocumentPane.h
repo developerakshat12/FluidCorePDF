@@ -2,6 +2,7 @@
 
 #include "PageTileCache.h"
 #include "storage/AnnotationStore.h"
+#include "undo/UndoStack.h"
 
 #include <cstddef>
 #include <memory>
@@ -20,6 +21,7 @@ class ThumbnailSidebar;
 // A horizontal GtkPaned hosting the ThumbnailSidebar on the left (with draggable divider)
 // and a GtkScrolledWindow on the right containing the continuous Poppler PDF DrawingArea
 // and the interactive InkOverlay for live annotation.
+// Owns UndoStack for transactional stroke addition, erasure, and page clear actions.
 // Uses PageTileCache with LRU byte budgeting and visible-page pinning for instant blits.
 // On open <file>.pdf, automatically loads companion <file>.xopp if present;
 // on close or explicit save (Ctrl+S), writes companion .xopp via AnnotationStore.
@@ -45,6 +47,11 @@ class DocumentPane {
     bool save() { return saveAnnotations(); }
     bool saveAnnotations();
 
+    bool undo();
+    bool redo();
+    bool canUndo() const { return m_undoStack.canUndo(); }
+    bool canRedo() const { return m_undoStack.canRedo(); }
+
     void scrollToPage(std::size_t pageIndex);
     void clearCache() { m_pageTileCache.clear(); }
 
@@ -55,6 +62,9 @@ class DocumentPane {
 
     FluidCore::AnnotationStore& annotationStore() { return m_annotationStore; }
     const FluidCore::AnnotationStore& annotationStore() const { return m_annotationStore; }
+    FluidCore::UndoStack& undoStack() { return m_undoStack; }
+    const FluidCore::UndoStack& undoStack() const { return m_undoStack; }
+
     InkOverlay* inkOverlay() const { return m_inkOverlay.get(); }
     ThumbnailSidebar* thumbnailSidebar() const { return m_thumbnailSidebar.get(); }
     PageTileCache& pageTileCache() { return m_pageTileCache; }
@@ -77,6 +87,7 @@ class DocumentPane {
 
     PageTileCache m_pageTileCache;
     FluidCore::AnnotationStore m_annotationStore;
+    FluidCore::UndoStack m_undoStack;
     std::unique_ptr<InkOverlay> m_inkOverlay;
     std::unique_ptr<ThumbnailSidebar> m_thumbnailSidebar;
 };

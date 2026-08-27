@@ -59,7 +59,7 @@ gantt
 - [x] `.xopp` companion persistence (`AnnotationStore`) *(complete: XoppDocument + AnnotationStore round-trip, coord mapping, stroke add/remove via TASK-2.4, TASK-2.5)*
 - [x] Live ink overlay (stylus + mouse) *(complete: InkOverlay over GtkOverlay, pressure-scaled width, Cairo alpha blending, DocumentPane wiring + Ctrl+S save via TASK-2.5)*
 - [x] Stroke stabilizer (Catmull-Rom/Bezier, ≤ 20 ms latency) *(complete via TASK-2.8: Centripetal Catmull-Rom [alpha=0.5] with velocity-adaptive deadzone, wet leading-edge zero-lag feedback, and Cairo group alpha isolation; algorithmic pipeline lag ≤ 8.05ms at 125Hz; full end-to-end photon latency to be gated during host integration)*
-- [ ] Undo/redo command framework extended for fluid objects
+- [x] Undo/redo command framework extended for fluid objects *(complete via TASK-2.9: pure C++20 UndoStack with 100-depth FIFO capacity bounds, AddStroke/RemoveStroke/ClearPage/Compound commands, eraser hit-testing, scoped DamageRect invalidation, and Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y shortcuts)*
 - [ ] Basic text selection + copy
 - **Demo gate**: annotate a 500-page PDF, restart app, annotations persist via existing Xournal++ save path.
 

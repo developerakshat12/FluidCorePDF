@@ -1,0 +1,40 @@
+id: TASK-2.9-undo-redo-framework
+title: Pure C++20 Undo/Redo command framework for fluid objects and inking annotations
+milestone: M1
+workspace: D:\Reference Repos\fluidcore-platform
+specs:
+  - specs/system-architecture.md (Undo/Redo Command framework)
+  - specs/new-features-backlog.md (Undo/Redo Framework Integration)
+  - specs/file-function-map.md (UndoStack, Command, AnnotationCommands, WorkspaceCommands)
+  - skills/cpp-core-dev/SKILL.md
+  - skills/gtk-frontend/SKILL.md
+dependencies:
+  - TASK-2.4-xopp-persistence-loop
+  - TASK-2.5-ink-annotations-on-pdf
+  - TASK-2.7-dirty-rect-and-tile-cache
+  - TASK-2.8-stroke-stabilizer
+deliverables:
+  - src/libfluidcore/undo/Command.h — abstract Command base class and CompoundCommand.
+  - src/libfluidcore/undo/UndoStack.{h,cpp} — bounded-capacity UndoStack with listener callbacks.
+  - src/libfluidcore/undo/AnnotationCommands.{h,cpp} — AddStrokeCommand, RemoveStrokeCommand, ClearPageStrokesCommand.
+  - src/libfluidcore/undo/WorkspaceCommands.{h,cpp} — MoveNodeCommand (library groundwork).
+  - src/libfluidcore/tests/UndoStackTest.cpp — unit test suite for UndoStack and concrete commands.
+  - src/app/DocumentPane.{h,cpp} modifications — host UndoStack, wire undo/redo dispatch with scoped damage invalidation.
+  - src/app/InkOverlay.{h,cpp} modifications — dispatch AddStrokeCommand, eraser stroke hit-testing (RemoveStrokeCommand/CompoundCommand), and stroke damage invalidation.
+  - src/app/main.cpp modifications — wire Ctrl+Z (Undo) and Ctrl+Shift+Z / Ctrl+Y (Redo) accelerators and key handlers.
+  - src/libfluidcore/CMakeLists.txt — link undo sources and register undo_stack_test in CTest.
+  - specs/file-function-map.md — new rows for UndoStack and Commands.
+  - planning/roadmap.yaml & planning/ROADMAP.md — mark undo/redo complete.
+acceptance_checks:
+  - "clang-format --dry-run --Werror clean on all touched files"
+  - "python ops/scripts/check_invariants.py passes (zero GUI includes in libfluidcore/undo)"
+  - "all registered CTest targets pass (100%)"
+  - "UndoStack bounds capacity (maxDepth = 100) and clears on document destruction"
+  - "Stroke undo/redo invalidates scoped bounding boxes via DamageRect"
+  - "Eraser hit-testing generates CompoundCommand of RemoveStrokeCommands"
+  - "Ctrl+Z and Ctrl+Shift+Z/Ctrl+Y shortcuts trigger undo and redo correctly"
+constraints:
+  - Do not add GUI/Poppler headers to src/libfluidcore/ (ADR-0001 clean separation)
+  - Do not touch the Xournal++ submodule
+  - Commit means commit AND push; every commit carries -s (DCO)
+  - Frontend targets GTK 3.24+ standard APIs

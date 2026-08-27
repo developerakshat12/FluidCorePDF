@@ -7,6 +7,9 @@ add_library(fluidcore STATIC
     storage/ProjectStore.cpp
     storage/XoppDocument.cpp
     storage/AnnotationStore.cpp
+    undo/UndoStack.cpp
+    undo/AnnotationCommands.cpp
+    undo/WorkspaceCommands.cpp
 )
 
 find_package(ZLIB REQUIRED)
@@ -50,4 +53,8 @@ if(BUILD_TESTING)
     add_executable(annotation_store_test tests/storage/AnnotationStoreTest.cpp)
     target_link_libraries(annotation_store_test PRIVATE fluidcore)
     add_test(NAME AnnotationStoreTest COMMAND annotation_store_test)
+
+    add_executable(undo_stack_test tests/UndoStackTest.cpp)
+    target_link_libraries(undo_stack_test PRIVATE fluidcore)
+    add_test(NAME UndoStackTest COMMAND undo_stack_test)
 endif()

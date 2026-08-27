@@ -2,6 +2,7 @@
 #include "InkOverlay.h"
 #include "ThumbnailLayout.h"
 #include "ThumbnailSidebar.h"
+#include "undo/AnnotationCommands.h"
 
 #include <algorithm>
 #include <vector>
@@ -116,6 +117,8 @@ DocumentPane::DocumentPane(const std::string& pdfPath) : m_pdfPath(pdfPath) {
 }
 
 DocumentPane::~DocumentPane() {
+    // Clear undo stack first to prevent any dangling command pointers to stores
+    m_undoStack.clear();
     if (!m_pdfPath.empty() && !m_annotationStore.strokes().empty()) {
         saveAnnotations();
     }
@@ -134,6 +137,104 @@ bool DocumentPane::saveAnnotations() {
         return false;
     }
     return m_annotationStore.saveAnnotations(m_pdfPath);
+}
+
+bool DocumentPane::undo() {
+    if (!m_undoStack.canUndo()) {
+        return false;
+    }
+
+    const FluidCore::Command* topCmd = m_undoStack.peekUndo();
+    const auto* addCmd = dynamic_cast<const FluidCore::AddStrokeCommand*>(topCmd);
+    const auto* remCmd = dynamic_cast<const FluidCore::RemoveStrokeCommand*>(topCmd);
+    const auto* clrCmd = dynamic_cast<const FluidCore::ClearPageStrokesCommand*>(topCmd);
+    const auto* compCmd = dynamic_cast<const FluidCore::CompoundCommand*>(topCmd);
+
+    FluidCore::Stroke affectedStroke;
+    bool hasStroke = false;
+    std::size_t pageToInvalidate = 0;
+    bool hasPage = false;
+
+    if (addCmd) {
+        affectedStroke = addCmd->stroke();
+        hasStroke = true;
+    } else if (remCmd) {
+        affectedStroke = remCmd->stroke();
+        hasStroke = true;
+    } else if (clrCmd) {
+        pageToInvalidate = clrCmd->pageIndex();
+        hasPage = true;
+    }
+
+    const bool ok = m_undoStack.undo();
+
+    if (ok && m_inkOverlay) {
+        if (hasStroke) {
+            m_inkOverlay->invalidateStroke(affectedStroke);
+        } else if (hasPage) {
+            m_inkOverlay->invalidatePage(pageToInvalidate);
+        } else if (compCmd) {
+            for (const auto& sub : compCmd->commands()) {
+                if (const auto* sRem =
+                        dynamic_cast<const FluidCore::RemoveStrokeCommand*>(sub.get())) {
+                    m_inkOverlay->invalidateStroke(sRem->stroke());
+                } else if (const auto* sAdd =
+                               dynamic_cast<const FluidCore::AddStrokeCommand*>(sub.get())) {
+                    m_inkOverlay->invalidateStroke(sAdd->stroke());
+                }
+            }
+        }
+    }
+    return ok;
+}
+
+bool DocumentPane::redo() {
+    if (!m_undoStack.canRedo()) {
+        return false;
+    }
+
+    const FluidCore::Command* topCmd = m_undoStack.peekRedo();
+    const auto* addCmd = dynamic_cast<const FluidCore::AddStrokeCommand*>(topCmd);
+    const auto* remCmd = dynamic_cast<const FluidCore::RemoveStrokeCommand*>(topCmd);
+    const auto* clrCmd = dynamic_cast<const FluidCore::ClearPageStrokesCommand*>(topCmd);
+    const auto* compCmd = dynamic_cast<const FluidCore::CompoundCommand*>(topCmd);
+
+    FluidCore::Stroke affectedStroke;
+    bool hasStroke = false;
+    std::size_t pageToInvalidate = 0;
+    bool hasPage = false;
+
+    if (addCmd) {
+        affectedStroke = addCmd->stroke();
+        hasStroke = true;
+    } else if (remCmd) {
+        affectedStroke = remCmd->stroke();
+        hasStroke = true;
+    } else if (clrCmd) {
+        pageToInvalidate = clrCmd->pageIndex();
+        hasPage = true;
+    }
+
+    const bool ok = m_undoStack.redo();
+
+    if (ok && m_inkOverlay) {
+        if (hasStroke) {
+            m_inkOverlay->invalidateStroke(affectedStroke);
+        } else if (hasPage) {
+            m_inkOverlay->invalidatePage(pageToInvalidate);
+        } else if (compCmd) {
+            for (const auto& sub : compCmd->commands()) {
+                if (const auto* sRem =
+                        dynamic_cast<const FluidCore::RemoveStrokeCommand*>(sub.get())) {
+                    m_inkOverlay->invalidateStroke(sRem->stroke());
+                } else if (const auto* sAdd =
+                               dynamic_cast<const FluidCore::AddStrokeCommand*>(sub.get())) {
+                    m_inkOverlay->invalidateStroke(sAdd->stroke());
+                }
+            }
+        }
+    }
+    return ok;
 }
 
 void DocumentPane::scrollToPage(std::size_t pageIndex) {

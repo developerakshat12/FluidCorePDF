@@ -70,23 +70,68 @@ void onActivate(GtkApplication* app, gpointer userData) {
                      documentPane);
     g_action_map_add_action(G_ACTION_MAP(window), G_ACTION(saveAction));
 
-    const gchar* accels[] = {"<Primary>s", "<Control>s", nullptr};
-    gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.save", accels);
+    const gchar* saveAccels[] = {"<Primary>s", "<Control>s", nullptr};
+    gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.save", saveAccels);
 
-    // Direct key-press fallback for window-level shortcut handling
-    g_signal_connect(window, "key-press-event",
-                     G_CALLBACK(+[](GtkWidget*, GdkEventKey* event, gpointer data) -> gboolean {
-                         if ((event->state & GDK_CONTROL_MASK) &&
-                             (event->keyval == GDK_KEY_s || event->keyval == GDK_KEY_S)) {
-                             auto* pane = static_cast<FluidCoreApp::DocumentPane*>(data);
-                             if (pane) {
-                                 pane->save();
-                             }
-                             return TRUE;
+    // Wire Ctrl+Z (Undo) action
+    GSimpleAction* undoAction = g_simple_action_new("undo", nullptr);
+    g_signal_connect(undoAction, "activate",
+                     G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
+                         auto* pane = static_cast<FluidCoreApp::DocumentPane*>(data);
+                         if (pane) {
+                             pane->undo();
                          }
-                         return FALSE;
                      }),
                      documentPane);
+    g_action_map_add_action(G_ACTION_MAP(window), G_ACTION(undoAction));
+
+    const gchar* undoAccels[] = {"<Primary>z", "<Control>z", nullptr};
+    gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.undo", undoAccels);
+
+    // Wire Ctrl+Shift+Z / Ctrl+Y (Redo) action
+    GSimpleAction* redoAction = g_simple_action_new("redo", nullptr);
+    g_signal_connect(redoAction, "activate",
+                     G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
+                         auto* pane = static_cast<FluidCoreApp::DocumentPane*>(data);
+                         if (pane) {
+                             pane->redo();
+                         }
+                     }),
+                     documentPane);
+    g_action_map_add_action(G_ACTION_MAP(window), G_ACTION(redoAction));
+
+    const gchar* redoAccels[] = {"<Primary><Shift>z", "<Control><Shift>z", "<Primary>y",
+                                 "<Control>y", nullptr};
+    gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.redo", redoAccels);
+
+    // Direct key-press fallback for window-level shortcut handling
+    g_signal_connect(
+        window, "key-press-event",
+        G_CALLBACK(+[](GtkWidget*, GdkEventKey* event, gpointer data) -> gboolean {
+            auto* pane = static_cast<FluidCoreApp::DocumentPane*>(data);
+            if (!pane) {
+                return FALSE;
+            }
+
+            const bool ctrl = (event->state & GDK_CONTROL_MASK) != 0;
+            const bool shift = (event->state & GDK_SHIFT_MASK) != 0;
+
+            if (ctrl && !shift && (event->keyval == GDK_KEY_s || event->keyval == GDK_KEY_S)) {
+                pane->save();
+                return TRUE;
+            }
+            if (ctrl && !shift && (event->keyval == GDK_KEY_z || event->keyval == GDK_KEY_Z)) {
+                pane->undo();
+                return TRUE;
+            }
+            if (ctrl && ((shift && (event->keyval == GDK_KEY_z || event->keyval == GDK_KEY_Z)) ||
+                         (!shift && (event->keyval == GDK_KEY_y || event->keyval == GDK_KEY_Y)))) {
+                pane->redo();
+                return TRUE;
+            }
+            return FALSE;
+        }),
+        documentPane);
 
     GtkWidget* paned = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
     GtkWidget* documentWidget = documentPane->widget();

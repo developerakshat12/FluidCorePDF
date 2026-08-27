@@ -26,7 +26,7 @@ milestones:
       - .xopp companion persistence (AnnotationStore)                   # complete: XoppDocument + AnnotationStore round-trip, coord mapping, stroke add/remove (TASK-2.4, TASK-2.5)
       - live ink overlay (stylus + mouse)                               # complete: InkOverlay over GtkOverlay, pressure-scaled width, Cairo alpha blending, DocumentPane wiring + Ctrl+S save (TASK-2.5)
       - stroke stabilizer (Catmull-Rom/Bezier, <= 20ms latency)         # complete: Centripetal Catmull-Rom (alpha=0.5) with velocity-adaptive deadzone, wet leading-edge zero-lag feedback, and Cairo group alpha isolation (TASK-2.8; algorithmic pipeline lag <= 8.05ms at 125Hz; full end-to-end photon latency to be gated during host integration)
-      - undo/redo for fluid objects                                     # pending
+      - undo/redo for fluid objects                                     # complete: pure C++20 UndoStack with 100-depth FIFO capacity bounds, AddStroke/RemoveStroke/ClearPage/Compound commands, eraser hit-testing, scoped DamageRect invalidation, and Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y shortcuts (TASK-2.9)
       - text selection & copy                                           # pending
 
   - id: M2
