@@ -21,11 +21,11 @@ milestones:
     window_weeks: [5, 14]
     status: in_progress
     items:
-      - Poppler loading + thumbnails + continuous scroll                # complete: DocumentPane continuous scroll + ThumbnailSidebar with Cairo surface caching and click navigation (TASK-2.1, TASK-2.6)
-      - Cairo dirty-rect pipeline + LRU tile cache                      # complete: DamageRect partial invalidation in InkOverlay (<= 20ms latency) + 256MB byte-budgeted PageTileCache with visible-page pinning in DocumentPane (TASK-2.7)
+      - Poppler loading + thumbnails + continuous scroll                # complete: continuous DocumentPane + GtkPaned resizable ThumbnailSidebar with Cairo surface caching and ThumbnailLayoutTest (TASK-2.1, TASK-2.6; follow-up logged: off-thread worker pool for 200+ page background thumbnail rasterization)
+      - Cairo dirty-rect pipeline + LRU tile cache                      # complete: 256MB byte-budgeted PageTileCache with RAII CairoSurfaceHandle, visible-page pinning, and GTK3 partial invalidation (TASK-2.7; zoom/resize handled via explicit cache clear)
       - .xopp companion persistence (AnnotationStore)                   # complete: XoppDocument + AnnotationStore round-trip, coord mapping, stroke add/remove (TASK-2.4, TASK-2.5)
       - live ink overlay (stylus + mouse)                               # complete: InkOverlay over GtkOverlay, pressure-scaled width, Cairo alpha blending, DocumentPane wiring + Ctrl+S save (TASK-2.5)
-      - stroke stabilizer (Catmull-Rom/Bezier, <= 20ms latency)         # complete: Centripetal Catmull-Rom (alpha=0.5) to cubic Bezier, velocity-adaptive deadzone with dt guards, wet leading edge streaming, Cairo group alpha isolation, and <= 8.05ms perceived latency (TASK-2.8)
+      - stroke stabilizer (Catmull-Rom/Bezier, <= 20ms latency)         # complete: Centripetal Catmull-Rom (alpha=0.5) with velocity-adaptive deadzone, wet leading-edge zero-lag feedback, and Cairo group alpha isolation (TASK-2.8; algorithmic pipeline lag <= 8.05ms at 125Hz; full end-to-end photon latency to be gated during host integration)
       - undo/redo for fluid objects                                     # pending
       - text selection & copy                                           # pending
 

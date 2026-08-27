@@ -54,11 +54,11 @@ gantt
 > or modifies the Xournal++ stack. Until then nothing reads the submodule, so this is a no-op.
 
 ### M1 — Reader Core (Weeks 5–14)
-- [x] Poppler-GLib document loading, page thumbnails, continuous scroll *(complete: DocumentPane continuous scroll + ThumbnailSidebar with Cairo surface caching and click navigation via TASK-2.1, TASK-2.6)*
-- [x] Cairo dirty-rect rendering pipeline with LRU tile cache *(complete: DamageRect partial invalidation in InkOverlay [<= 20ms latency] + 256MB byte-budgeted PageTileCache with visible-page pinning in DocumentPane via TASK-2.7)*
+- [x] Poppler-GLib document loading, page thumbnails, continuous scroll *(complete via TASK-2.1, TASK-2.6: continuous DocumentPane + GtkPaned resizable ThumbnailSidebar with Cairo surface caching and ThumbnailLayoutTest; follow-up logged: off-thread worker pool for 200+ page background thumbnail rasterization)*
+- [x] Cairo dirty-rect rendering pipeline with LRU tile cache *(complete via TASK-2.7: 256MB byte-budgeted PageTileCache with RAII CairoSurfaceHandle, visible-page pinning, and GTK3 partial invalidation; zoom/resize handled via explicit cache clear)*
 - [x] `.xopp` companion persistence (`AnnotationStore`) *(complete: XoppDocument + AnnotationStore round-trip, coord mapping, stroke add/remove via TASK-2.4, TASK-2.5)*
 - [x] Live ink overlay (stylus + mouse) *(complete: InkOverlay over GtkOverlay, pressure-scaled width, Cairo alpha blending, DocumentPane wiring + Ctrl+S save via TASK-2.5)*
-- [x] Stroke stabilizer (Catmull-Rom/Bezier, ≤ 20 ms latency) *(complete: Centripetal Catmull-Rom [alpha=0.5] to cubic Bezier, velocity-adaptive deadzone with dt guards, wet leading edge streaming, Cairo group alpha isolation, and <= 8.05ms perceived latency via TASK-2.8)*
+- [x] Stroke stabilizer (Catmull-Rom/Bezier, ≤ 20 ms latency) *(complete via TASK-2.8: Centripetal Catmull-Rom [alpha=0.5] with velocity-adaptive deadzone, wet leading-edge zero-lag feedback, and Cairo group alpha isolation; algorithmic pipeline lag ≤ 8.05ms at 125Hz; full end-to-end photon latency to be gated during host integration)*
 - [ ] Undo/redo command framework extended for fluid objects
 - [ ] Basic text selection + copy
 - **Demo gate**: annotate a 500-page PDF, restart app, annotations persist via existing Xournal++ save path.
