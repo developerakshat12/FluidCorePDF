@@ -266,52 +266,20 @@ void ExcerptTileCache::asyncWorkerFunc(gpointer data, gpointer /*userData*/) {
         return;
     }
 
-    PopplerPagePtr page = cache->m_docService.getBackgroundPage(task->docId, task->pageNo);
-    if (!page) {
+    CairoSurfaceHandle surface = cache->m_docService.renderBackgroundCrop(
+        task->docId, task->pageNo, task->normRect, task->targetPixelW, task->targetPixelH);
+
+    if (!surface) {
         delete task;
         return;
     }
-
-    double origWidth = 0.0, origHeight = 0.0;
-    poppler_page_get_size(page.get(), &origWidth, &origHeight);
-    if (origWidth <= 0.0 || origHeight <= 0.0) {
-        delete task;
-        return;
-    }
-
-    double cropX = std::clamp(task->normRect.x, 0.0, 1.0) * origWidth;
-    double cropY = std::clamp(task->normRect.y, 0.0, 1.0) * origHeight;
-    double cropW = std::clamp(task->normRect.w, 0.001, 1.0) * origWidth;
-    double cropH = std::clamp(task->normRect.h, 0.001, 1.0) * origHeight;
-
-    int w = task->targetPixelW;
-    int h = task->targetPixelH;
-
-    cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h);
-    if (!surface || cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
-        if (surface) {
-            cairo_surface_destroy(surface);
-        }
-        delete task;
-        return;
-    }
-
-    cairo_t* cr = cairo_create(surface);
-    cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
-    cairo_paint(cr);
-
-    cairo_scale(cr, static_cast<double>(w) / cropW, static_cast<double>(h) / cropH);
-    cairo_translate(cr, -cropX, -cropY);
-
-    poppler_page_render(page.get(), cr);
-    cairo_destroy(cr);
 
     auto* result = new AsyncRenderResult();
     result->requestId = task->requestId;
     result->excerptId = task->excerptId;
     result->docId = task->docId;
     result->cacheKey = task->cacheKey;
-    result->surface = CairoSurfaceHandle(surface, true);
+    result->surface = surface;
     result->cache = cache;
 
     delete task;
