@@ -504,6 +504,11 @@ void onActivate(GtkApplication* app, gpointer userData) {
                     return FALSE;
                 }
 
+                if (event->keyval == GDK_KEY_space) {
+                    if (ws)
+                        ws->setSpacePressed(true);
+                    return TRUE;
+                }
                 if (event->keyval == GDK_KEY_s || event->keyval == GDK_KEY_S) {
                     if (pane)
                         pane->setTool("select");
@@ -544,6 +549,20 @@ void onActivate(GtkApplication* app, gpointer userData) {
             return FALSE;
         }),
         viewCtx);
+
+    g_signal_connect(window, "key-release-event",
+                     G_CALLBACK(+[](GtkWidget*, GdkEventKey* event, gpointer data) -> gboolean {
+                         auto* ctx = static_cast<AppViewContext*>(data);
+                         if (!ctx || !ctx->workspace) {
+                             return FALSE;
+                         }
+                         if (event->keyval == GDK_KEY_space) {
+                             ctx->workspace->setSpacePressed(false);
+                             return TRUE;
+                         }
+                         return FALSE;
+                     }),
+                     viewCtx);
 
     GtkWidget* paned = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
     GtkWidget* documentWidget = documentPane->widget();

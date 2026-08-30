@@ -14,7 +14,7 @@ namespace FluidCoreApp {
 namespace {
 
 constexpr double kMinZoom = 0.10; // 10%
-constexpr double kMaxZoom = 5.0;  // 500%
+constexpr double kMaxZoom = 2.0;  // 200%
 constexpr double kBaseGridStep = 32.0;
 constexpr double kMajorGridMultiple = 5.0; // Major accents every 5 dots (160 pt)
 
@@ -92,6 +92,8 @@ WorkspaceView::WorkspaceView(FluidCore::FluidCoreAPI& api) : m_api(api) {
     g_signal_connect(m_area, "motion-notify-event", G_CALLBACK(WorkspaceView::motionCallback),
                      this);
     g_signal_connect(m_area, "key-press-event", G_CALLBACK(WorkspaceView::keyPressCallback), this);
+    g_signal_connect(m_area, "key-release-event", G_CALLBACK(WorkspaceView::keyReleaseCallback),
+                     this);
 
     // Setup GTK Drag and Drop Destination (specs/integration.md §2)
     static const GtkTargetEntry dropTargets[] = {
@@ -323,6 +325,26 @@ void WorkspaceView::flashExcerptCard(const std::string& cardId) {
     }
 }
 
+void WorkspaceView::setSpacePressed(bool pressed) {
+    if (m_isSpacePressed == pressed)
+        return;
+    m_isSpacePressed = pressed;
+    if (m_area && GTK_IS_WIDGET(m_area)) {
+        GdkWindow* win = gtk_widget_get_window(m_area);
+        if (win) {
+            if (m_isSpacePressed && !m_isPanning) {
+                GdkDisplay* display = gdk_window_get_display(win);
+                GdkCursor* cursor = gdk_cursor_new_for_display(display, GDK_HAND1);
+                gdk_window_set_cursor(win, cursor);
+                if (cursor)
+                    g_object_unref(cursor);
+            } else if (!m_isSpacePressed && !m_isPanning) {
+                gdk_window_set_cursor(win, nullptr);
+            }
+        }
+    }
+}
+
 FluidCore::Rectangle
 WorkspaceView::getExcerptAnchorPillRect(const FluidCore::WorkspaceNode* node) const {
     if (!node) {
@@ -333,8 +355,8 @@ WorkspaceView::getExcerptAnchorPillRect(const FluidCore::WorkspaceNode* node) co
     const double sw = bounds.w * m_zoom;
     const double sh = bounds.h * m_zoom;
     const double headerH = std::min(28.0 * m_zoom, sh * 0.35);
-    const double pillW = 68.0 * m_zoom;
-    const double pillH = 18.0 * m_zoom;
+    const double pillW = 72.0 * m_zoom;
+    const double pillH = 20.0 * m_zoom;
     const double pillX = sp.x + sw - pillW - 8.0 * m_zoom;
     const double pillY = sp.y + (headerH - pillH) / 2.0;
     return {pillX, pillY, pillW, pillH};
@@ -488,6 +510,10 @@ gboolean WorkspaceView::keyPressCallback(GtkWidget*, GdkEventKey* event, gpointe
     return static_cast<WorkspaceView*>(userData)->onKeyPress(event);
 }
 
+gboolean WorkspaceView::keyReleaseCallback(GtkWidget*, GdkEventKey* event, gpointer userData) {
+    return static_cast<WorkspaceView*>(userData)->onKeyRelease(event);
+}
+
 void WorkspaceView::dragDataReceivedCallback(GtkWidget*, GdkDragContext* context, gint x, gint y,
                                              GtkSelectionData* data, guint info, guint time,
                                              gpointer userData) {
@@ -635,7 +661,7 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
 
     if (event->button == GDK_BUTTON_MIDDLE ||
         (event->button == GDK_BUTTON_PRIMARY &&
-         ((event->state & GDK_MOD1_MASK) || m_currentTool == "pan"))) {
+         (m_isSpacePressed || (event->state & GDK_MOD1_MASK) || m_currentTool == "pan"))) {
         m_isPanning = true;
         m_lastMouseX = event->x;
         m_lastMouseY = event->y;
@@ -746,7 +772,15 @@ gboolean WorkspaceView::onButtonRelease(GdkEventButton* event) {
         m_isPanning = false;
         GdkWindow* win = gtk_widget_get_window(m_area);
         if (win) {
-            gdk_window_set_cursor(win, nullptr);
+            if (m_isSpacePressed) {
+                GdkDisplay* display = gdk_window_get_display(win);
+                GdkCursor* cursor = gdk_cursor_new_for_display(display, GDK_HAND1);
+                gdk_window_set_cursor(win, cursor);
+                if (cursor)
+                    g_object_unref(cursor);
+            } else {
+                gdk_window_set_cursor(win, nullptr);
+            }
         }
         return TRUE;
     }
@@ -912,6 +946,9 @@ gboolean WorkspaceView::onKeyPress(GdkEventKey* event) {
         }
         break;
     }
+    case GDK_KEY_space:
+        setSpacePressed(true);
+        return TRUE;
     case GDK_KEY_Left:
         panBy(50.0, 0.0);
         return TRUE;
@@ -926,6 +963,14 @@ gboolean WorkspaceView::onKeyPress(GdkEventKey* event) {
         return TRUE;
     default:
         break;
+    }
+    return FALSE;
+}
+
+gboolean WorkspaceView::onKeyRelease(GdkEventKey* event) {
+    if (event->keyval == GDK_KEY_space) {
+        setSpacePressed(false);
+        return TRUE;
     }
     return FALSE;
 }
@@ -1079,11 +1124,14 @@ void WorkspaceView::drawMinimap(cairo_t* cr, int width, int height) {
 void WorkspaceView::drawExcerptCard(cairo_t* cr, const FluidCore::WorkspaceNode* node, double sx,
                                     double sy, double sw, double sh) {
     const auto* excerpt = dynamic_cast<const FluidCore::ExcerptCardNode*>(node);
-    const double radius = 8.0 * std::min(1.0, m_zoom);
+    const double radius = 8.0 * m_zoom;
 
-    // 1. Soft elevation card shadow
-    cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.07);
-    drawRoundedRect(cr, sx + 2.0, sy + 4.0, sw, sh, radius);
+    // 1. Soft layered elevation card shadow
+    cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.04);
+    drawRoundedRect(cr, sx, sy + 3.0 * m_zoom, sw, sh, radius);
+    cairo_fill(cr);
+    cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.06);
+    drawRoundedRect(cr, sx, sy + 1.0 * m_zoom, sw, sh, radius);
     cairo_fill(cr);
 
     // 2. Card background container
@@ -1092,8 +1140,8 @@ void WorkspaceView::drawExcerptCard(cairo_t* cr, const FluidCore::WorkspaceNode*
     cairo_fill_preserve(cr);
 
     // 3. Card border
-    cairo_set_source_rgb(cr, 0.80, 0.85, 0.92);
-    cairo_set_line_width(cr, 1.2);
+    cairo_set_source_rgba(cr, 0.82, 0.86, 0.92, 0.95);
+    cairo_set_line_width(cr, std::max(1.0, 1.0 * m_zoom));
     cairo_stroke(cr);
 
     cairo_save(cr);
@@ -1104,21 +1152,21 @@ void WorkspaceView::drawExcerptCard(cairo_t* cr, const FluidCore::WorkspaceNode*
 
     // 4. Header background bar
     cairo_rectangle(cr, sx, sy, sw, headerH);
-    cairo_set_source_rgb(cr, 0.96, 0.97, 0.99);
+    cairo_set_source_rgb(cr, 0.965, 0.975, 0.99);
     cairo_fill(cr);
 
     // Header divider line
     cairo_move_to(cr, sx, sy + headerH);
     cairo_line_to(cr, sx + sw, sy + headerH);
-    cairo_set_source_rgb(cr, 0.88, 0.91, 0.95);
-    cairo_set_line_width(cr, 1.0);
+    cairo_set_source_rgba(cr, 0.88, 0.91, 0.95, 0.9);
+    cairo_set_line_width(cr, std::max(0.75, 0.85 * m_zoom));
     cairo_stroke(cr);
 
     // 5. Left accent indicator bar
     if (excerpt) {
         const auto col = excerpt->color();
-        cairo_set_source_rgba(cr, col.r / 255.0, col.g / 255.0, col.b / 255.0, 0.9);
-        const double barW = std::max(4.0 * m_zoom, 3.0);
+        cairo_set_source_rgba(cr, col.r / 255.0, col.g / 255.0, col.b / 255.0, 0.95);
+        const double barW = std::max(3.0, 4.5 * m_zoom);
         cairo_rectangle(cr, sx, sy, barW, sh);
         cairo_fill(cr);
     }
@@ -1149,15 +1197,15 @@ void WorkspaceView::drawExcerptCard(cairo_t* cr, const FluidCore::WorkspaceNode*
         std::string headerStr = headerOss.str();
 
         cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
-        cairo_set_font_size(cr, std::clamp(10.5 * m_zoom, 8.0, 13.0));
-        cairo_set_source_rgb(cr, 0.25, 0.32, 0.42);
-        cairo_move_to(cr, sx + 12.0 * m_zoom, sy + headerH * 0.68);
+        cairo_set_font_size(cr, 10.5 * m_zoom);
+        cairo_set_source_rgb(cr, 0.22, 0.28, 0.38);
+        cairo_move_to(cr, sx + 14.0 * m_zoom, sy + headerH * 0.67);
         cairo_show_text(cr, headerStr.c_str());
 
         // 7. Return Anchor Pill on header right
         if (excerpt) {
-            const double pillW = 68.0 * m_zoom;
-            const double pillH = 18.0 * m_zoom;
+            const double pillW = 72.0 * m_zoom;
+            const double pillH = 20.0 * m_zoom;
             const double pillX = sx + sw - pillW - 8.0 * m_zoom;
             const double pillY = sy + (headerH - pillH) / 2.0;
             const bool isHovered = (excerpt->id() == m_hoveredAnchorCardId);
@@ -1165,23 +1213,26 @@ void WorkspaceView::drawExcerptCard(cairo_t* cr, const FluidCore::WorkspaceNode*
             if (pillW > 20.0) {
                 drawRoundedRect(cr, pillX, pillY, pillW, pillH, pillH / 2.0);
                 if (isHovered) {
-                    cairo_set_source_rgba(cr, 0.05, 0.50, 0.95, 0.22);
+                    cairo_set_source_rgba(cr, 0.05, 0.50, 0.95, 0.20);
                 } else {
                     cairo_set_source_rgba(cr, 0.05, 0.45, 0.90, 0.08);
                 }
                 cairo_fill_preserve(cr);
-                cairo_set_source_rgba(cr, 0.05, 0.50, 0.95, isHovered ? 0.75 : 0.35);
-                cairo_set_line_width(cr, isHovered ? 1.5 : 1.0);
+                cairo_set_source_rgba(cr, 0.05, 0.50, 0.95, isHovered ? 0.80 : 0.40);
+                cairo_set_line_width(cr, isHovered ? 1.5 * m_zoom : 1.0 * m_zoom);
                 cairo_stroke(cr);
 
                 cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
-                cairo_set_font_size(cr, std::clamp(8.5 * m_zoom, 7.0, 10.5));
+                cairo_set_font_size(cr, 8.5 * m_zoom);
                 if (isHovered) {
                     cairo_set_source_rgb(cr, 0.01, 0.30, 0.85);
                 } else {
                     cairo_set_source_rgb(cr, 0.05, 0.40, 0.85);
                 }
-                cairo_move_to(cr, pillX + 6.0 * m_zoom, pillY + pillH * 0.72);
+                cairo_text_extents_t ext;
+                cairo_text_extents(cr, "↗ Anchor", &ext);
+                cairo_move_to(cr, pillX + (pillW - ext.width) / 2.0,
+                              pillY + (pillH + ext.height) / 2.0 - 0.5 * m_zoom);
                 cairo_show_text(cr, "↗ Anchor");
             }
         }
@@ -1278,7 +1329,7 @@ void WorkspaceView::drawExcerptCard(cairo_t* cr, const FluidCore::WorkspaceNode*
                     if (m_zoom >= 0.25) {
                         cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL,
                                                CAIRO_FONT_WEIGHT_BOLD);
-                        cairo_set_font_size(cr, std::clamp(10.0 * m_zoom, 8.0, 12.0));
+                        cairo_set_font_size(cr, 10.0 * m_zoom);
                         cairo_set_source_rgb(cr, 0.45, 0.52, 0.62);
                         cairo_text_extents_t ext;
                         cairo_text_extents(cr, "Visual Diagram Crop", &ext);
@@ -1302,16 +1353,16 @@ void WorkspaceView::drawExcerptCard(cairo_t* cr, const FluidCore::WorkspaceNode*
                     curY += 5.0 * m_zoom;
                 }
             } else {
-                const double textStartX = sx + 14.0 * m_zoom;
+                const double textStartX = sx + 16.0 * m_zoom;
+                const double maxW = sw - 32.0 * m_zoom;
+                const double fontSize = 11.5 * m_zoom;
+                const double lineSpacing = 16.5 * m_zoom;
                 double curY = sy + headerH + 18.0 * m_zoom;
-                const double maxW = sw - 28.0 * m_zoom;
-                const double fontSize = std::clamp(11.0 * m_zoom, 8.0, 14.0);
-                const double lineSpacing = 16.0 * m_zoom;
 
                 cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL,
                                        CAIRO_FONT_WEIGHT_NORMAL);
                 cairo_set_font_size(cr, fontSize);
-                cairo_set_source_rgb(cr, 0.12, 0.17, 0.24);
+                cairo_set_source_rgb(cr, 0.15, 0.20, 0.28);
 
                 const std::string& snippet = excerpt->textSnippet();
                 std::istringstream stream(snippet);
@@ -1365,36 +1416,41 @@ void WorkspaceView::drawExcerptCard(cairo_t* cr, const FluidCore::WorkspaceNode*
 
 void WorkspaceView::drawGenericNode(cairo_t* cr, const FluidCore::WorkspaceNode* node, double sx,
                                     double sy, double sw, double sh) {
-    const double radius = 8.0 * std::min(1.0, m_zoom);
+    const double radius = 8.0 * m_zoom;
 
     // Card shadow
+    cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.04);
+    drawRoundedRect(cr, sx, sy + 3.0 * m_zoom, sw, sh, radius);
+    cairo_fill(cr);
     cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.06);
-    drawRoundedRect(cr, sx + 2.0, sy + 3.0, sw, sh, radius);
+    drawRoundedRect(cr, sx, sy + 1.0 * m_zoom, sw, sh, radius);
     cairo_fill(cr);
 
     // Card background
     drawRoundedRect(cr, sx, sy, sw, sh, radius);
     cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
     cairo_fill_preserve(cr);
-    cairo_set_source_rgba(cr, 0.80, 0.85, 0.90, 0.9);
-    cairo_set_line_width(cr, 1.0);
+    cairo_set_source_rgba(cr, 0.82, 0.86, 0.92, 0.95);
+    cairo_set_line_width(cr, std::max(1.0, 1.0 * m_zoom));
     cairo_stroke(cr);
 
     // Top accent bar
     cairo_save(cr);
-    drawRoundedRect(cr, sx, sy, sw, 6.0 * m_zoom, radius);
+    drawRoundedRect(cr, sx, sy, sw, sh, radius);
     cairo_clip(cr);
-    cairo_set_source_rgb(cr, 0.25, 0.55, 0.90);
-    cairo_rectangle(cr, sx, sy, sw, 6.0 * m_zoom);
+    cairo_rectangle(cr, sx, sy, sw, 5.0 * m_zoom);
+    cairo_set_source_rgb(cr, 0.20, 0.55, 0.90);
     cairo_fill(cr);
-    cairo_restore(cr);
 
-    // Title / ID text
-    cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
-    cairo_set_font_size(cr, std::clamp(11.0 * m_zoom, 8.0, 14.0));
-    cairo_set_source_rgb(cr, 0.20, 0.25, 0.35);
-    cairo_move_to(cr, sx + 12.0 * m_zoom, sy + 24.0 * m_zoom);
-    cairo_show_text(cr, node->id().c_str());
+    // Title / Label
+    if (m_zoom >= 0.25) {
+        cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
+        cairo_set_font_size(cr, 11.0 * m_zoom);
+        cairo_set_source_rgb(cr, 0.20, 0.26, 0.35);
+        cairo_move_to(cr, sx + 14.0 * m_zoom, sy + 24.0 * m_zoom);
+        cairo_show_text(cr, node->id().c_str());
+    }
+    cairo_restore(cr);
 }
 
 void WorkspaceView::draw(cairo_t* cr, int width, int height) {

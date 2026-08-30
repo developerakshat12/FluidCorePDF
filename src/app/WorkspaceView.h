@@ -71,6 +71,9 @@ class WorkspaceView {
     }
     void setOnExcerptAddedCallback(ExcerptAddedCallback cb) { m_onExcerptAdded = std::move(cb); }
 
+    void setSpacePressed(bool pressed);
+    bool isSpacePressed() const { return m_isSpacePressed; }
+
     FluidCore::Rectangle getExcerptAnchorPillRect(const FluidCore::WorkspaceNode* node) const;
 
   private:
@@ -89,6 +92,7 @@ class WorkspaceView {
                                           gpointer userData);
     static gboolean motionCallback(GtkWidget* widget, GdkEventMotion* event, gpointer userData);
     static gboolean keyPressCallback(GtkWidget* widget, GdkEventKey* event, gpointer userData);
+    static gboolean keyReleaseCallback(GtkWidget* widget, GdkEventKey* event, gpointer userData);
 
     static gboolean zoomSettlingTimeoutCallback(gpointer userData);
     void onZoomSettled();
@@ -115,6 +119,7 @@ class WorkspaceView {
     gboolean onButtonRelease(GdkEventButton* event);
     gboolean onMotion(GdkEventMotion* event);
     gboolean onKeyPress(GdkEventKey* event);
+    gboolean onKeyRelease(GdkEventKey* event);
 
     void onDragDataReceived(GdkDragContext* context, gint x, gint y, GtkSelectionData* data,
                             guint info, guint time);
@@ -136,6 +141,7 @@ class WorkspaceView {
 
     // Navigation and dragging interaction state
     bool m_isPanning = false;
+    bool m_isSpacePressed = false;
     bool m_isMinimapDragging = false;
     double m_lastMouseX = 0.0;
     double m_lastMouseY = 0.0;
