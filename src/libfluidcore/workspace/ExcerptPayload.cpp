@@ -1,6 +1,7 @@
 #include "workspace/ExcerptPayload.h"
 
 #include <iomanip>
+#include <locale>
 #include <sstream>
 #include <vector>
 
@@ -14,12 +15,14 @@ constexpr const char* kPayloadMagic = "FLUID_EXCERPT_V1";
 
 std::string serializeExcerptPayload(const ExcerptDropPayload& payload) {
     std::ostringstream oss;
+    oss.imbue(std::locale::classic());
     oss << kPayloadMagic << "\n";
     oss << "doc:" << payload.sourceDocId.size() << ":" << payload.sourceDocId << "\n";
     oss << "page:" << payload.sourcePageNo << "\n";
     oss << std::setprecision(10);
     oss << "rect:" << payload.sourceNormalizedRect.x << " " << payload.sourceNormalizedRect.y << " "
         << payload.sourceNormalizedRect.w << " " << payload.sourceNormalizedRect.h << "\n";
+    oss << "pagesize:" << payload.sourcePageWidth << " " << payload.sourcePageHeight << "\n";
     oss << "image:" << (payload.isImageExcerpt ? 1 : 0) << "\n";
     oss << "color:" << static_cast<unsigned int>(payload.color.r) << " "
         << static_cast<unsigned int>(payload.color.g) << " "
@@ -94,11 +97,27 @@ std::optional<ExcerptDropPayload> deserializeExcerptPayload(const std::string& d
                                        : sv.substr(pos, lineEnd - pos);
             std::string valStr(val);
             std::istringstream iss(valStr);
+            iss.imbue(std::locale::classic());
             if (!(iss >> payload.sourceNormalizedRect.x >> payload.sourceNormalizedRect.y >>
                   payload.sourceNormalizedRect.w >> payload.sourceNormalizedRect.h)) {
                 return std::nullopt;
             }
             hasRect = true;
+            pos = (lineEnd == std::string_view::npos) ? sv.size() : lineEnd;
+        } else if (sv.substr(pos).starts_with("pagesize:")) {
+            pos += 9;
+            size_t lineEnd = sv.find('\n', pos);
+            std::string_view val = (lineEnd == std::string_view::npos)
+                                       ? sv.substr(pos)
+                                       : sv.substr(pos, lineEnd - pos);
+            std::string valStr(val);
+            std::istringstream iss(valStr);
+            iss.imbue(std::locale::classic());
+            double pw = 0.0, ph = 0.0;
+            if (iss >> pw >> ph) {
+                payload.sourcePageWidth = pw;
+                payload.sourcePageHeight = ph;
+            }
             pos = (lineEnd == std::string_view::npos) ? sv.size() : lineEnd;
         } else if (sv.substr(pos).starts_with("image:")) {
             pos += 6;
@@ -118,6 +137,7 @@ std::optional<ExcerptDropPayload> deserializeExcerptPayload(const std::string& d
                                        : sv.substr(pos, lineEnd - pos);
             std::string valStr(val);
             std::istringstream iss(valStr);
+            iss.imbue(std::locale::classic());
             unsigned int r = 255, g = 255, b = 255, a = 255;
             if (!(iss >> r >> g >> b >> a)) {
                 return std::nullopt;
@@ -153,6 +173,10 @@ std::optional<ExcerptDropPayload> deserializeExcerptPayload(const std::string& d
     }
 
     if (hasDoc && hasPage && hasRect) {
+        if (payload.sourcePageWidth <= 0.0 || payload.sourcePageHeight <= 0.0) {
+            payload.sourcePageWidth = 612.0;
+            payload.sourcePageHeight = 792.0;
+        }
         return payload;
     }
     return std::nullopt;

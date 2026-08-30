@@ -1046,10 +1046,23 @@ void InkOverlay::dragEndCallback(GtkWidget*, GdkDragContext* context, gpointer u
 
 void InkOverlay::onDragDataGet(GdkDragContext*, GtkSelectionData* data, guint info, guint) {
     if (m_cropSelectionState.hasSelection) {
+        const auto& pages = m_pane.pages();
+        std::size_t cropPage = m_cropSelectionState.pageIndex;
+        double pw = (cropPage < pages.size()) ? pages[cropPage].width : 612.0;
+        double ph = (cropPage < pages.size()) ? pages[cropPage].height : 792.0;
+
+        // Upstream minimum crop dimension guard (ignore degenerate hairline crops < 8pt)
+        if (m_cropSelectionState.normRect.w * pw < 8.0 ||
+            m_cropSelectionState.normRect.h * ph < 8.0) {
+            return;
+        }
+
         FluidCore::ExcerptDropPayload payload;
         payload.sourceDocId = m_pane.pdfPath().empty() ? m_pane.docId() : m_pane.pdfPath();
-        payload.sourcePageNo = m_cropSelectionState.pageIndex;
+        payload.sourcePageNo = cropPage;
         payload.sourceNormalizedRect = m_cropSelectionState.normRect;
+        payload.sourcePageWidth = pw;
+        payload.sourcePageHeight = ph;
         payload.textSnippet = "";
         payload.isImageExcerpt = true;
         payload.color = {168, 85, 247, 255}; // Radiant diagram accent
@@ -1082,6 +1095,8 @@ void InkOverlay::onDragDataGet(GdkDragContext*, GtkSelectionData* data, guint in
     payload.sourceDocId = m_pane.pdfPath().empty() ? m_pane.docId() : m_pane.pdfPath();
     payload.sourcePageNo = pageNo;
     payload.sourceNormalizedRect = normRect;
+    payload.sourcePageWidth = pw;
+    payload.sourcePageHeight = ph;
     payload.textSnippet = m_selectionState.fullText;
     payload.isImageExcerpt = false;
     payload.color = {255, 220, 0, 255};

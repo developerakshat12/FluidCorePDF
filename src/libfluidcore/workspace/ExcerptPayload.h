@@ -16,6 +16,8 @@ struct ExcerptDropPayload {
     std::string sourceDocId;
     size_t sourcePageNo = 0;
     Rectangle sourceNormalizedRect{0.0, 0.0, 1.0, 1.0};
+    double sourcePageWidth = 0.0;
+    double sourcePageHeight = 0.0;
     std::string textSnippet;
     bool isImageExcerpt = false;
     Color color{255, 255, 255, 255};

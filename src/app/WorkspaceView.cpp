@@ -31,6 +31,48 @@ void drawRoundedRect(cairo_t* cr, double x, double y, double w, double h, double
     cairo_close_path(cr);
 }
 
+std::pair<double, double>
+computeExcerptCardDimensions(const FluidCore::ExcerptDropPayload& payload) {
+    if (!payload.isImageExcerpt) {
+        double cardW = 260.0;
+        double cardH = 140.0;
+        if (payload.textSnippet.size() > 250) {
+            cardH = 220.0;
+        } else if (payload.textSnippet.size() > 120) {
+            cardH = 170.0;
+        }
+        return {cardW, cardH};
+    }
+
+    // Intentional defensive fallback for in-memory payloads that bypass string deserialization
+    const double pw = (payload.sourcePageWidth > 0.0) ? payload.sourcePageWidth : 612.0;
+    const double ph = (payload.sourcePageHeight > 0.0) ? payload.sourcePageHeight : 792.0;
+
+    const double cropW_pt = std::max(1.0, payload.sourceNormalizedRect.w * pw);
+    const double cropH_pt = std::max(1.0, payload.sourceNormalizedRect.h * ph);
+
+    // Uniform scalar sizing to guarantee W_img / H_img == cropW_pt / cropH_pt == AR
+    constexpr double kMaxInnerW = 450.0;
+    constexpr double kMaxInnerH = 380.0;
+    constexpr double kMinInnerTarget = 180.0;
+
+    double s = std::min(1.0, std::min(kMaxInnerW / cropW_pt, kMaxInnerH / cropH_pt));
+    const double maxDim = std::max(cropW_pt, cropH_pt);
+    if (maxDim < 160.0) {
+        const double upscale = kMinInnerTarget / maxDim;
+        s = std::min(upscale, std::min(kMaxInnerW / cropW_pt, kMaxInnerH / cropH_pt));
+    }
+
+    const double imgW = s * cropW_pt;
+    const double imgH = s * cropH_pt;
+
+    // Outer card container: width floor of 200pt ensures title and [ ↗ Anchor ] pill fit cleanly
+    const double cardW = std::max(200.0, imgW + 20.0);
+    const double cardH = imgH + 46.0; // 28pt header + 6pt top gap + 12pt bottom margin
+
+    return {cardW, cardH};
+}
+
 } // namespace
 
 WorkspaceView::WorkspaceView(FluidCore::FluidCoreAPI& api) : m_api(api) {
@@ -515,20 +557,7 @@ void WorkspaceView::onDragDataReceived(GdkDragContext* context, gint x, gint y,
         static std::size_t s_excerptCounter = 1;
         std::string cardId = "excerpt-" + std::to_string(s_excerptCounter++);
 
-        double cardW = 260.0;
-        double cardH = 140.0;
-
-        if (payload.isImageExcerpt) {
-            cardW = 280.0;
-            cardH = 180.0;
-        } else {
-            if (payload.textSnippet.size() > 250) {
-                cardH = 220.0;
-            } else if (payload.textSnippet.size() > 120) {
-                cardH = 170.0;
-            }
-        }
-
+        const auto [cardW, cardH] = computeExcerptCardDimensions(payload);
         FluidCore::Rectangle cardBounds{dropWorld.x, dropWorld.y, cardW, cardH};
         uint64_t timestamp = static_cast<uint64_t>(time);
 

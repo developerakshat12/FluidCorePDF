@@ -51,7 +51,7 @@ void seedDemoContent(FluidCoreAPI& api, const std::string& docPath) {
         false, Color{56, 189, 248, 255}));
 
     api.insertNode(std::make_unique<ExcerptCardNode>(
-        "excerpt-diagram-1", Rectangle{660.0, 80.0, 280.0, 180.0}, docRef, 0,
+        "excerpt-diagram-1", Rectangle{660.0, 80.0, 320.0, 208.0}, docRef, 0,
         Rectangle{0.08, 0.15, 0.84, 0.35}, "", true, Color{168, 85, 247, 255}));
 
     // Cluster 2: Synthesized notes
