@@ -27,6 +27,18 @@ GtkWidget* makeStatusLabel(const gchar* text) {
     return label;
 }
 
+void drawRoundedRect(cairo_t* cr, double x, double y, double w, double h, double r) {
+    if (w <= 0.0 || h <= 0.0)
+        return;
+    r = std::min(r, std::min(w / 2.0, h / 2.0));
+    cairo_new_sub_path(cr);
+    cairo_arc(cr, x + w - r, y + r, r, -M_PI / 2.0, 0.0);
+    cairo_arc(cr, x + w - r, y + h - r, r, 0.0, M_PI / 2.0);
+    cairo_arc(cr, x + r, y + h - r, r, M_PI / 2.0, M_PI);
+    cairo_arc(cr, x + r, y + r, r, M_PI, 3.0 * M_PI / 2.0);
+    cairo_close_path(cr);
+}
+
 } // namespace
 
 DocumentPane::DocumentPane(const std::string& pdfPath) : m_pdfPath(pdfPath) {
@@ -52,6 +64,21 @@ DocumentPane::DocumentPane(const std::string& pdfPath) : m_pdfPath(pdfPath) {
     gtk_widget_set_margin_top(searchWidget, 16);
     gtk_widget_set_margin_end(searchWidget, 32);
     gtk_overlay_add_overlay(GTK_OVERLAY(m_viewOverlay), searchWidget);
+
+    // Embed floating ReturnAnchorPill overlay centered at top of document viewport
+    m_returnAnchorPill = std::make_unique<ReturnAnchorPill>();
+    m_returnAnchorPill->setOnReturnClicked(
+        [this](const FluidCore::Point& originPt, const std::string& cardId) {
+            if (m_onReturnToWorkspace) {
+                m_onReturnToWorkspace(originPt, cardId);
+            }
+        });
+
+    GtkWidget* pillWidget = m_returnAnchorPill->widget();
+    gtk_widget_set_halign(pillWidget, GTK_ALIGN_CENTER);
+    gtk_widget_set_valign(pillWidget, GTK_ALIGN_START);
+    gtk_widget_set_margin_top(pillWidget, 16);
+    gtk_overlay_add_overlay(GTK_OVERLAY(m_viewOverlay), pillWidget);
 
     if (pdfPath.empty()) {
         gtk_container_add(GTK_CONTAINER(m_scroller),
@@ -147,6 +174,10 @@ DocumentPane::DocumentPane(const std::string& pdfPath) : m_pdfPath(pdfPath) {
 }
 
 DocumentPane::~DocumentPane() {
+    if (m_pulseTimerId != 0) {
+        g_source_remove(m_pulseTimerId);
+        m_pulseTimerId = 0;
+    }
     if (m_wheelDebounceTimerId != 0) {
         g_source_remove(m_wheelDebounceTimerId);
         m_wheelDebounceTimerId = 0;
@@ -312,6 +343,20 @@ void DocumentPane::toggleHighlightView() {
 
 void DocumentPane::setExcerptAnchors(std::vector<FluidCore::AnchorSpan> anchors) {
     m_excerptAnchors = std::move(anchors);
+    if (m_highlightViewActive) {
+        applyHighlightSqueeze();
+    }
+}
+
+void DocumentPane::addExcerptAnchor(const FluidCore::ExcerptCardNode& card) {
+    if (card.sourcePageNo() >= m_pages.size()) {
+        return;
+    }
+    const auto& page = m_pages[card.sourcePageNo()];
+    const auto& srcRect = card.sourceNormalizedRect();
+    const double y0 = page.y + srcRect.y * page.height;
+    const double y1 = y0 + srcRect.h * page.height;
+    m_excerptAnchors.push_back(FluidCore::AnchorSpan{y0, y1, "excerpt", 9});
     if (m_highlightViewActive) {
         applyHighlightSqueeze();
     }
@@ -496,13 +541,131 @@ void DocumentPane::scrollToSearchHit(std::size_t hitIndex) {
         return;
     }
 
-    const double targetScreenY = docYToScreen(m_searchHits[hitIndex].docYStart) * m_zoom;
+    const double targetScreenY = docYToScreen(m_searchHits[hitIndex].docYStart);
     GtkAdjustment* vadj = gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(m_scroller));
     if (vadj) {
         const double pageSize = gtk_adjustment_get_page_size(vadj);
         m_isAdjustingScrollPosition = true;
         gtk_adjustment_set_value(vadj, std::max(0.0, targetScreenY - pageSize * 0.35));
         m_isAdjustingScrollPosition = false;
+    }
+}
+
+void DocumentPane::navigateToExcerptSource(std::size_t pageNo, const FluidCore::Rectangle& normRect,
+                                           const std::string& excerptId, const std::string& snippet,
+                                           const FluidCore::Point& originWorldCoord) {
+    if (pageNo >= m_pages.size()) {
+        return;
+    }
+
+    const auto& page = m_pages[pageNo];
+    const double y0 = page.y + normRect.y * page.height;
+    const double y1 = y0 + normRect.h * page.height;
+    const double passageCenterDocY = (y0 + y1) * 0.5;
+
+    // Squeeze Auto-Expansion: If target passage intersects a compressed/folded region, uncollapse
+    // it
+    bool needsRebuild = false;
+    auto segments = m_squeezeEngine.getSegments(m_docId);
+    for (const auto& seg : segments) {
+        if (seg.alpha < 0.999 && seg.docYStart < y1 && seg.docYEnd > y0) {
+            auto existingFold =
+                m_squeezeEngine.findFoldRegionAt(m_docId, passageCenterDocY, (y1 - y0) + 60.0);
+            if (existingFold.has_value()) {
+                m_squeezeEngine.removeSqueezeRegion(m_docId, existingFold->id);
+                needsRebuild = true;
+            }
+        }
+    }
+
+    if (m_highlightViewActive || m_squeezeEngine.isSearchSqueezeActive(m_docId)) {
+        // Ensure this excerpt passage is present in active anchors so it remains fully expanded
+        bool found = false;
+        for (const auto& ea : m_excerptAnchors) {
+            if (std::abs(ea.docYStart - y0) < 1.0 && std::abs(ea.docYEnd - y1) < 1.0) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            m_excerptAnchors.push_back(FluidCore::AnchorSpan{y0, y1, "excerpt", 9});
+        }
+        if (m_highlightViewActive) {
+            applyHighlightSqueeze();
+        }
+        needsRebuild = true;
+    }
+
+    if (needsRebuild) {
+        updateLayoutDimensions();
+    }
+
+    // Save previous reading scroll position if not already saved
+    GtkAdjustment* vadj = gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(m_scroller));
+    if (vadj && !m_hasSavedReadingState) {
+        m_savedReadingScrollY = gtk_adjustment_get_value(vadj);
+        m_hasSavedReadingState = true;
+    }
+
+    // Center viewport on passage (docYToScreen internally multiplies by m_zoom)
+    const double targetScreenY = docYToScreen(passageCenterDocY);
+    if (vadj) {
+        const double pageSize = gtk_adjustment_get_page_size(vadj);
+        m_isAdjustingScrollPosition = true;
+        gtk_adjustment_set_value(vadj, std::max(0.0, targetScreenY - pageSize * 0.35));
+        m_isAdjustingScrollPosition = false;
+    }
+
+    // Pulse highlight animation setup with cancel-and-replace
+    if (m_pulseTimerId != 0) {
+        g_source_remove(m_pulseTimerId);
+        m_pulseTimerId = 0;
+    }
+
+    m_pulseHighlight.active = true;
+    m_pulseHighlight.pageNo = pageNo;
+    m_pulseHighlight.normRect = normRect;
+    m_pulseHighlight.alpha = 1.0;
+    m_pulseHighlight.startTimeUs = g_get_real_time();
+
+    m_pulseTimerId = g_timeout_add(
+        16,
+        +[](gpointer data) -> gboolean {
+            auto* self = static_cast<DocumentPane*>(data);
+            if (!self) {
+                return G_SOURCE_REMOVE;
+            }
+
+            const gint64 elapsedUs = g_get_real_time() - self->m_pulseHighlight.startTimeUs;
+            const double elapsedSec = static_cast<double>(elapsedUs) / 1000000.0;
+            const double totalDurationSec = 1.2;
+
+            if (elapsedSec >= totalDurationSec) {
+                self->m_pulseHighlight.active = false;
+                self->m_pulseHighlight.alpha = 0.0;
+                self->m_pulseTimerId = 0;
+                if (self->m_area) {
+                    gtk_widget_queue_draw(self->m_area);
+                }
+                return G_SOURCE_REMOVE;
+            }
+
+            const double progress = elapsedSec / totalDurationSec;
+            self->m_pulseHighlight.alpha = (1.0 - progress) * (1.0 - progress);
+            if (self->m_area) {
+                gtk_widget_queue_draw(self->m_area);
+            }
+            return G_SOURCE_CONTINUE;
+        },
+        this);
+
+    // Present or retarget floating ReturnAnchorPill
+    if (m_returnAnchorPill) {
+        m_returnAnchorPill->show(excerptId, snippet, originWorldCoord);
+    }
+
+    if (m_area) {
+        gtk_widget_queue_draw(m_area);
     }
 }
 
@@ -910,6 +1073,39 @@ void DocumentPane::draw(cairo_t* cr) {
                         cairo_set_source_rgb(cr, 0.85, 0.65, 0.0);
                         cairo_set_line_width(cr, 0.8);
                     }
+                    cairo_stroke(cr);
+
+                    cairo_restore(cr);
+                }
+            }
+
+            // Render luminous pulse highlight for navigated excerpt source
+            if (m_pulseHighlight.active && m_pulseHighlight.pageNo == i &&
+                m_pulseHighlight.alpha > 0.01) {
+                const double yOffset = slice.screenYStart - slice.pageLocalDocYStart;
+                const double rY0 = m_pulseHighlight.normRect.y * layout.height;
+                const double rY1 = rY0 + m_pulseHighlight.normRect.h * layout.height;
+                const double rX0 = m_pulseHighlight.normRect.x * layout.width;
+                const double rX1 = rX0 + m_pulseHighlight.normRect.w * layout.width;
+
+                if (rY1 >= slice.pageLocalDocYStart && rY0 <= slice.pageLocalDocYEnd) {
+                    const double pulseAlpha = m_pulseHighlight.alpha;
+                    cairo_save(cr);
+
+                    // Outer glowing halo
+                    cairo_set_source_rgba(cr, 0.05, 0.60, 1.0, 0.30 * pulseAlpha);
+                    drawRoundedRect(cr, pageX + rX0 - 4.0, yOffset + rY0 - 3.0, (rX1 - rX0) + 8.0,
+                                    (rY1 - rY0) + 6.0, 6.0);
+                    cairo_fill(cr);
+
+                    // Radiant translucent fill
+                    cairo_set_source_rgba(cr, 0.20, 0.70, 1.0, 0.25 * pulseAlpha);
+                    drawRoundedRect(cr, pageX + rX0, yOffset + rY0, (rX1 - rX0), (rY1 - rY0), 4.0);
+                    cairo_fill_preserve(cr);
+
+                    // Neon cyan stroke border
+                    cairo_set_source_rgba(cr, 0.0, 0.65, 1.0, 0.95 * pulseAlpha);
+                    cairo_set_line_width(cr, 2.0);
                     cairo_stroke(cr);
 
                     cairo_restore(cr);

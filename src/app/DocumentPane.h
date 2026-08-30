@@ -2,13 +2,16 @@
 
 #include "DocumentSearchService.h"
 #include "PageTileCache.h"
+#include "ReturnAnchorPill.h"
 #include "SearchBarWidget.h"
 #include "search/AnchorSqueezePlanner.h"
 #include "squeeze/SqueezeEngine.h"
 #include "storage/AnnotationStore.h"
 #include "undo/UndoStack.h"
+#include "workspace/ExcerptCardNode.h"
 
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -20,12 +23,22 @@ namespace FluidCoreApp {
 
 class InkOverlay;
 
+struct PulseHighlightState {
+    bool active = false;
+    std::size_t pageNo = 0;
+    FluidCore::Rectangle normRect{0.0, 0.0, 0.0, 0.0};
+    double alpha = 0.0;
+    gint64 startTimeUs = 0;
+};
+
 // Left-pane document viewport (specs/integration.md §1, M1 Reader Core & M2 Squeeze Engine):
 // A continuous Poppler PDF DrawingArea with LRU tile caching, interactive InkOverlay,
 // dynamic SqueezeEngine piecewise rendering, and search/highlight-driven accordion squeezing.
 class DocumentPane {
   public:
     using PageLayout = SearchPageLayout;
+    using ReturnToWorkspaceCallback =
+        std::function<void(const FluidCore::Point& originWorldCoord, const std::string& excerptId)>;
 
     // Empty path shows an empty-state label instead of a document.
     explicit DocumentPane(const std::string& pdfPath);
@@ -94,6 +107,7 @@ class DocumentPane {
     bool isHighlightViewActive() const { return m_highlightViewActive; }
     void toggleHighlightView();
     void setExcerptAnchors(std::vector<FluidCore::AnchorSpan> anchors);
+    void addExcerptAnchor(const FluidCore::ExcerptCardNode& card);
     void applyHighlightSqueeze();
 
     // Search-Driven Squeeze Subsystem
@@ -104,6 +118,18 @@ class DocumentPane {
     bool isSearchActive() const;
     const std::vector<SearchHit>& searchHits() const { return m_searchHits; }
     std::size_t activeSearchHitIndex() const { return m_activeSearchHitIndex; }
+
+    // Bi-directional Excerpt Source Navigation & Floating Return Pill
+    void navigateToExcerptSource(std::size_t pageNo, const FluidCore::Rectangle& normRect,
+                                 const std::string& excerptId, const std::string& snippet,
+                                 const FluidCore::Point& originWorldCoord);
+
+    void setOnReturnToWorkspaceCallback(ReturnToWorkspaceCallback cb) {
+        m_onReturnToWorkspace = std::move(cb);
+    }
+
+    ReturnAnchorPill* returnAnchorPill() const { return m_returnAnchorPill.get(); }
+    const PulseHighlightState& pulseHighlight() const { return m_pulseHighlight; }
 
   private:
     static void drawCallback(GtkWidget* area, cairo_t* cr, gpointer userData);
@@ -165,6 +191,14 @@ class DocumentPane {
     std::vector<SearchHit> m_searchHits;
     std::size_t m_activeSearchHitIndex = 0;
     double m_searchSqueezeAlpha = 0.04;
+
+    // Bi-directional return pill & luminous pulse highlight state
+    std::unique_ptr<ReturnAnchorPill> m_returnAnchorPill;
+    ReturnToWorkspaceCallback m_onReturnToWorkspace;
+    PulseHighlightState m_pulseHighlight;
+    guint m_pulseTimerId = 0;
+    double m_savedReadingScrollY = 0.0;
+    bool m_hasSavedReadingState = false;
 };
 
 } // namespace FluidCoreApp

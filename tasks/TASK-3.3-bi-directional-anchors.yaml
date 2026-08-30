@@ -1,0 +1,37 @@
+id: TASK-3.3-bi-directional-anchors
+title: Bi-directional anchoring, luminous pulse highlight, floating ReturnAnchorPill overlay, and workspace camera gliding
+milestone: M3
+workspace: D:\Reference Repos\fluidcore-platform
+specs:
+  - specs/new-features-backlog.md (section 3 — persistent link navigation & floating return pills)
+  - specs/integration.md (section 3 — persistent bi-directional link navigation with floating return pills)
+  - specs/features.md (section 3.3 — bi-directional source anchoring & return pills)
+  - planning/ROADMAP.md (Milestone 3, Step 3)
+  - skills/cpp-core-dev/SKILL.md
+  - skills/gtk-frontend/SKILL.md
+dependencies:
+  - TASK-3.1-workspace-pan-zoom-and-spatial-index
+  - TASK-3.2-drag-out-excerpts
+deliverables:
+  - src/app/ReturnAnchorPill.{h,cpp} — interactive floating glassmorphic viewport overlay with capsule rendering, return action icon, excerpt label/badge, close button, and hit-testing geometry.
+  - src/app/DocumentPane.{h,cpp} — navigateToExcerptSource with SqueezeEngine auto-expansion, docYToScreen zoom contract, luminous pulse highlight Cairo rendering with 60 FPS cancel-and-replace decay timer, reading-state preservation, and ReturnAnchorPill embedding.
+  - src/app/WorkspaceView.{h,cpp} — interactive [ ↗ Anchor ] pill button rendering in excerpt card headers with hover and active states, anchor hit testing in onButtonPress, smooth camera glide navigation (glideToWorldCoord) with cubic ease-out trajectory interpolation, active card focus flash aura, and drop notification signal.
+  - src/app/main.cpp — bi-directional navigation wiring between WorkspaceView and DocumentPane, and excerpt drop synchronization.
+  - src/app/ReturnAnchorPillTest.cpp — headless unit test suite verifying ReturnAnchorPillGeometry hit-testing and retargeting state transitions.
+  - src/app/BiDirectionalAnchorTest.cpp — headless unit test suite verifying coordinate transforms, squeeze auto-expansion, cubic ease-out trajectory interpolation, and infinite canvas world-coordinate invariance.
+acceptance_checks:
+  - "clang-format --dry-run --Werror clean on all touched files"
+  - "python ops/scripts/check_invariants.py passes (0 GUI includes in libfluidcore)"
+  - "all registered CTest targets pass (100% - 19/19 test suites)"
+  - "Clicking [ ↗ Anchor ] on ExcerptCardNode navigates DocumentPane to exact page and source passage"
+  - "Target folded regions auto-expand so navigated passage is rendered uncompressed (alpha = 1.0)"
+  - "Luminous pulse highlight renders over source passage with smooth alpha decay"
+  - "Floating ReturnAnchorPill appears in DocumentPane viewport with correct return world coordinates"
+  - "Clicking ReturnAnchorPill smoothly glides workspace viewport back to excerpt card with focus aura"
+  - "Multi-excerpt retargeting updates the floating return pill smoothly"
+constraints:
+  - Do not add GUI/Cairo/GTK headers to src/libfluidcore/ (ADR-0001 clean separation)
+  - Squeeze folds covering the target excerpt must be auto-expanded before computing scroll offset
+  - Origin coordinate space in ReturnAnchorPill must be infinite canvas world space (X_world, Y_world)
+  - All GLib animation timers must have cancel-and-replace and destructor teardown
+  - Commit means commit AND push; every commit carries -s (DCO)

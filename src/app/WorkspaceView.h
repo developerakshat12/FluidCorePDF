@@ -3,6 +3,10 @@
 #include "FluidCoreAPI.h"
 #include "StrokeStabilizer.h"
 #include "storage/AnnotationStore.h"
+#include "workspace/ExcerptCardNode.h"
+
+#include <functional>
+#include <string>
 
 #include <gtk/gtk.h>
 
@@ -15,6 +19,13 @@ namespace FluidCoreApp {
 // excerpt destination, and O(log N) spatial index viewport culling.
 class WorkspaceView {
   public:
+    using NavigateToSourceCallback =
+        std::function<void(const std::string& docId, std::size_t pageNo,
+                           const FluidCore::Rectangle& normRect, const std::string& excerptId,
+                           const std::string& snippet, const FluidCore::Point& cardWorldCenter)>;
+
+    using ExcerptAddedCallback = std::function<void(const FluidCore::ExcerptCardNode&)>;
+
     explicit WorkspaceView(FluidCore::FluidCoreAPI& api);
     ~WorkspaceView();
 
@@ -32,6 +43,8 @@ class WorkspaceView {
     void setZoom(double zoom);
     void panBy(double dxScreen, double dyScreen);
     void centerOn(double worldX, double worldY);
+    void glideToWorldCoord(double targetWorldX, double targetWorldY);
+    void flashExcerptCard(const std::string& cardId);
     void resetView();
 
     double zoom() const { return m_zoom; }
@@ -45,6 +58,13 @@ class WorkspaceView {
     const std::string& tool() const { return m_currentTool; }
     void setColor(uint32_t color) { m_currentColor = color; }
     void setStrokeWidth(double width) { m_currentWidth = width; }
+
+    void setNavigateToSourceCallback(NavigateToSourceCallback cb) {
+        m_onNavigateToSource = std::move(cb);
+    }
+    void setOnExcerptAddedCallback(ExcerptAddedCallback cb) { m_onExcerptAdded = std::move(cb); }
+
+    FluidCore::Rectangle getExcerptAnchorPillRect(const FluidCore::WorkspaceNode* node) const;
 
   private:
     static void drawCallback(GtkWidget* area, cairo_t* cr, gpointer userData);
@@ -124,6 +144,27 @@ class WorkspaceView {
     double m_minimapWidth = 200.0;
     double m_minimapHeight = 140.0;
     double m_minimapMargin = 16.0;
+
+    // Bi-directional anchor navigation & callbacks
+    NavigateToSourceCallback m_onNavigateToSource;
+    ExcerptAddedCallback m_onExcerptAdded;
+
+    // Camera gliding animation state
+    guint m_glideTimerId = 0;
+    double m_glideStartX = 0.0;
+    double m_glideStartY = 0.0;
+    double m_glideTargetX = 0.0;
+    double m_glideTargetY = 0.0;
+    gint64 m_glideStartTimeUs = 0;
+
+    // Card focus flash animation state
+    std::string m_flashCardId;
+    double m_flashAlpha = 0.0;
+    guint m_flashTimerId = 0;
+    gint64 m_flashStartTimeUs = 0;
+
+    // Anchor hover state
+    std::string m_hoveredAnchorCardId;
 };
 
 } // namespace FluidCoreApp

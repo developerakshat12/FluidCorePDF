@@ -75,7 +75,7 @@ gantt
 - [x] Drag-out excerpts: text clips, image regions; normalized source bbox capture *(complete via TASK-3.2: ExcerptCardNode pure domain model, binary/string ExcerptPayload serialization, InsertNodeCommand / RemoveNodeCommand undo/redo, InkOverlay drag source with SqueezeEngine document space unprojection, WorkspaceView drag destination, and rich Cairo card rendering with elevated shadow, header badge, return pill, and wrapped text)*
 - [x] Unified inking, highlighting, and real-time continuous eraser across document pane and infinite canvas *(complete: InkOverlay & WorkspaceView pen/highlighter/eraser tool switching w/ P/H/E/S hotkeys, live stabilizer curve rendering, real-time spatial hit erasure, and undo/redo)*
 - [ ] `ExcerptCardNode` rendering + live re-render on source zoom change
-- [ ] Bi-directional anchors + `ReturnAnchorPill` navigation
+- [x] Bi-directional anchors + `ReturnAnchorPill` navigation *(complete via TASK-3.3: WorkspaceView [ ↗ Anchor ] hit-testing, SqueezeEngine auto-expansion, docYToScreen zoom contract, Cairo luminous pulse highlight with cancel-and-replace decay timer, floating glassmorphic ReturnAnchorPill overlay, smooth cubic ease-out camera gliding [glideToWorldCoord], active card focus aura, and 19/19 passing CTest suites)*
 - **Demo gate**: Sarah-persona workflow (extract 10 clauses from 3 PDFs into canvas, click any excerpt to jump back).
 
 ### M4 — Links, Stacks & Search (Weeks 39–48)

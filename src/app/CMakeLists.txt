@@ -10,6 +10,7 @@ add_executable(fluidcore_app
     DocumentSearchService.cpp
     InkOverlay.cpp
     PageTileCache.cpp
+    ReturnAnchorPill.cpp
     SearchBarWidget.cpp
     SqueezeRenderHelper.cpp
     StrokeStabilizer.cpp
@@ -75,4 +76,24 @@ if(BUILD_TESTING)
         target_compile_options(search_squeeze_planner_test PRIVATE -Wall -Wextra -Wpedantic)
     endif()
     add_test(NAME SearchSqueezePlannerTest COMMAND search_squeeze_planner_test)
+
+    add_executable(return_anchor_pill_test ReturnAnchorPillTest.cpp)
+    target_include_directories(return_anchor_pill_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(return_anchor_pill_test PRIVATE fluidcore PkgConfig::CAIRO PkgConfig::GTK3)
+    if(MSVC)
+        target_compile_options(return_anchor_pill_test PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(return_anchor_pill_test PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    add_test(NAME ReturnAnchorPillTest COMMAND return_anchor_pill_test)
+
+    add_executable(bi_directional_anchor_test BiDirectionalAnchorTest.cpp)
+    target_include_directories(bi_directional_anchor_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(bi_directional_anchor_test PRIVATE fluidcore)
+    if(MSVC)
+        target_compile_options(bi_directional_anchor_test PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(bi_directional_anchor_test PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    add_test(NAME BiDirectionalAnchorTest COMMAND bi_directional_anchor_test)
 endif()

@@ -50,7 +50,7 @@ milestones:
       - drag-out excerpts (text + image)                                # complete: ExcerptCardNode pure domain model, binary/string ExcerptPayload serialization, InsertNodeCommand / RemoveNodeCommand undo/redo, InkOverlay drag source with SqueezeEngine document space unprojection, WorkspaceView drag destination, and rich Cairo card rendering with elevated shadow, header badge, return pill, and wrapped text (TASK-3.2)
       - unified inking & real-time continuous eraser across panes       # complete: InkOverlay & WorkspaceView pen/highlighter/eraser tool switching w/ P/H/E/S hotkeys, live stabilizer curve rendering, real-time spatial hit erasure, and undo/redo
       - ExcerptCardNode live re-render
-      - bi-directional anchors + ReturnAnchorPill
+      - bi-directional anchors + ReturnAnchorPill                       # complete: WorkspaceView [ ↗ Anchor ] hit-testing, SqueezeEngine auto-expansion, docYToScreen zoom contract, Cairo luminous pulse highlight with cancel-and-replace decay timer, floating glassmorphic ReturnAnchorPill overlay, smooth cubic ease-out camera gliding (glideToWorldCoord), active card focus aura, and 19/19 passing CTest suites (TASK-3.3)
 
   - id: M4
     name: links-stacks-search

@@ -64,7 +64,16 @@ WorkspaceView::WorkspaceView(FluidCore::FluidCoreAPI& api) : m_api(api) {
     g_signal_connect(m_area, "drag-leave", G_CALLBACK(WorkspaceView::dragLeaveCallback), this);
 }
 
-WorkspaceView::~WorkspaceView() = default;
+WorkspaceView::~WorkspaceView() {
+    if (m_glideTimerId != 0) {
+        g_source_remove(m_glideTimerId);
+        m_glideTimerId = 0;
+    }
+    if (m_flashTimerId != 0) {
+        g_source_remove(m_flashTimerId);
+        m_flashTimerId = 0;
+    }
+}
 
 FluidCore::Point WorkspaceView::screenToWorld(double screenX, double screenY) const {
     return {m_originX + screenX / m_zoom, m_originY + screenY / m_zoom};
@@ -113,6 +122,126 @@ void WorkspaceView::centerOn(double worldX, double worldY) {
     m_originX = worldX - vw / 2.0;
     m_originY = worldY - vh / 2.0;
     gtk_widget_queue_draw(m_area);
+}
+
+void WorkspaceView::glideToWorldCoord(double targetWorldX, double targetWorldY) {
+    if (m_glideTimerId != 0) {
+        g_source_remove(m_glideTimerId);
+        m_glideTimerId = 0;
+    }
+
+    GtkAllocation alloc;
+    gtk_widget_get_allocation(m_area, &alloc);
+    const double vw = alloc.width > 0 ? alloc.width / m_zoom : 800.0;
+    const double vh = alloc.height > 0 ? alloc.height / m_zoom : 600.0;
+
+    m_glideStartX = m_originX;
+    m_glideStartY = m_originY;
+    m_glideTargetX = targetWorldX - vw / 2.0;
+    m_glideTargetY = targetWorldY - vh / 2.0;
+    m_glideStartTimeUs = g_get_real_time();
+
+    m_glideTimerId = g_timeout_add(
+        16,
+        +[](gpointer data) -> gboolean {
+            auto* self = static_cast<WorkspaceView*>(data);
+            if (!self) {
+                return G_SOURCE_REMOVE;
+            }
+
+            const gint64 elapsedUs = g_get_real_time() - self->m_glideStartTimeUs;
+            const double elapsedSec = static_cast<double>(elapsedUs) / 1000000.0;
+            const double totalDurationSec = 0.25;
+
+            if (elapsedSec >= totalDurationSec) {
+                self->m_originX = self->m_glideTargetX;
+                self->m_originY = self->m_glideTargetY;
+                self->m_glideTimerId = 0;
+                if (self->m_area) {
+                    gtk_widget_queue_draw(self->m_area);
+                }
+                return G_SOURCE_REMOVE;
+            }
+
+            // Cubic ease-out: 1 - (1 - t)^3
+            const double t = elapsedSec / totalDurationSec;
+            const double easeOut = 1.0 - std::pow(1.0 - t, 3.0);
+
+            self->m_originX =
+                self->m_glideStartX + (self->m_glideTargetX - self->m_glideStartX) * easeOut;
+            self->m_originY =
+                self->m_glideStartY + (self->m_glideTargetY - self->m_glideStartY) * easeOut;
+
+            if (self->m_area) {
+                gtk_widget_queue_draw(self->m_area);
+            }
+            return G_SOURCE_CONTINUE;
+        },
+        this);
+}
+
+void WorkspaceView::flashExcerptCard(const std::string& cardId) {
+    if (m_flashTimerId != 0) {
+        g_source_remove(m_flashTimerId);
+        m_flashTimerId = 0;
+    }
+
+    m_flashCardId = cardId;
+    m_flashAlpha = 1.0;
+    m_flashStartTimeUs = g_get_real_time();
+
+    m_flashTimerId = g_timeout_add(
+        16,
+        +[](gpointer data) -> gboolean {
+            auto* self = static_cast<WorkspaceView*>(data);
+            if (!self) {
+                return G_SOURCE_REMOVE;
+            }
+
+            const gint64 elapsedUs = g_get_real_time() - self->m_flashStartTimeUs;
+            const double elapsedSec = static_cast<double>(elapsedUs) / 1000000.0;
+            const double totalDurationSec = 1.2;
+
+            if (elapsedSec >= totalDurationSec) {
+                self->m_flashCardId.clear();
+                self->m_flashAlpha = 0.0;
+                self->m_flashTimerId = 0;
+                if (self->m_area) {
+                    gtk_widget_queue_draw(self->m_area);
+                }
+                return G_SOURCE_REMOVE;
+            }
+
+            const double progress = elapsedSec / totalDurationSec;
+            self->m_flashAlpha = (1.0 - progress) * (1.0 - progress);
+
+            if (self->m_area) {
+                gtk_widget_queue_draw(self->m_area);
+            }
+            return G_SOURCE_CONTINUE;
+        },
+        this);
+
+    if (m_area) {
+        gtk_widget_queue_draw(m_area);
+    }
+}
+
+FluidCore::Rectangle
+WorkspaceView::getExcerptAnchorPillRect(const FluidCore::WorkspaceNode* node) const {
+    if (!node) {
+        return {0.0, 0.0, 0.0, 0.0};
+    }
+    const auto bounds = node->bounds();
+    const FluidCore::Point sp = worldToScreen(bounds.x, bounds.y);
+    const double sw = bounds.w * m_zoom;
+    const double sh = bounds.h * m_zoom;
+    const double headerH = std::min(28.0 * m_zoom, sh * 0.35);
+    const double pillW = 68.0 * m_zoom;
+    const double pillH = 18.0 * m_zoom;
+    const double pillX = sp.x + sw - pillW - 8.0 * m_zoom;
+    const double pillY = sp.y + (headerH - pillH) / 2.0;
+    return {pillX, pillY, pillW, pillH};
 }
 
 void WorkspaceView::resetView() {
@@ -354,6 +483,10 @@ void WorkspaceView::onDragDataReceived(GdkDragContext* context, gint x, gint y,
             payload.sourceNormalizedRect, payload.textSnippet, payload.isImageExcerpt,
             payload.color, timestamp);
 
+        if (m_onExcerptAdded) {
+            m_onExcerptAdded(*card);
+        }
+
         m_api.insertNode(std::move(card));
         gtk_widget_queue_draw(m_area);
         gtk_drag_finish(context, TRUE, FALSE, time);
@@ -436,6 +569,36 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
     }
 
     if (event->button == GDK_BUTTON_PRIMARY) {
+        // 1. Check if click hits any visible ExcerptCardNode's [ ↗ Anchor ] pill button
+        if (m_zoom >= 0.2) {
+            const FluidCore::Point worldTopLeft = screenToWorld(0, 0);
+            const FluidCore::Point worldBottomRight = screenToWorld(
+                alloc.width > 0 ? alloc.width : 800, alloc.height > 0 ? alloc.height : 600);
+            const FluidCore::Rectangle viewWorldRect{
+                worldTopLeft.x, worldTopLeft.y, std::max(0.0, worldBottomRight.x - worldTopLeft.x),
+                std::max(0.0, worldBottomRight.y - worldTopLeft.y)};
+
+            auto visibleNodes = m_api.queryVisibleNodes(viewWorldRect);
+            for (const auto* node : visibleNodes) {
+                const auto* excerpt = dynamic_cast<const FluidCore::ExcerptCardNode*>(node);
+                if (!excerpt) {
+                    continue;
+                }
+                const auto pillRect = getExcerptAnchorPillRect(node);
+                if (event->x >= pillRect.x && event->x <= pillRect.x + pillRect.w &&
+                    event->y >= pillRect.y && event->y <= pillRect.y + pillRect.h) {
+                    const auto b = excerpt->bounds();
+                    const FluidCore::Point centerWorldPt{b.x + b.w / 2.0, b.y + b.h / 2.0};
+                    if (m_onNavigateToSource) {
+                        m_onNavigateToSource(excerpt->sourceDocId(), excerpt->sourcePageNo(),
+                                             excerpt->sourceNormalizedRect(), excerpt->id(),
+                                             excerpt->textSnippet(), centerWorldPt);
+                    }
+                    return TRUE;
+                }
+            }
+        }
+
         if (event->type == GDK_2BUTTON_PRESS) {
             FluidCore::Point worldPt = screenToWorld(event->x, event->y);
             centerOn(worldPt.x, worldPt.y);
@@ -584,7 +747,42 @@ gboolean WorkspaceView::onMotion(GdkEventMotion* event) {
     GdkWindow* win = gtk_widget_get_window(m_area);
     if (win) {
         GdkDisplay* display = gdk_window_get_display(win);
-        if (minimapHitTest(event->x, event->y, alloc.width, alloc.height)) {
+
+        // Check if mouse is hovering over an anchor pill
+        std::string newHoveredId;
+        if (m_zoom >= 0.2) {
+            const FluidCore::Point worldTopLeft = screenToWorld(0, 0);
+            const FluidCore::Point worldBottomRight = screenToWorld(
+                alloc.width > 0 ? alloc.width : 800, alloc.height > 0 ? alloc.height : 600);
+            const FluidCore::Rectangle viewWorldRect{
+                worldTopLeft.x, worldTopLeft.y, std::max(0.0, worldBottomRight.x - worldTopLeft.x),
+                std::max(0.0, worldBottomRight.y - worldTopLeft.y)};
+
+            auto visibleNodes = m_api.queryVisibleNodes(viewWorldRect);
+            for (const auto* node : visibleNodes) {
+                if (!dynamic_cast<const FluidCore::ExcerptCardNode*>(node)) {
+                    continue;
+                }
+                const auto pillRect = getExcerptAnchorPillRect(node);
+                if (event->x >= pillRect.x && event->x <= pillRect.x + pillRect.w &&
+                    event->y >= pillRect.y && event->y <= pillRect.y + pillRect.h) {
+                    newHoveredId = node->id();
+                    break;
+                }
+            }
+        }
+
+        if (newHoveredId != m_hoveredAnchorCardId) {
+            m_hoveredAnchorCardId = newHoveredId;
+            gtk_widget_queue_draw(m_area);
+        }
+
+        if (!m_hoveredAnchorCardId.empty()) {
+            GdkCursor* pointerCursor = gdk_cursor_new_for_display(display, GDK_HAND2);
+            gdk_window_set_cursor(win, pointerCursor);
+            if (pointerCursor)
+                g_object_unref(pointerCursor);
+        } else if (minimapHitTest(event->x, event->y, alloc.width, alloc.height)) {
             GdkCursor* pointerCursor = gdk_cursor_new_for_display(display, GDK_HAND2);
             gdk_window_set_cursor(win, pointerCursor);
             if (pointerCursor)
@@ -875,26 +1073,47 @@ void WorkspaceView::drawExcerptCard(cairo_t* cr, const FluidCore::WorkspaceNode*
 
         // 7. Return Anchor Pill on header right
         if (excerpt) {
-            const double pillW = 62.0 * m_zoom;
+            const double pillW = 68.0 * m_zoom;
             const double pillH = 18.0 * m_zoom;
             const double pillX = sx + sw - pillW - 8.0 * m_zoom;
             const double pillY = sy + (headerH - pillH) / 2.0;
+            const bool isHovered = (excerpt->id() == m_hoveredAnchorCardId);
 
             if (pillW > 20.0) {
                 drawRoundedRect(cr, pillX, pillY, pillW, pillH, pillH / 2.0);
-                cairo_set_source_rgba(cr, 0.05, 0.45, 0.90, 0.08);
+                if (isHovered) {
+                    cairo_set_source_rgba(cr, 0.05, 0.50, 0.95, 0.22);
+                } else {
+                    cairo_set_source_rgba(cr, 0.05, 0.45, 0.90, 0.08);
+                }
                 cairo_fill_preserve(cr);
-                cairo_set_source_rgba(cr, 0.05, 0.45, 0.90, 0.35);
-                cairo_set_line_width(cr, 1.0);
+                cairo_set_source_rgba(cr, 0.05, 0.50, 0.95, isHovered ? 0.75 : 0.35);
+                cairo_set_line_width(cr, isHovered ? 1.5 : 1.0);
                 cairo_stroke(cr);
 
                 cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
                 cairo_set_font_size(cr, std::clamp(8.5 * m_zoom, 7.0, 10.5));
-                cairo_set_source_rgb(cr, 0.05, 0.40, 0.85);
+                if (isHovered) {
+                    cairo_set_source_rgb(cr, 0.01, 0.30, 0.85);
+                } else {
+                    cairo_set_source_rgb(cr, 0.05, 0.40, 0.85);
+                }
                 cairo_move_to(cr, pillX + 6.0 * m_zoom, pillY + pillH * 0.72);
-                cairo_show_text(cr, "← Anchor");
+                cairo_show_text(cr, "↗ Anchor");
             }
         }
+    }
+
+    // Render active return focus flash aura
+    if (m_flashAlpha > 0.01 && excerpt && excerpt->id() == m_flashCardId) {
+        cairo_save(cr);
+        drawRoundedRect(cr, sx - 4.0, sy - 4.0, sw + 8.0, sh + 8.0, radius + 4.0);
+        cairo_set_source_rgba(cr, 0.22, 0.74, 0.97, 0.35 * m_flashAlpha);
+        cairo_fill_preserve(cr);
+        cairo_set_source_rgba(cr, 0.05, 0.65, 1.0, 0.90 * m_flashAlpha);
+        cairo_set_line_width(cr, 2.5);
+        cairo_stroke(cr);
+        cairo_restore(cr);
     }
 
     // 8. Body Content Rendering
@@ -1032,7 +1251,7 @@ void WorkspaceView::draw(cairo_t* cr, int width, int height) {
     const std::vector<FluidCore::WorkspaceNode*> visibleNodes = m_api.queryVisibleNodes(viewport);
 
     for (const FluidCore::WorkspaceNode* node : visibleNodes) {
-        if (const auto* card = dynamic_cast<const FluidCore::ExcerptCardNode*>(node)) {
+        if (dynamic_cast<const FluidCore::ExcerptCardNode*>(node)) {
             const FluidCore::Rectangle b = node->bounds();
             const double sx = (b.x - m_originX) * m_zoom;
             const double sy = (b.y - m_originY) * m_zoom;

@@ -85,6 +85,31 @@ void onActivate(GtkApplication* app, gpointer userData) {
         G_OBJECT(app), "workspace-view", workspace,
         +[](gpointer data) { delete static_cast<FluidCoreApp::WorkspaceView*>(data); });
 
+    // Wire Bi-Directional Anchor Navigation (TASK-3.3)
+    workspace->setNavigateToSourceCallback(
+        [documentPane](const std::string& /*docId*/, std::size_t pageNo,
+                       const FluidCore::Rectangle& normRect, const std::string& excerptId,
+                       const std::string& snippet, const FluidCore::Point& cardCenter) {
+            if (documentPane) {
+                documentPane->navigateToExcerptSource(pageNo, normRect, excerptId, snippet,
+                                                      cardCenter);
+            }
+        });
+
+    documentPane->setOnReturnToWorkspaceCallback(
+        [workspace](const FluidCore::Point& originCoord, const std::string& cardId) {
+            if (workspace) {
+                workspace->glideToWorldCoord(originCoord.x, originCoord.y);
+                workspace->flashExcerptCard(cardId);
+            }
+        });
+
+    workspace->setOnExcerptAddedCallback([documentPane](const FluidCore::ExcerptCardNode& card) {
+        if (documentPane) {
+            documentPane->addExcerptAnchor(card);
+        }
+    });
+
     // Sync initial excerpt document source anchors into DocumentPane
     if (context->api) {
         std::vector<FluidCore::AnchorSpan> excerptAnchors;
