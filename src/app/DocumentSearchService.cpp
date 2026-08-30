@@ -58,7 +58,8 @@ std::vector<SearchHit> DocumentSearchService::searchSync(PopplerDocument* docume
         for (GList* l = matches; l != nullptr; l = l->next) {
             auto* rect = static_cast<PopplerRectangle*>(l->data);
             if (rect) {
-                // Convert Poppler bottom-left PDF coordinate system to Cairo top-left coordinate system
+                // Convert Poppler bottom-left PDF coordinate system to Cairo top-left coordinate
+                // system
                 const double cairoY0 = pHeight - std::max(rect->y1, rect->y2);
                 const double cairoY1 = pHeight - std::min(rect->y1, rect->y2);
                 const double rMinX = std::min(rect->x1, rect->x2);

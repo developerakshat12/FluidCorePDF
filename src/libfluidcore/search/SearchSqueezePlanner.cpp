@@ -26,7 +26,8 @@ SearchSqueezePlanner::computeSearchSqueezeRegions(double totalDocHeight,
     aConfig.gapAlpha = config.gapAlpha;
     aConfig.minGapHeight = config.minGapHeight;
 
-    auto rawGaps = AnchorSqueezePlanner::computeAnchorSqueezeRegions(totalDocHeight, anchors, aConfig);
+    auto rawGaps =
+        AnchorSqueezePlanner::computeAnchorSqueezeRegions(totalDocHeight, anchors, aConfig);
 
     std::size_t gapIdx = 1;
     for (auto& g : rawGaps) {

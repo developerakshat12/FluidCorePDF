@@ -25,7 +25,8 @@ AnchorSqueezePlanner::computeAnchorSqueezeRegions(double totalDocHeight,
                   return a.priority > b.priority;
               });
 
-    // Step 2: Expand each anchor by context padding and clamp to document bounds [0, totalDocHeight]
+    // Step 2: Expand each anchor by context padding and clamp to document bounds [0,
+    // totalDocHeight]
     struct Interval {
         double y0;
         double y1;

@@ -27,14 +27,19 @@ void CanvasStrokeNode::computeBounds() {
     double maxY = std::numeric_limits<double>::lowest();
 
     for (const auto& pt : m_stroke.points) {
-        if (pt.x < minX) minX = pt.x;
-        if (pt.x > maxX) maxX = pt.x;
-        if (pt.y < minY) minY = pt.y;
-        if (pt.y > maxY) maxY = pt.y;
+        if (pt.x < minX)
+            minX = pt.x;
+        if (pt.x > maxX)
+            maxX = pt.x;
+        if (pt.y < minY)
+            minY = pt.y;
+        if (pt.y > maxY)
+            maxY = pt.y;
     }
 
     const double pad = m_stroke.width / 2.0 + 2.0;
-    m_bounds = Rectangle{minX - pad, minY - pad, (maxX - minX) + 2.0 * pad, (maxY - minY) + 2.0 * pad};
+    m_bounds =
+        Rectangle{minX - pad, minY - pad, (maxX - minX) + 2.0 * pad, (maxY - minY) + 2.0 * pad};
 }
 
 } // namespace FluidCore

@@ -15,7 +15,8 @@ SearchBarWidget::SearchBarWidget() {
 
     // Apply custom styling for a sleek floating search pill
     GtkCssProvider* provider = gtk_css_provider_new();
-    gtk_css_provider_load_from_data(provider,
+    gtk_css_provider_load_from_data(
+        provider,
         ".search-bar-pill {"
         "  background-color: rgba(255, 255, 255, 0.98);"
         "  border: 1px solid #94a3b8;"

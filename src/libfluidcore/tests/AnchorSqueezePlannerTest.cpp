@@ -37,10 +37,12 @@ int testSingleAnchor() {
     failures += check(regions.size() == 2, "Single anchor generates 2 gap regions");
     if (regions.size() == 2) {
         failures += check(std::abs(regions[0].yStart - 0.0) < kEps &&
-                          std::abs(regions[0].yEnd - 370.0) < kEps, "Gap 1 is [0, 370]");
+                              std::abs(regions[0].yEnd - 370.0) < kEps,
+                          "Gap 1 is [0, 370]");
         failures += check(std::abs(regions[0].alpha - 0.04) < kEps, "Gap 1 alpha is 0.04");
         failures += check(std::abs(regions[1].yStart - 470.0) < kEps &&
-                          std::abs(regions[1].yEnd - 1000.0) < kEps, "Gap 2 is [470, 1000]");
+                              std::abs(regions[1].yEnd - 1000.0) < kEps,
+                          "Gap 2 is [470, 1000]");
     }
     return failures;
 }
@@ -53,20 +55,19 @@ int testMultiSourceUnion() {
     // [240, 260] -> [220, 280] -> overlaps [180, 240]! Union is [180, 280]
     // [600, 700] -> [580, 720]
     std::vector<AnchorSpan> anchors = {
-        {200.0, 220.0, "search", 10},
-        {240.0, 260.0, "highlight", 5},
-        {600.0, 700.0, "excerpt", 8}
-    };
+        {200.0, 220.0, "search", 10}, {240.0, 260.0, "highlight", 5}, {600.0, 700.0, "excerpt", 8}};
     AnchorSqueezeConfig config;
     config.contextPadding = 20.0;
     config.gapAlpha = 0.04;
 
     auto regions = AnchorSqueezePlanner::computeAnchorSqueezeRegions(1000.0, anchors, config);
-    failures += check(regions.size() == 3, "Overlapping search+highlight union + excerpt -> 3 gaps");
+    failures +=
+        check(regions.size() == 3, "Overlapping search+highlight union + excerpt -> 3 gaps");
     if (regions.size() == 3) {
         failures += check(std::abs(regions[0].yEnd - 180.0) < kEps, "Gap 1 ends at 180");
         failures += check(std::abs(regions[1].yStart - 280.0) < kEps &&
-                          std::abs(regions[1].yEnd - 580.0) < kEps, "Gap 2 is [280, 580]");
+                              std::abs(regions[1].yEnd - 580.0) < kEps,
+                          "Gap 2 is [280, 580]");
         failures += check(std::abs(regions[2].yStart - 720.0) < kEps, "Gap 3 starts at 720");
     }
     return failures;
@@ -76,10 +77,7 @@ int testBoundaryClamping() {
     int failures = 0;
     // Anchor near top: [5, 20] (padded: [0, 40])
     // Anchor near bottom: [980, 995] (padded: [960, 1000])
-    std::vector<AnchorSpan> anchors = {
-        {5.0, 20.0, "cursor", 1},
-        {980.0, 995.0, "cursor", 1}
-    };
+    std::vector<AnchorSpan> anchors = {{5.0, 20.0, "cursor", 1}, {980.0, 995.0, "cursor", 1}};
     AnchorSqueezeConfig config;
     config.contextPadding = 20.0;
     config.gapAlpha = 0.04;
@@ -88,7 +86,8 @@ int testBoundaryClamping() {
     failures += check(regions.size() == 1, "Top and bottom boundary anchors leave 1 middle gap");
     if (regions.size() == 1) {
         failures += check(std::abs(regions[0].yStart - 40.0) < kEps &&
-                          std::abs(regions[0].yEnd - 960.0) < kEps, "Middle gap is [40, 960]");
+                              std::abs(regions[0].yEnd - 960.0) < kEps,
+                          "Middle gap is [40, 960]");
     }
     return failures;
 }
@@ -102,12 +101,14 @@ int testContinuousAlphaModulation() {
     // Test alpha = 0.50
     config.gapAlpha = 0.50;
     auto r1 = AnchorSqueezePlanner::computeAnchorSqueezeRegions(1000.0, anchors, config);
-    failures += check(r1.size() == 2 && std::abs(r1[0].alpha - 0.50) < kEps, "Alpha 0.50 respected");
+    failures +=
+        check(r1.size() == 2 && std::abs(r1[0].alpha - 0.50) < kEps, "Alpha 0.50 respected");
 
     // Test alpha = 0.04 (kMinAlpha)
     config.gapAlpha = 0.04;
     auto r2 = AnchorSqueezePlanner::computeAnchorSqueezeRegions(1000.0, anchors, config);
-    failures += check(r2.size() == 2 && std::abs(r2[0].alpha - 0.04) < kEps, "Alpha 0.04 respected");
+    failures +=
+        check(r2.size() == 2 && std::abs(r2[0].alpha - 0.04) < kEps, "Alpha 0.04 respected");
 
     return failures;
 }

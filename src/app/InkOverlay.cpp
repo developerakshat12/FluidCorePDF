@@ -305,8 +305,7 @@ gboolean InkOverlay::onButtonPress(GdkEventButton* event) {
     GtkAllocation allocation;
     gtk_widget_get_allocation(m_widget, &allocation);
     const double unscaledWidth = allocation.width / zoom;
-    const double pageX =
-        kPageMargin + std::max(0.0, (unscaledWidth - m_pane.layoutWidth()) / 2.0);
+    const double pageX = kPageMargin + std::max(0.0, (unscaledWidth - m_pane.layoutWidth()) / 2.0);
 
     const auto& pages = m_pane.pages();
     const double screenX = event->x / zoom;
@@ -390,8 +389,8 @@ gboolean InkOverlay::onButtonPress(GdkEventButton* event) {
                     if (strokeIntersectsEraser(s, samples, 24.0)) {
                         invalidateStroke(s);
                         m_pane.undoStack().pushAndExecute(
-                            std::make_unique<FluidCore::RemoveStrokeCommand>(
-                                m_annotationStore, i, s));
+                            std::make_unique<FluidCore::RemoveStrokeCommand>(m_annotationStore, i,
+                                                                             s));
                     }
                 }
             }
@@ -429,8 +428,7 @@ gboolean InkOverlay::onMotionNotify(GdkEventMotion* event) {
     GtkAllocation allocation;
     gtk_widget_get_allocation(m_widget, &allocation);
     const double unscaledWidth = allocation.width / zoom;
-    const double pageX =
-        kPageMargin + std::max(0.0, (unscaledWidth - m_pane.layoutWidth()) / 2.0);
+    const double pageX = kPageMargin + std::max(0.0, (unscaledWidth - m_pane.layoutWidth()) / 2.0);
     const auto& pages = m_pane.pages();
     const double screenX = event->x / zoom;
     const double docY = m_pane.screenYToDoc(event->y);
@@ -487,9 +485,8 @@ gboolean InkOverlay::onMotionNotify(GdkEventMotion* event) {
         for (const auto& s : existingStrokes) {
             if (strokeIntersectsEraser(s, samples, 24.0)) {
                 invalidateStroke(s);
-                m_pane.undoStack().pushAndExecute(
-                    std::make_unique<FluidCore::RemoveStrokeCommand>(
-                        m_annotationStore, m_activePageIndex, s));
+                m_pane.undoStack().pushAndExecute(std::make_unique<FluidCore::RemoveStrokeCommand>(
+                    m_annotationStore, m_activePageIndex, s));
                 erasedAny = true;
             }
         }
@@ -555,8 +552,7 @@ gboolean InkOverlay::onButtonRelease(GdkEventButton* event) {
     GtkAllocation allocation;
     gtk_widget_get_allocation(m_widget, &allocation);
     const double unscaledWidth = allocation.width / zoom;
-    const double pageX =
-        kPageMargin + std::max(0.0, (unscaledWidth - m_pane.layoutWidth()) / 2.0);
+    const double pageX = kPageMargin + std::max(0.0, (unscaledWidth - m_pane.layoutWidth()) / 2.0);
 
     const auto& pages = m_pane.pages();
     if (m_activePageIndex < pages.size()) {
@@ -778,8 +774,7 @@ void InkOverlay::draw(cairo_t* cr) {
     const double clipYStart = clip.y / zoom;
     const double clipYEnd = (clip.y + clip.height) / zoom;
     const double unscaledWidth = allocation.width / zoom;
-    const double pageX =
-        kPageMargin + std::max(0.0, (unscaledWidth - m_pane.layoutWidth()) / 2.0);
+    const double pageX = kPageMargin + std::max(0.0, (unscaledWidth - m_pane.layoutWidth()) / 2.0);
 
     cairo_save(cr);
     cairo_scale(cr, zoom, zoom);

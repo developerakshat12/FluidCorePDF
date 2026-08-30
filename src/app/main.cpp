@@ -89,7 +89,8 @@ void onActivate(GtkApplication* app, gpointer userData) {
     if (context->api) {
         std::vector<FluidCore::AnchorSpan> excerptAnchors;
         const auto& pages = documentPane->pages();
-        for (const auto* node : context->api->queryVisibleNodes(FluidCore::Rectangle{-1e6, -1e6, 2e6, 2e6})) {
+        for (const auto* node :
+             context->api->queryVisibleNodes(FluidCore::Rectangle{-1e6, -1e6, 2e6, 2e6})) {
             auto* excerpt = dynamic_cast<const FluidCore::ExcerptCardNode*>(node);
             if (excerpt && excerpt->sourcePageNo() < pages.size()) {
                 const auto& page = pages[excerpt->sourcePageNo()];
@@ -182,8 +183,10 @@ void onActivate(GtkApplication* app, gpointer userData) {
                      G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
                          auto* ctx = static_cast<AppViewContext*>(data);
                          if (ctx) {
-                             if (ctx->pane) ctx->pane->setTool("pen");
-                             if (ctx->workspace) ctx->workspace->setTool("pen");
+                             if (ctx->pane)
+                                 ctx->pane->setTool("pen");
+                             if (ctx->workspace)
+                                 ctx->workspace->setTool("pen");
                          }
                      }),
                      viewCtx);
@@ -196,8 +199,10 @@ void onActivate(GtkApplication* app, gpointer userData) {
                      G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
                          auto* ctx = static_cast<AppViewContext*>(data);
                          if (ctx) {
-                             if (ctx->pane) ctx->pane->setTool("highlighter");
-                             if (ctx->workspace) ctx->workspace->setTool("highlighter");
+                             if (ctx->pane)
+                                 ctx->pane->setTool("highlighter");
+                             if (ctx->workspace)
+                                 ctx->workspace->setTool("highlighter");
                          }
                      }),
                      viewCtx);
@@ -210,8 +215,10 @@ void onActivate(GtkApplication* app, gpointer userData) {
                      G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
                          auto* ctx = static_cast<AppViewContext*>(data);
                          if (ctx) {
-                             if (ctx->pane) ctx->pane->setTool("eraser");
-                             if (ctx->workspace) ctx->workspace->setTool("eraser");
+                             if (ctx->pane)
+                                 ctx->pane->setTool("eraser");
+                             if (ctx->workspace)
+                                 ctx->workspace->setTool("eraser");
                          }
                      }),
                      viewCtx);
@@ -224,8 +231,10 @@ void onActivate(GtkApplication* app, gpointer userData) {
                      G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
                          auto* ctx = static_cast<AppViewContext*>(data);
                          if (ctx) {
-                             if (ctx->pane) ctx->pane->setTool("select");
-                             if (ctx->workspace) ctx->workspace->setTool("select");
+                             if (ctx->pane)
+                                 ctx->pane->setTool("select");
+                             if (ctx->workspace)
+                                 ctx->workspace->setTool("select");
                          }
                      }),
                      viewCtx);
@@ -377,7 +386,8 @@ void onActivate(GtkApplication* app, gpointer userData) {
                 }
             }
             if (ctrl && !shift && (event->keyval == GDK_KEY_c || event->keyval == GDK_KEY_C)) {
-                if (pane) pane->copySelection();
+                if (pane)
+                    pane->copySelection();
                 return TRUE;
             }
             if (!ctrl && !alt && event->keyval == GDK_KEY_Escape) {
@@ -391,12 +401,14 @@ void onActivate(GtkApplication* app, gpointer userData) {
                 return TRUE;
             }
             if (ctrl && !shift && (event->keyval == GDK_KEY_s || event->keyval == GDK_KEY_S)) {
-                if (pane) pane->save();
+                if (pane)
+                    pane->save();
                 return TRUE;
             }
-            if (ctrl && shift && (event->keyval == GDK_KEY_0 || event->keyval == GDK_KEY_parenright ||
-                                  event->keyval == GDK_KEY_KP_0 || event->keyval == GDK_KEY_r ||
-                                  event->keyval == GDK_KEY_R)) {
+            if (ctrl && shift &&
+                (event->keyval == GDK_KEY_0 || event->keyval == GDK_KEY_parenright ||
+                 event->keyval == GDK_KEY_KP_0 || event->keyval == GDK_KEY_r ||
+                 event->keyval == GDK_KEY_R)) {
                 if (pane) {
                     pane->resetSqueeze();
                     return TRUE;
@@ -424,23 +436,31 @@ void onActivate(GtkApplication* app, gpointer userData) {
                 }
 
                 if (event->keyval == GDK_KEY_s || event->keyval == GDK_KEY_S) {
-                    if (pane) pane->setTool("select");
-                    if (ws) ws->setTool("select");
+                    if (pane)
+                        pane->setTool("select");
+                    if (ws)
+                        ws->setTool("select");
                     return TRUE;
                 }
                 if (event->keyval == GDK_KEY_p || event->keyval == GDK_KEY_P) {
-                    if (pane) pane->setTool("pen");
-                    if (ws) ws->setTool("pen");
+                    if (pane)
+                        pane->setTool("pen");
+                    if (ws)
+                        ws->setTool("pen");
                     return TRUE;
                 }
                 if (event->keyval == GDK_KEY_h || event->keyval == GDK_KEY_H) {
-                    if (pane) pane->setTool("highlighter");
-                    if (ws) ws->setTool("highlighter");
+                    if (pane)
+                        pane->setTool("highlighter");
+                    if (ws)
+                        ws->setTool("highlighter");
                     return TRUE;
                 }
                 if (event->keyval == GDK_KEY_e || event->keyval == GDK_KEY_E) {
-                    if (pane) pane->setTool("eraser");
-                    if (ws) ws->setTool("eraser");
+                    if (pane)
+                        pane->setTool("eraser");
+                    if (ws)
+                        ws->setTool("eraser");
                     return TRUE;
                 }
             }

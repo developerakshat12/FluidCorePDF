@@ -1,9 +1,8 @@
 #include "WorkspaceView.h"
+#include "undo/WorkspaceCommands.h"
 #include "workspace/CanvasStrokeNode.h"
 #include "workspace/ExcerptCardNode.h"
 #include "workspace/ExcerptPayload.h"
-#include "undo/WorkspaceCommands.h"
-
 
 #include <algorithm>
 #include <cmath>
@@ -419,7 +418,8 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
     }
 
     if (event->button == GDK_BUTTON_MIDDLE ||
-        (event->button == GDK_BUTTON_PRIMARY && ((event->state & GDK_MOD1_MASK) || m_currentTool == "pan"))) {
+        (event->button == GDK_BUTTON_PRIMARY &&
+         ((event->state & GDK_MOD1_MASK) || m_currentTool == "pan"))) {
         m_isPanning = true;
         m_lastMouseX = event->x;
         m_lastMouseY = event->y;
@@ -445,19 +445,20 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
         if (m_currentTool == "pen" || m_currentTool == "highlighter") {
             m_isDrawing = true;
             m_activeStroke = FluidCore::Stroke{};
-            
+
             static std::size_t s_strokeCounter = 1;
             m_activeStroke.id = "stroke-" + std::to_string(s_strokeCounter++);
-            
+
             m_activeStroke.tool = m_currentTool;
             m_activeStroke.color = m_currentColor;
             m_activeStroke.width = m_currentWidth;
             m_activeStroke.timestamp = g_get_real_time();
             m_activeSegments.clear();
             m_hasWetSegment = false;
-            
+
             FluidCore::Point wPt = screenToWorld(event->x, event->y);
-            m_stabilizer.beginStroke(FluidCoreApp::StrokeStabilizer::Point2D{wPt.x, wPt.y}, 1.0, g_get_real_time());
+            m_stabilizer.beginStroke(FluidCoreApp::StrokeStabilizer::Point2D{wPt.x, wPt.y}, 1.0,
+                                     g_get_real_time());
             gtk_widget_queue_draw(m_area);
             return TRUE;
         } else if (m_currentTool == "eraser") {
@@ -466,12 +467,14 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
             m_lastMouseY = event->y;
             FluidCore::Point wPt = screenToWorld(event->x, event->y);
             const double wRadius = 30.0 / m_zoom; // 30 screen pixels
-            const FluidCore::Rectangle queryRect{wPt.x - wRadius, wPt.y - wRadius, wRadius * 2.0, wRadius * 2.0};
-            
+            const FluidCore::Rectangle queryRect{wPt.x - wRadius, wPt.y - wRadius, wRadius * 2.0,
+                                                 wRadius * 2.0};
+
             auto hits = m_api.queryVisibleNodes(queryRect);
             bool removed = false;
             for (const auto* hit : hits) {
-                if (const auto* strokeNode = dynamic_cast<const FluidCore::CanvasStrokeNode*>(hit)) {
+                if (const auto* strokeNode =
+                        dynamic_cast<const FluidCore::CanvasStrokeNode*>(hit)) {
                     m_api.removeNode(strokeNode->id());
                     removed = true;
                 }
@@ -507,13 +510,14 @@ gboolean WorkspaceView::onButtonRelease(GdkEventButton* event) {
         if (m_currentTool == "pen" || m_currentTool == "highlighter") {
             m_stabilizer.endStroke();
             m_hasWetSegment = false;
-            
+
             // Reconstruct FluidCore::Stroke points from stabilizer raw samples
             m_activeStroke.points.clear();
             for (const auto& sample : m_stabilizer.rawSamples()) {
-                m_activeStroke.points.push_back(FluidCore::XoppPoint{sample.point.x, sample.point.y});
+                m_activeStroke.points.push_back(
+                    FluidCore::XoppPoint{sample.point.x, sample.point.y});
             }
-            
+
             if (!m_activeStroke.points.empty()) {
                 m_api.insertNode(std::make_unique<FluidCore::CanvasStrokeNode>(m_activeStroke));
             }
@@ -546,9 +550,10 @@ gboolean WorkspaceView::onMotion(GdkEventMotion* event) {
 
     if (m_isDrawing) {
         FluidCore::Point wPt = screenToWorld(event->x, event->y);
-        
+
         if (m_currentTool == "pen" || m_currentTool == "highlighter") {
-            auto result = m_stabilizer.pushPoint(FluidCoreApp::StrokeStabilizer::Point2D{wPt.x, wPt.y}, 1.0, g_get_real_time());
+            auto result = m_stabilizer.pushPoint(
+                FluidCoreApp::StrokeStabilizer::Point2D{wPt.x, wPt.y}, 1.0, g_get_real_time());
             for (const auto& seg : result.newlyCommitted) {
                 m_activeSegments.push_back(seg);
             }
@@ -557,12 +562,14 @@ gboolean WorkspaceView::onMotion(GdkEventMotion* event) {
             gtk_widget_queue_draw(m_area);
         } else if (m_currentTool == "eraser") {
             const double wRadius = 30.0 / m_zoom; // 30 screen pixels
-            const FluidCore::Rectangle queryRect{wPt.x - wRadius, wPt.y - wRadius, wRadius * 2.0, wRadius * 2.0};
-            
+            const FluidCore::Rectangle queryRect{wPt.x - wRadius, wPt.y - wRadius, wRadius * 2.0,
+                                                 wRadius * 2.0};
+
             auto hits = m_api.queryVisibleNodes(queryRect);
             bool removed = false;
             for (const auto* hit : hits) {
-                if (const auto* strokeNode = dynamic_cast<const FluidCore::CanvasStrokeNode*>(hit)) {
+                if (const auto* strokeNode =
+                        dynamic_cast<const FluidCore::CanvasStrokeNode*>(hit)) {
                     m_api.removeNode(strokeNode->id());
                     removed = true;
                 }
@@ -1032,14 +1039,15 @@ void WorkspaceView::draw(cairo_t* cr, int width, int height) {
             const double sw = b.w * m_zoom;
             const double sh = b.h * m_zoom;
             drawExcerptCard(cr, node, sx, sy, sw, sh);
-        } else if (const auto* strokeNode = dynamic_cast<const FluidCore::CanvasStrokeNode*>(node)) {
+        } else if (const auto* strokeNode =
+                       dynamic_cast<const FluidCore::CanvasStrokeNode*>(node)) {
             const auto& stroke = strokeNode->stroke();
-            if (stroke.points.empty()) continue;
+            if (stroke.points.empty())
+                continue;
 
-            cairo_set_source_rgba(cr, ((stroke.color >> 16) & 0xFF) / 255.0,
-                                  ((stroke.color >> 8) & 0xFF) / 255.0,
-                                  (stroke.color & 0xFF) / 255.0,
-                                  stroke.tool == "highlighter" ? 0.45 : 1.0);
+            cairo_set_source_rgba(
+                cr, ((stroke.color >> 16) & 0xFF) / 255.0, ((stroke.color >> 8) & 0xFF) / 255.0,
+                (stroke.color & 0xFF) / 255.0, stroke.tool == "highlighter" ? 0.45 : 1.0);
             cairo_set_line_width(cr, stroke.width * m_zoom);
             cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
             cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
@@ -1047,7 +1055,7 @@ void WorkspaceView::draw(cairo_t* cr, int width, int height) {
             cairo_new_path(cr);
             const auto& pt0 = stroke.points[0];
             cairo_move_to(cr, (pt0.x - m_originX) * m_zoom, (pt0.y - m_originY) * m_zoom);
-            
+
             if (stroke.points.size() == 1) {
                 cairo_arc(cr, (pt0.x - m_originX) * m_zoom, (pt0.y - m_originY) * m_zoom,
                           std::max(1.0, stroke.width * m_zoom / 2.0), 0, 2 * M_PI);
@@ -1071,10 +1079,9 @@ void WorkspaceView::draw(cairo_t* cr, int width, int height) {
 
     // Render active wet ink
     if (m_isDrawing && (m_currentTool == "pen" || m_currentTool == "highlighter")) {
-        cairo_set_source_rgba(cr, ((m_currentColor >> 16) & 0xFF) / 255.0,
-                              ((m_currentColor >> 8) & 0xFF) / 255.0,
-                              (m_currentColor & 0xFF) / 255.0,
-                              m_currentTool == "highlighter" ? 0.45 : 1.0);
+        cairo_set_source_rgba(
+            cr, ((m_currentColor >> 16) & 0xFF) / 255.0, ((m_currentColor >> 8) & 0xFF) / 255.0,
+            (m_currentColor & 0xFF) / 255.0, m_currentTool == "highlighter" ? 0.45 : 1.0);
         cairo_set_line_width(cr, m_currentWidth * m_zoom);
         cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
         cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);

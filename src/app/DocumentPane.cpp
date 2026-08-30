@@ -122,25 +122,25 @@ DocumentPane::DocumentPane(const std::string& pdfPath) : m_pdfPath(pdfPath) {
 
     // Event connections for desktop squeeze gestures
     gtk_widget_add_events(m_overlay, GDK_SCROLL_MASK | GDK_BUTTON_PRESS_MASK |
-                                          GDK_BUTTON_RELEASE_MASK | GDK_POINTER_MOTION_MASK);
+                                         GDK_BUTTON_RELEASE_MASK | GDK_POINTER_MOTION_MASK);
     g_signal_connect(m_overlay, "scroll-event", G_CALLBACK(DocumentPane::scrollCallback), this);
 
     // Attach touch pinch gesture recognizer to scroller with bubble phase
     m_pinchGesture = gtk_gesture_zoom_new(m_scroller);
     gtk_event_controller_set_propagation_phase(GTK_EVENT_CONTROLLER(m_pinchGesture),
                                                GTK_PHASE_BUBBLE);
-    g_signal_connect(
-        m_pinchGesture, "scale-changed",
-        G_CALLBACK((+[](GtkGestureZoom*, gdouble scale, gpointer data) {
-            auto* self = static_cast<DocumentPane*>(data);
-            if (!self)
-                return;
-            double cx = 0.0, cy = 0.0;
-            gtk_gesture_get_bounding_box_center(GTK_GESTURE(self->m_pinchGesture), &cx, &cy);
-            double delta = (scale < 1.0) ? 1.0 : -1.0;
-            self->applyContinuousSqueezeDelta(delta, cy);
-        })),
-        this);
+    g_signal_connect(m_pinchGesture, "scale-changed",
+                     G_CALLBACK((+[](GtkGestureZoom*, gdouble scale, gpointer data) {
+                         auto* self = static_cast<DocumentPane*>(data);
+                         if (!self)
+                             return;
+                         double cx = 0.0, cy = 0.0;
+                         gtk_gesture_get_bounding_box_center(GTK_GESTURE(self->m_pinchGesture), &cx,
+                                                             &cy);
+                         double delta = (scale < 1.0) ? 1.0 : -1.0;
+                         self->applyContinuousSqueezeDelta(delta, cy);
+                     })),
+                     this);
 
     // Auto-load companion .xopp if present
     m_annotationStore.loadAnnotations(m_pdfPath);
@@ -226,7 +226,7 @@ void DocumentPane::updateLayoutDimensions() {
 void DocumentPane::setZoom(double zoom) {
     const double oldZoom = m_zoom;
     m_zoom = std::clamp(zoom, 0.3, 3.0);
-    
+
     if (m_zoom == oldZoom) {
         return;
     }
@@ -237,7 +237,7 @@ void DocumentPane::setZoom(double zoom) {
     if (m_zoomDebounceTimerId != 0) {
         g_source_remove(m_zoomDebounceTimerId);
     }
-    
+
     m_zoomDebounceTimerId = g_timeout_add(
         150,
         [](gpointer data) -> gboolean {
@@ -252,7 +252,8 @@ void DocumentPane::commitZoom() {
     m_zoomDebounceTimerId = 0;
     m_isZooming = false;
     clearCache();
-    if (m_area) gtk_widget_queue_draw(m_area);
+    if (m_area)
+        gtk_widget_queue_draw(m_area);
 }
 
 void DocumentPane::zoomIn() {
@@ -339,7 +340,8 @@ std::vector<FluidCore::AnchorSpan> DocumentPane::collectActiveAnchors(double cur
                 minY = std::min(minY, pt.y);
                 maxY = std::max(maxY, pt.y);
             }
-            anchors.push_back(FluidCore::AnchorSpan{pageTopY + minY, pageTopY + maxY, "highlight", 8});
+            anchors.push_back(
+                FluidCore::AnchorSpan{pageTopY + minY, pageTopY + maxY, "highlight", 8});
         }
     }
 
@@ -351,8 +353,8 @@ std::vector<FluidCore::AnchorSpan> DocumentPane::collectActiveAnchors(double cur
     // Source 4: Cursor Fold Anchor (when no search or highlight filters active)
     if (anchors.empty() && cursorDocY >= 0.0) {
         const double span = 120.0;
-        anchors.push_back(FluidCore::AnchorSpan{std::max(0.0, cursorDocY - span),
-                                                cursorDocY + span, "cursor", 5});
+        anchors.push_back(FluidCore::AnchorSpan{std::max(0.0, cursorDocY - span), cursorDocY + span,
+                                                "cursor", 5});
     }
 
     return anchors;
@@ -608,22 +610,24 @@ gboolean DocumentPane::onScroll(GdkEventScroll* event) {
         if (delta != 0.0) {
             const double oldZoom = m_zoom;
             const double newZoom = (delta > 0) ? (m_zoom / 1.1) : (m_zoom * 1.1);
-            
-            GtkAdjustment* vadj = gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(m_scroller));
-            GtkAdjustment* hadj = gtk_scrolled_window_get_hadjustment(GTK_SCROLLED_WINDOW(m_scroller));
-            
+
+            GtkAdjustment* vadj =
+                gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(m_scroller));
+            GtkAdjustment* hadj =
+                gtk_scrolled_window_get_hadjustment(GTK_SCROLLED_WINDOW(m_scroller));
+
             if (vadj && hadj) {
                 const double cursorScreenY = event->y;
                 const double cursorScreenX = event->x;
                 const double oldScrollY = gtk_adjustment_get_value(vadj);
                 const double oldScrollX = gtk_adjustment_get_value(hadj);
-                
+
                 setZoom(newZoom);
 
                 const double zoomRatio = m_zoom / oldZoom;
                 const double newScrollY = (oldScrollY + cursorScreenY) * zoomRatio - cursorScreenY;
                 const double newScrollX = (oldScrollX + cursorScreenX) * zoomRatio - cursorScreenX;
-                
+
                 m_isAdjustingScrollPosition = true;
                 gtk_adjustment_set_value(vadj, std::max(0.0, newScrollY));
                 gtk_adjustment_set_value(hadj, std::max(0.0, newScrollX));
@@ -808,7 +812,8 @@ void DocumentPane::draw(cairo_t* cr) {
     const double clipYEnd = (clip.y + clip.height) / m_zoom;
 
     const auto segments = m_squeezeEngine.getSegments(m_docId);
-    const double pageX = kPageMargin + std::max(0.0, (allocation.width / m_zoom - m_layoutWidth) / 2.0);
+    const double pageX =
+        kPageMargin + std::max(0.0, (allocation.width / m_zoom - m_layoutWidth) / 2.0);
 
     std::vector<std::size_t> visiblePageIndices;
 
@@ -838,7 +843,8 @@ void DocumentPane::draw(cairo_t* cr) {
         CairoSurfaceHandle surface = m_pageTileCache.get(i);
         if (!surface && layout.page && !m_isZooming) {
             // Render high-DPI surface scaled by m_zoom
-            surface = m_pageTileCache.renderPage(i, layout.page, layout.width * m_zoom, layout.height * m_zoom);
+            surface = m_pageTileCache.renderPage(i, layout.page, layout.width * m_zoom,
+                                                 layout.height * m_zoom);
         }
 
         for (const auto& slice : slices) {
