@@ -84,7 +84,7 @@ void WorkspaceView::setExcerptTileCache(ExcerptTileCache* cache) {
     if (m_excerptTileCache) {
         m_excerptTileCache->setRenderReadyCallback(
             [this](const std::string& /*excerptId*/, uint64_t /*requestId*/) {
-                if (m_area) {
+                if (m_area && GTK_IS_WIDGET(m_area)) {
                     gtk_widget_queue_draw(m_area);
                 }
             });
