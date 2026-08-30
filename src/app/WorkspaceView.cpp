@@ -13,8 +13,8 @@
 namespace FluidCoreApp {
 namespace {
 
-constexpr double kMinZoom = 0.05; // 5%
-constexpr double kMaxZoom = 10.0; // 1000%
+constexpr double kMinZoom = 0.10; // 10%
+constexpr double kMaxZoom = 5.0;  // 500%
 constexpr double kBaseGridStep = 32.0;
 constexpr double kMajorGridMultiple = 5.0; // Major accents every 5 dots (160 pt)
 
@@ -563,7 +563,7 @@ gboolean WorkspaceView::onScroll(GdkEventScroll* event) {
         } else if (event->direction == GDK_SCROLL_SMOOTH) {
             gdouble dx = 0.0, dy = 0.0;
             gdk_event_get_scroll_deltas(reinterpret_cast<GdkEvent*>(event), &dx, &dy);
-            delta = dy;
+            delta = std::clamp(static_cast<double>(dy), -2.5, 2.5);
         }
 
         const double zoomMultiplier = std::pow(0.90, delta);

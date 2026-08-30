@@ -256,7 +256,7 @@ void DocumentPane::updateLayoutDimensions() {
 
 void DocumentPane::setZoom(double zoom) {
     const double oldZoom = m_zoom;
-    m_zoom = std::clamp(zoom, 0.3, 3.0);
+    m_zoom = std::clamp(zoom, 0.5, 2.0);
 
     if (m_zoom == oldZoom) {
         return;
