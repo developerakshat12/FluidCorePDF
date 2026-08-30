@@ -72,6 +72,10 @@ Point FluidCoreEngine::getNodePosition(const std::string& nodeId) const {
     return m_model.positionOf(nodeId);
 }
 
+Rectangle FluidCoreEngine::getWorkspaceBounds() const {
+    return m_model.globalBounds();
+}
+
 std::string FluidCoreEngine::createInkLink(const std::string&, const std::string&, const Color&) {
     // TODO(M4): route through GraphTopology and return the edge id.
     return {};

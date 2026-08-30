@@ -68,4 +68,8 @@ if(BUILD_TESTING)
     add_executable(squeeze_engine_test tests/SqueezeEngineTest.cpp)
     target_link_libraries(squeeze_engine_test PRIVATE fluidcore)
     add_test(NAME SqueezeEngineTest COMMAND squeeze_engine_test)
+
+    add_executable(rtree_benchmark_test tests/workspace/RTreeBenchmarkTest.cpp)
+    target_link_libraries(rtree_benchmark_test PRIVATE fluidcore)
+    add_test(NAME RTreeBenchmarkTest COMMAND rtree_benchmark_test)
 endif()

@@ -70,7 +70,7 @@ gantt
 - **Perf gate**: ≥ 30 FPS during interactive squeeze on 1080p, mid-range hardware (i5-8th-gen class). *(gated & verified)*
 
 ### M3 — Workspace & Excerpts (Weeks 25–38)
-- [ ] Infinite workspace canvas: pan/zoom, R*-tree spatial index, grid/minimap
+- [x] Infinite workspace canvas: pan/zoom, R*-tree spatial index, grid/minimap *(complete via TASK-3.1: 2D affine transform matrix [M_view], smooth focal zoom [5% to 1000%], pan gestures, zoom-adaptive infinite dot-grid, interactive minimap HUD with glowing viewport frame, O(log N) viewport culling, and 100k items benchmark with p99 <= 0.05ms << 1.0ms budget)*
 - [ ] Drag-out excerpts: text clips, image regions; normalized source bbox capture
 - [ ] `ExcerptCardNode` rendering + live re-render on source zoom change
 - [ ] Bi-directional anchors + `ReturnAnchorPill` navigation

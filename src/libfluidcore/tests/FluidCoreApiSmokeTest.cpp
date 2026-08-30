@@ -43,6 +43,7 @@ class StubApi final : public FluidCoreAPI {
 
     Rectangle getNodeBounds(const std::string&) const override { return {}; }
     Point getNodePosition(const std::string&) const override { return {}; }
+    Rectangle getWorkspaceBounds() const override { return {}; }
 
     std::string createInkLink(const std::string&, const std::string&, const Color&) override {
         return {};

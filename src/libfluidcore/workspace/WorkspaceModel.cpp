@@ -82,4 +82,39 @@ std::vector<WorkspaceNode*> WorkspaceModel::visibleIn(const Rectangle& viewport)
     return out;
 }
 
+Rectangle WorkspaceModel::globalBounds() const {
+    if (m_nodes.empty()) {
+        return {0.0, 0.0, 0.0, 0.0};
+    }
+
+    auto it = m_nodes.begin();
+    double minX = it->second.x;
+    double minY = it->second.y;
+    double maxX = it->second.x + it->second.width;
+    double maxY = it->second.y + it->second.height;
+    ++it;
+
+    for (; it != m_nodes.end(); ++it) {
+        if (it->second.x < minX)
+            minX = it->second.x;
+        if (it->second.y < minY)
+            minY = it->second.y;
+        if (it->second.x + it->second.width > maxX)
+            maxX = it->second.x + it->second.width;
+        if (it->second.y + it->second.height > maxY)
+            maxY = it->second.y + it->second.height;
+    }
+
+    return {minX, minY, maxX - minX, maxY - minY};
+}
+
+std::vector<std::string> WorkspaceModel::allNodeIds() const {
+    std::vector<std::string> ids;
+    ids.reserve(m_nodes.size());
+    for (const auto& [id, _] : m_nodes) {
+        ids.push_back(id);
+    }
+    return ids;
+}
+
 } // namespace FluidCore

@@ -36,6 +36,12 @@ class WorkspaceModel {
     // Nodes whose bounds intersect the viewport rectangle.
     std::vector<WorkspaceNode*> visibleIn(const Rectangle& viewport) const;
 
+    // Union bounding box of all nodes in the workspace, or zero rectangle if empty.
+    Rectangle globalBounds() const;
+
+    // All registered node IDs.
+    std::vector<std::string> allNodeIds() const;
+
   private:
     struct Record {
         std::unique_ptr<WorkspaceNode> node;

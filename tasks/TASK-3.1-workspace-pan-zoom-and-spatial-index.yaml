@@ -1,0 +1,37 @@
+id: TASK-3.1-workspace-pan-zoom-and-spatial-index
+title: Infinite canvas pan/zoom viewport matrix, dot-grid rendering, interactive minimap HUD, and spatial index integration
+milestone: M3
+workspace: D:\Reference Repos\fluidcore-platform
+specs:
+  - specs/new-features-backlog.md (section 1 — infinite 2D workspace canvas engine)
+  - specs/integration.md (section 1 — dual-viewport split and WorkspaceView)
+  - specs/system-architecture.md (workspace spatial scene graph and Cairo rendering)
+  - planning/ROADMAP.md (Milestone 3 and performance budgets)
+  - skills/cpp-core-dev/SKILL.md
+  - skills/gtk-frontend/SKILL.md
+dependencies:
+  - TASK-2.10-basic-text-selection-and-copy
+  - TASK-2.11-squeeze-engine-piecewise-mapper
+  - TASK-2.12-slice-clipping-render-path
+  - TASK-2.13-search-driven-squeeze
+deliverables:
+  - src/libfluidcore/FluidCoreAPI.h & FluidCoreEngine.{h,cpp} — add getWorkspaceBounds() pure geometric query for global scene extent.
+  - src/libfluidcore/workspace/WorkspaceModel.{h,cpp} — implement globalBounds() and allNodeIds() union bounding box calculations.
+  - src/libfluidcore/tests/workspace/WorkspaceModelTest.cpp — add testGlobalBounds validation suite.
+  - src/libfluidcore/tests/workspace/RTreeBenchmarkTest.cpp — dedicated 100,000 spatial items benchmark verifying p99 <= 1.0ms query latency budget (ROADMAP §5).
+  - src/app/WorkspaceView.{h,cpp} — 2D affine viewport matrix (M_view), smooth focal zoom (5% to 1000%), pan gestures, infinite dot-grid with zoom LOD, floating overview minimap HUD with viewport frame, and O(log N) viewport culling.
+  - src/app/main.cpp — wire Ctrl+=, Ctrl+-, Ctrl+0, and Ctrl+M workspace actions; populate spatial cluster seed content.
+  - src/libfluidcore/CMakeLists.txt — register RTreeBenchmarkTest.
+acceptance_checks:
+  - "clang-format --dry-run --Werror clean on all touched files"
+  - "python ops/scripts/check_invariants.py passes (0 violations)"
+  - "all registered CTest targets pass (100%)"
+  - "RTreeBenchmarkTest passes on 100,000 items with p99 query latency <= 1.0ms"
+  - "WorkspaceView transforms world <-> screen coordinates losslessly across zoom levels"
+  - "Minimap HUD renders global workspace extent and allows click/drag recentering"
+  - "Viewport culling queries RTreeIndex in O(log N) on every render frame"
+constraints:
+  - Do not add GUI/Cairo/GTK headers to src/libfluidcore/ (ADR-0001 clean separation)
+  - Do not touch the Xournal++ submodule
+  - Commit means commit AND push; every commit carries -s (DCO)
+  - Frontend targets GTK 3.24+ standard APIs

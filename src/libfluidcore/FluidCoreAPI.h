@@ -118,6 +118,7 @@ class FluidCoreAPI {
     // and performs ALL rendering in the GTK/Cairo layer. Core classes expose no render methods.
     virtual Rectangle getNodeBounds(const std::string& nodeId) const = 0;
     virtual Point getNodePosition(const std::string& nodeId) const = 0;
+    virtual Rectangle getWorkspaceBounds() const = 0;
 
     // Bi-Directional Relational Graph & Live Ink Link API
     virtual std::string createInkLink(const std::string& sourceNodeId,

@@ -123,6 +123,29 @@ int testRemove() {
     return failures;
 }
 
+int testGlobalBounds() {
+    int failures = 0;
+    WorkspaceModel model("proj-1");
+    failures += check(rectClose(model.globalBounds(), {0.0, 0.0, 0.0, 0.0}),
+                      "empty model globalBounds is zero rectangle");
+
+    model.insert(std::make_unique<RectNode>("a", Rectangle{10.0, 20.0, 30.0, 40.0}));
+    failures += check(rectClose(model.globalBounds(), {10.0, 20.0, 30.0, 40.0}),
+                      "single node globalBounds matches its bounding box");
+
+    model.insert(std::make_unique<RectNode>("b", Rectangle{100.0, 200.0, 50.0, 60.0}));
+    // minX=10, minY=20, maxX=150, maxY=260 => width=140, height=240
+    failures += check(rectClose(model.globalBounds(), {10.0, 20.0, 140.0, 240.0}),
+                      "two nodes globalBounds computes union bounding box");
+
+    failures += check(model.allNodeIds().size() == 2, "allNodeIds returns all registered IDs");
+
+    model.remove("b");
+    failures += check(rectClose(model.globalBounds(), {10.0, 20.0, 30.0, 40.0}),
+                      "removing node updates globalBounds");
+    return failures;
+}
+
 } // namespace
 
 int main() {
@@ -130,6 +153,7 @@ int main() {
     failures += testInsertContract();
     failures += testMoveAndVisibility();
     failures += testRemove();
+    failures += testGlobalBounds();
 
     if (failures == 0) {
         std::cout << "WorkspaceModelTest: all checks passed\n";

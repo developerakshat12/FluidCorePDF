@@ -46,6 +46,7 @@ class FluidCoreEngine final : public FluidCoreAPI {
     // Pure geometry exposure (ADR-0001): values only, nothing renderable.
     Rectangle getNodeBounds(const std::string& nodeId) const override;
     Point getNodePosition(const std::string& nodeId) const override;
+    Rectangle getWorkspaceBounds() const override;
 
     // Relational graph & ink links — TODO(M4): delegate to GraphTopology.
     std::string createInkLink(const std::string& sourceNodeId, const std::string& targetNodeId,

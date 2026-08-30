@@ -28,10 +28,27 @@ class SampleNode final : public FluidCore::WorkspaceNode {
 };
 
 void seedDemoContent(FluidCoreAPI& api) {
+    // Cluster 1: Primary PDF excerpts
     api.insertNode(
-        std::make_unique<SampleNode>("excerpt-pdf-1", Rectangle{80.0, 80.0, 220.0, 160.0}));
-    api.insertNode(std::make_unique<SampleNode>("note-a", Rectangle{380.0, 140.0, 160.0, 100.0}));
-    api.insertNode(std::make_unique<SampleNode>("note-b", Rectangle{260.0, 340.0, 200.0, 120.0}));
+        std::make_unique<SampleNode>("excerpt-clause-1", Rectangle{80.0, 80.0, 220.0, 140.0}));
+    api.insertNode(
+        std::make_unique<SampleNode>("excerpt-clause-2", Rectangle{340.0, 80.0, 220.0, 140.0}));
+    api.insertNode(
+        std::make_unique<SampleNode>("excerpt-statute", Rectangle{600.0, 80.0, 240.0, 160.0}));
+
+    // Cluster 2: Synthesized notes
+    api.insertNode(
+        std::make_unique<SampleNode>("note-synthesis", Rectangle{180.0, 280.0, 260.0, 120.0}));
+    api.insertNode(
+        std::make_unique<SampleNode>("note-precedent", Rectangle{480.0, 280.0, 220.0, 110.0}));
+
+    // Cluster 3: Distant comparative nodes across infinite canvas space
+    api.insertNode(
+        std::make_unique<SampleNode>("compare-patent-a", Rectangle{880.0, 480.0, 240.0, 150.0}));
+    api.insertNode(
+        std::make_unique<SampleNode>("compare-patent-b", Rectangle{1160.0, 480.0, 240.0, 150.0}));
+    api.insertNode(
+        std::make_unique<SampleNode>("summary-conclusion", Rectangle{540.0, 680.0, 300.0, 160.0}));
 }
 
 struct AppContext {
@@ -212,6 +229,68 @@ void onActivate(GtkApplication* app, gpointer userData) {
                                           "<Primary><Shift>f", nullptr};
     gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.search_squeeze",
                                           searchSqueezeAccels);
+
+    // Wire Workspace canvas zoom, reset, and minimap actions
+    GSimpleAction* wsZoomInAction = g_simple_action_new("ws_zoom_in", nullptr);
+    g_signal_connect(wsZoomInAction, "activate",
+                     G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
+                         auto* ws = static_cast<FluidCoreApp::WorkspaceView*>(data);
+                         if (ws) {
+                             GtkAllocation alloc;
+                             gtk_widget_get_allocation(ws->widget(), &alloc);
+                             const double cx = alloc.width > 0 ? alloc.width / 2.0 : 400.0;
+                             const double cy = alloc.height > 0 ? alloc.height / 2.0 : 300.0;
+                             ws->zoomAt(1.2, cx, cy);
+                         }
+                     }),
+                     workspace);
+    g_action_map_add_action(G_ACTION_MAP(window), G_ACTION(wsZoomInAction));
+    const gchar* wsZoomInAccels[] = {"<Primary>plus", "<Primary>equal", "<Primary>KP_Add", nullptr};
+    gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.ws_zoom_in", wsZoomInAccels);
+
+    GSimpleAction* wsZoomOutAction = g_simple_action_new("ws_zoom_out", nullptr);
+    g_signal_connect(wsZoomOutAction, "activate",
+                     G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
+                         auto* ws = static_cast<FluidCoreApp::WorkspaceView*>(data);
+                         if (ws) {
+                             GtkAllocation alloc;
+                             gtk_widget_get_allocation(ws->widget(), &alloc);
+                             const double cx = alloc.width > 0 ? alloc.width / 2.0 : 400.0;
+                             const double cy = alloc.height > 0 ? alloc.height / 2.0 : 300.0;
+                             ws->zoomAt(0.8333, cx, cy);
+                         }
+                     }),
+                     workspace);
+    g_action_map_add_action(G_ACTION_MAP(window), G_ACTION(wsZoomOutAction));
+    const gchar* wsZoomOutAccels[] = {"<Primary>minus", "<Primary>KP_Subtract", nullptr};
+    gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.ws_zoom_out", wsZoomOutAccels);
+
+    GSimpleAction* wsResetAction = g_simple_action_new("ws_reset", nullptr);
+    g_signal_connect(wsResetAction, "activate",
+                     G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
+                         auto* ws = static_cast<FluidCoreApp::WorkspaceView*>(data);
+                         if (ws) {
+                             ws->resetView();
+                         }
+                     }),
+                     workspace);
+    g_action_map_add_action(G_ACTION_MAP(window), G_ACTION(wsResetAction));
+    const gchar* wsResetAccels[] = {"<Primary>0", "<Primary>KP_0", nullptr};
+    gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.ws_reset", wsResetAccels);
+
+    GSimpleAction* wsToggleMinimapAction = g_simple_action_new("ws_toggle_minimap", nullptr);
+    g_signal_connect(wsToggleMinimapAction, "activate",
+                     G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
+                         auto* ws = static_cast<FluidCoreApp::WorkspaceView*>(data);
+                         if (ws) {
+                             ws->setMinimapVisible(!ws->isMinimapVisible());
+                         }
+                     }),
+                     workspace);
+    g_action_map_add_action(G_ACTION_MAP(window), G_ACTION(wsToggleMinimapAction));
+    const gchar* wsMinimapAccels[] = {"<Primary>m", "<Control>m", nullptr};
+    gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.ws_toggle_minimap",
+                                          wsMinimapAccels);
 
     // Direct key-press fallback for window-level shortcut handling
     g_signal_connect(

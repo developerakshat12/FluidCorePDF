@@ -43,9 +43,9 @@ milestones:
   - id: M3
     name: workspace-excerpts
     window_weeks: [25, 38]
-    status: pending
+    status: in_progress
     items:
-      - infinite canvas pan/zoom + R*-tree index
+      - infinite canvas pan/zoom + R*-tree index                        # complete: 2D affine transform matrix (M_view), smooth focal zoom (5% to 1000%), pan gestures, zoom-adaptive infinite dot-grid, interactive minimap HUD with glowing viewport frame, O(log N) viewport culling, and 100k items benchmark with p99 <= 0.05ms << 1.0ms budget (TASK-3.1)
       - drag-out excerpts (text + image)
       - ExcerptCardNode live re-render
       - bi-directional anchors + ReturnAnchorPill
