@@ -104,6 +104,111 @@ void onActivate(GtkApplication* app, gpointer userData) {
                                  "<Control>y", nullptr};
     gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.redo", redoAccels);
 
+    // Wire Ctrl+C (Copy) action
+    GSimpleAction* copyAction = g_simple_action_new("copy", nullptr);
+    g_signal_connect(copyAction, "activate",
+                     G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
+                         auto* pane = static_cast<FluidCoreApp::DocumentPane*>(data);
+                         if (pane) {
+                             pane->copySelection();
+                         }
+                     }),
+                     documentPane);
+    g_action_map_add_action(G_ACTION_MAP(window), G_ACTION(copyAction));
+
+    const gchar* copyAccels[] = {"<Primary>c", "<Control>c", nullptr};
+    gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.copy", copyAccels);
+
+    // Wire tool switching actions
+    GSimpleAction* penAction = g_simple_action_new("tool_pen", nullptr);
+    g_signal_connect(penAction, "activate",
+                     G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
+                         auto* pane = static_cast<FluidCoreApp::DocumentPane*>(data);
+                         if (pane)
+                             pane->setTool("pen");
+                     }),
+                     documentPane);
+    g_action_map_add_action(G_ACTION_MAP(window), G_ACTION(penAction));
+    const gchar* penAccels[] = {"<Alt>1", "F1", nullptr};
+    gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.tool_pen", penAccels);
+
+    GSimpleAction* highAction = g_simple_action_new("tool_highlighter", nullptr);
+    g_signal_connect(highAction, "activate",
+                     G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
+                         auto* pane = static_cast<FluidCoreApp::DocumentPane*>(data);
+                         if (pane)
+                             pane->setTool("highlighter");
+                     }),
+                     documentPane);
+    g_action_map_add_action(G_ACTION_MAP(window), G_ACTION(highAction));
+    const gchar* highAccels[] = {"<Alt>2", "F2", nullptr};
+    gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.tool_highlighter", highAccels);
+
+    GSimpleAction* eraserAction = g_simple_action_new("tool_eraser", nullptr);
+    g_signal_connect(eraserAction, "activate",
+                     G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
+                         auto* pane = static_cast<FluidCoreApp::DocumentPane*>(data);
+                         if (pane)
+                             pane->setTool("eraser");
+                     }),
+                     documentPane);
+    g_action_map_add_action(G_ACTION_MAP(window), G_ACTION(eraserAction));
+    const gchar* eraserAccels[] = {"<Alt>3", "F3", nullptr};
+    gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.tool_eraser", eraserAccels);
+
+    GSimpleAction* selectAction = g_simple_action_new("tool_select", nullptr);
+    g_signal_connect(selectAction, "activate",
+                     G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
+                         auto* pane = static_cast<FluidCoreApp::DocumentPane*>(data);
+                         if (pane)
+                             pane->setTool("select");
+                     }),
+                     documentPane);
+    g_action_map_add_action(G_ACTION_MAP(window), G_ACTION(selectAction));
+    const gchar* selectAccels[] = {"<Alt>4", "F4", nullptr};
+    gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.tool_select", selectAccels);
+
+    // Wire Ctrl+Shift+0 (Reset Squeeze) action
+    GSimpleAction* resetSqueezeAction = g_simple_action_new("reset_squeeze", nullptr);
+    g_signal_connect(resetSqueezeAction, "activate",
+                     G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
+                         auto* pane = static_cast<FluidCoreApp::DocumentPane*>(data);
+                         if (pane) {
+                             pane->resetSqueeze();
+                         }
+                     }),
+                     documentPane);
+    g_action_map_add_action(G_ACTION_MAP(window), G_ACTION(resetSqueezeAction));
+    const gchar* resetSqueezeAccels[] = {"<Primary><Shift>0", "<Control><Shift>0", "<Primary><Shift>parenright", nullptr};
+    gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.reset_squeeze", resetSqueezeAccels);
+
+    // Wire Ctrl+F (Search) and Ctrl+Shift+S (Search Squeeze) actions
+    GSimpleAction* searchAction = g_simple_action_new("search", nullptr);
+    g_signal_connect(searchAction, "activate",
+                     G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
+                         auto* pane = static_cast<FluidCoreApp::DocumentPane*>(data);
+                         if (pane) {
+                             pane->openSearch(false);
+                         }
+                     }),
+                     documentPane);
+    g_action_map_add_action(G_ACTION_MAP(window), G_ACTION(searchAction));
+    const gchar* searchAccels[] = {"<Primary>f", "<Control>f", nullptr};
+    gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.search", searchAccels);
+
+    GSimpleAction* searchSqueezeAction = g_simple_action_new("search_squeeze", nullptr);
+    g_signal_connect(searchSqueezeAction, "activate",
+                     G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
+                         auto* pane = static_cast<FluidCoreApp::DocumentPane*>(data);
+                         if (pane) {
+                             pane->openSearch(true);
+                         }
+                     }),
+                     documentPane);
+    g_action_map_add_action(G_ACTION_MAP(window), G_ACTION(searchSqueezeAction));
+    const gchar* searchSqueezeAccels[] = {"<Primary><Shift>s", "<Control><Shift>s", "<Primary><Shift>f", nullptr};
+    gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.search_squeeze", searchSqueezeAccels);
+
     // Direct key-press fallback for window-level shortcut handling
     g_signal_connect(
         window, "key-press-event",
@@ -115,20 +220,41 @@ void onActivate(GtkApplication* app, gpointer userData) {
 
             const bool ctrl = (event->state & GDK_CONTROL_MASK) != 0;
             const bool shift = (event->state & GDK_SHIFT_MASK) != 0;
+            const bool alt = (event->state & GDK_MOD1_MASK) != 0;
 
+            if (ctrl && !shift && (event->keyval == GDK_KEY_c || event->keyval == GDK_KEY_C)) {
+                pane->copySelection();
+                return TRUE;
+            }
+            if (!ctrl && !alt && event->keyval == GDK_KEY_Escape) {
+                pane->clearTextSelection();
+                return TRUE;
+            }
             if (ctrl && !shift && (event->keyval == GDK_KEY_s || event->keyval == GDK_KEY_S)) {
                 pane->save();
                 return TRUE;
             }
-            if (ctrl && !shift && (event->keyval == GDK_KEY_z || event->keyval == GDK_KEY_Z)) {
-                pane->undo();
-                return TRUE;
+
+            // Quick single-key tool switching when no modifier is held
+            if (!ctrl && !alt && !shift) {
+                if (event->keyval == GDK_KEY_s || event->keyval == GDK_KEY_S) {
+                    pane->setTool("select");
+                    return TRUE;
+                }
+                if (event->keyval == GDK_KEY_p || event->keyval == GDK_KEY_P) {
+                    pane->setTool("pen");
+                    return TRUE;
+                }
+                if (event->keyval == GDK_KEY_h || event->keyval == GDK_KEY_H) {
+                    pane->setTool("highlighter");
+                    return TRUE;
+                }
+                if (event->keyval == GDK_KEY_e || event->keyval == GDK_KEY_E) {
+                    pane->setTool("eraser");
+                    return TRUE;
+                }
             }
-            if (ctrl && ((shift && (event->keyval == GDK_KEY_z || event->keyval == GDK_KEY_Z)) ||
-                         (!shift && (event->keyval == GDK_KEY_y || event->keyval == GDK_KEY_Y)))) {
-                pane->redo();
-                return TRUE;
-            }
+
             return FALSE;
         }),
         documentPane);
@@ -144,6 +270,28 @@ void onActivate(GtkApplication* app, gpointer userData) {
 
     gtk_container_add(GTK_CONTAINER(window), paned);
     gtk_widget_show_all(window);
+    gtk_window_present(GTK_WINDOW(window));
+}
+
+std::string normalizePath(std::string path) {
+    if (path.empty()) {
+        return path;
+    }
+#ifndef G_OS_WIN32
+    // If running on Linux/WSL and passed a Windows path like "D:\foo\bar.pdf"
+    if (path.size() >= 3 && std::isalpha(static_cast<unsigned char>(path[0])) && path[1] == ':' &&
+        (path[2] == '\\' || path[2] == '/')) {
+        char drive = static_cast<char>(std::tolower(static_cast<unsigned char>(path[0])));
+        std::string sub = path.substr(2);
+        for (char& c : sub) {
+            if (c == '\\') {
+                c = '/';
+            }
+        }
+        return std::string("/mnt/") + drive + sub;
+    }
+#endif
+    return path;
 }
 
 } // namespace
@@ -153,12 +301,15 @@ int main(int argc, char** argv) {
     seedDemoContent(engine);
 
     // Capture before g_application_run(): GApplication may consume argv.
-    const std::string pdfPath = argc > 1 ? argv[1] : "";
+    const std::string rawArg = argc > 1 ? argv[1] : "";
+    const std::string pdfPath = normalizePath(rawArg);
     AppContext context{&engine, &pdfPath};
 
     GtkApplication* app = gtk_application_new("org.fluidcore.platform", G_APPLICATION_NON_UNIQUE);
     g_signal_connect(app, "activate", G_CALLBACK(onActivate), &context);
-    const int status = g_application_run(G_APPLICATION(app), argc, argv);
+    // Pass argc=1 so GApplication does not reject positional file arguments without
+    // G_APPLICATION_HANDLES_OPEN
+    const int status = g_application_run(G_APPLICATION(app), 1, argv);
     g_object_unref(app);
     return status;
 }

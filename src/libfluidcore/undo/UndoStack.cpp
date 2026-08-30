@@ -82,6 +82,7 @@ bool UndoStack::undo() {
     auto cmd = std::move(m_undoStack.back());
     m_undoStack.pop_back();
 
+    m_currentBytes -= cmd->estimatedSizeBytes();
     const bool ok = cmd->undo();
     m_redoStack.push_back(std::move(cmd));
 
@@ -97,6 +98,7 @@ bool UndoStack::redo() {
     auto cmd = std::move(m_redoStack.back());
     m_redoStack.pop_back();
 
+    m_currentBytes += cmd->estimatedSizeBytes();
     const bool ok = cmd->redo();
     m_undoStack.push_back(std::move(cmd));
 

@@ -1,7 +1,9 @@
 #pragma once
 
 #include "StrokeStabilizer.h"
+#include "TextSelectionService.h"
 #include "storage/AnnotationStore.h"
+#include "text/TextSelection.h"
 
 #include <cairo.h>
 #include <gtk/gtk.h>
@@ -17,7 +19,8 @@ class DocumentPane;
 
 // GtkDrawingArea overlay on DocumentPane capturing pointer/stylus input,
 // streaming coordinates through StrokeStabilizer (Centripetal Catmull-Rom),
-// rendering live with wet leading edge and Cairo group alpha isolation,
+// supporting text selection and clipboard copying via TextSelectionService,
+// rendering live inking with wet leading edge and text selection highlights,
 // and dispatching AddStrokeCommand/RemoveStrokeCommand to DocumentPane's UndoStack.
 class InkOverlay {
   public:
@@ -29,7 +32,7 @@ class InkOverlay {
 
     GtkWidget* widget() const { return m_widget; }
 
-    void setTool(const std::string& tool) { m_currentTool = tool; }
+    void setTool(const std::string& tool);
     const std::string& tool() const { return m_currentTool; }
 
     void setColor(std::uint32_t color) { m_currentColor = color; }
@@ -42,6 +45,16 @@ class InkOverlay {
 
     void invalidateStroke(const FluidCore::Stroke& stroke);
     void invalidatePage(std::size_t pageIdx);
+
+    // Text selection queries and operations
+    bool hasSelection() const { return m_selectionState.hasSelection; }
+    const FluidCore::MultiPageSelectionState& selectionState() const { return m_selectionState; }
+    std::string selectedText() const { return m_selectionState.fullText; }
+    void clearSelection();
+    bool copySelection();
+    void invalidateSelection(const FluidCore::MultiPageSelectionState& state);
+
+    TextSelectionService& textSelectionService() { return m_textSelectionService; }
 
   private:
     static void drawCallback(GtkWidget* area, cairo_t* cr, gpointer userData);
@@ -57,10 +70,13 @@ class InkOverlay {
     gboolean onMotionNotify(GdkEventMotion* event);
     gboolean onButtonRelease(GdkEventButton* event);
 
+    void updateCursor();
+
     void renderStroke(cairo_t* cr, const FluidCore::Stroke& stroke) const;
     void renderActiveLiveStroke(cairo_t* cr) const;
     void renderBezierSegment(cairo_t* cr, const StrokeStabilizer::BezierSegment& seg,
                              double baseWidth) const;
+    void renderTextSelection(cairo_t* cr, std::size_t pageIndex) const;
 
     DocumentPane& m_pane;
     FluidCore::AnnotationStore& m_annotationStore;
@@ -75,6 +91,13 @@ class InkOverlay {
     std::vector<StrokeStabilizer::BezierSegment> m_activeBezierSegments;
     StrokeStabilizer::Point2D m_wetTip;
     bool m_hasWetSegment = false;
+
+    // Text selection state and service
+    TextSelectionService m_textSelectionService;
+    FluidCore::MultiPageSelectionState m_selectionState;
+    bool m_isSelectingText = false;
+    std::size_t m_dragStartPageIndex = 0;
+    FluidCore::SelectionPoint m_dragStartPoint;
 
     std::string m_currentTool = "pen";
     std::uint32_t m_currentColor = 0x000000;

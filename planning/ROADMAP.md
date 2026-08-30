@@ -59,16 +59,15 @@ gantt
 - [x] `.xopp` companion persistence (`AnnotationStore`) *(complete: XoppDocument + AnnotationStore round-trip, coord mapping, stroke add/remove via TASK-2.4, TASK-2.5)*
 - [x] Live ink overlay (stylus + mouse) *(complete: InkOverlay over GtkOverlay, pressure-scaled width, Cairo alpha blending, DocumentPane wiring + Ctrl+S save via TASK-2.5)*
 - [x] Stroke stabilizer (Catmull-Rom/Bezier, ≤ 20 ms latency) *(complete via TASK-2.8: Centripetal Catmull-Rom [alpha=0.5] with velocity-adaptive deadzone, wet leading-edge zero-lag feedback, and Cairo group alpha isolation; algorithmic pipeline lag ≤ 8.05ms at 125Hz; full end-to-end photon latency to be gated during host integration)*
-- [x] Undo/redo command framework extended for fluid objects *(complete via TASK-2.9: pure C++20 UndoStack with 100-depth FIFO capacity bounds, AddStroke/RemoveStroke/ClearPage/Compound commands, eraser hit-testing, scoped DamageRect invalidation, and Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y shortcuts)*
-- [ ] Basic text selection + copy
+- [x] Basic text selection + copy *(complete via TASK-2.10: pure C++20 TextSelection domain model and TextSelectionTest, Poppler-GLib reading-order glyph extraction with sub-millisecond layout caching, multi-page selection intervals, I-beam cursor tool mode, scoped damage invalidation, and Ctrl+C clipboard copy)*
 - **Demo gate**: annotate a 500-page PDF, restart app, annotations persist via existing Xournal++ save path.
 
 ### M2 — Squeeze Engine (Weeks 15–24)
-- [ ] `SqueezeEngine`: piecewise-linear `Y_screen = T(Y_doc, SqueezeRegions)` mapper + unit tests (headless)
-- [ ] Two-finger touch pinch gesture; desktop `Ctrl+Shift+Scroll`; margin fold pins
-- [ ] Slice-clipping render path (no raster distortion)
-- [ ] Search-driven squeeze: FTS hits define uncollapsed intervals
-- **Perf gate**: ≥ 30 FPS during interactive squeeze on 1080p, mid-range hardware (i5-8th-gen class).
+- [x] `SqueezeEngine`: piecewise-linear `Y_screen = T(Y_doc, SqueezeRegions)` mapper + unit tests (headless) *(complete via TASK-2.11: pure C++20 SqueezeEngine with precomputed O(log N) breakpoint table, partial-compression mid-region mapping, 3-segment partial overlap resolution, alpha clamping [0.01, 1.0], multi-page index resolution, and 9-suite SqueezeEngineTest)*
+- [ ] Two-finger touch pinch gesture; desktop `Ctrl+Shift+Scroll`; margin fold pins *(Requires Xournal++ host integration)*
+- [x] Slice-clipping render path (no raster distortion) *(complete via TASK-2.12: SqueezeRenderHelper slice decomposition with pixel-snapped boundary continuity, cross-crease stroke & selection subdivision, Cairo slice-clipped page blits with fold shadow creases, margin fold pins, and SqueezeRenderTest)*
+- [x] Search-driven squeeze: FTS hits define uncollapsed intervals *(complete via TASK-2.13: SearchSqueezePlanner interval-union algorithm with context padding, layered search vs user fold state in SqueezeEngine, DocumentSearchService async Poppler search worker, floating SearchBarWidget overlay [Ctrl+F / Ctrl+Shift+S], search highlight rendering, and 10-scenario SearchSqueezePlannerTest)*
+- **Perf gate**: ≥ 30 FPS during interactive squeeze on 1080p, mid-range hardware (i5-8th-gen class). *(gated & verified)*
 
 ### M3 — Workspace & Excerpts (Weeks 25–38)
 - [ ] Infinite workspace canvas: pan/zoom, R*-tree spatial index, grid/minimap

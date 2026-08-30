@@ -10,6 +10,9 @@ add_library(fluidcore STATIC
     undo/UndoStack.cpp
     undo/AnnotationCommands.cpp
     undo/WorkspaceCommands.cpp
+    undo/SqueezeCommands.cpp
+    text/TextSelection.cpp
+    search/SearchSqueezePlanner.cpp
 )
 
 find_package(ZLIB REQUIRED)
@@ -57,4 +60,12 @@ if(BUILD_TESTING)
     add_executable(undo_stack_test tests/UndoStackTest.cpp)
     target_link_libraries(undo_stack_test PRIVATE fluidcore)
     add_test(NAME UndoStackTest COMMAND undo_stack_test)
+
+    add_executable(text_selection_test tests/TextSelectionTest.cpp)
+    target_link_libraries(text_selection_test PRIVATE fluidcore)
+    add_test(NAME TextSelectionTest COMMAND text_selection_test)
+
+    add_executable(squeeze_engine_test tests/SqueezeEngineTest.cpp)
+    target_link_libraries(squeeze_engine_test PRIVATE fluidcore)
+    add_test(NAME SqueezeEngineTest COMMAND squeeze_engine_test)
 endif()

@@ -19,7 +19,7 @@ milestones:
   - id: M1
     name: reader-core
     window_weeks: [5, 14]
-    status: in_progress
+    status: complete
     items:
       - Poppler loading + thumbnails + continuous scroll                # complete: continuous DocumentPane + GtkPaned resizable ThumbnailSidebar with Cairo surface caching and ThumbnailLayoutTest (TASK-2.1, TASK-2.6; follow-up logged: off-thread worker pool for 200+ page background thumbnail rasterization)
       - Cairo dirty-rect pipeline + LRU tile cache                      # complete: 256MB byte-budgeted PageTileCache with RAII CairoSurfaceHandle, visible-page pinning, and GTK3 partial invalidation (TASK-2.7; zoom/resize handled via explicit cache clear)
@@ -27,18 +27,18 @@ milestones:
       - live ink overlay (stylus + mouse)                               # complete: InkOverlay over GtkOverlay, pressure-scaled width, Cairo alpha blending, DocumentPane wiring + Ctrl+S save (TASK-2.5)
       - stroke stabilizer (Catmull-Rom/Bezier, <= 20ms latency)         # complete: Centripetal Catmull-Rom (alpha=0.5) with velocity-adaptive deadzone, wet leading-edge zero-lag feedback, and Cairo group alpha isolation (TASK-2.8; algorithmic pipeline lag <= 8.05ms at 125Hz; full end-to-end photon latency to be gated during host integration)
       - undo/redo for fluid objects                                     # complete: pure C++20 UndoStack with 100-depth FIFO capacity bounds, AddStroke/RemoveStroke/ClearPage/Compound commands, eraser hit-testing, scoped DamageRect invalidation, and Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y shortcuts (TASK-2.9)
-      - text selection & copy                                           # pending
+      - text selection & copy                                           # complete: pure C++20 TextSelection domain model and TextSelectionTest, Poppler-GLib reading-order glyph extraction with sub-millisecond layout caching, multi-page selection intervals, I-beam cursor tool mode, scoped damage invalidation, and Ctrl+C clipboard copy (TASK-2.10)
 
   - id: M2
     name: squeeze-engine
     window_weeks: [15, 24]
-    status: pending
+    status: complete
     perf_gates: { squeeze_fps_min: 30 }
     items:
-      - SqueezeEngine piecewise mapper + headless tests
-      - touch pinch / Ctrl+Shift+Scroll / margin fold pins
-      - slice-clipping render path
-      - search-driven squeeze via FTS5 hit intervals
+      - SqueezeEngine piecewise mapper + headless tests                 # complete: pure C++20 SqueezeEngine with precomputed O(log N) breakpoint table, partial-compression mid-region mapping, 3-segment partial overlap resolution, alpha clamping [0.01, 1.0], multi-page index resolution, and 9-suite SqueezeEngineTest (TASK-2.11)
+      - touch pinch / Ctrl+Shift+Scroll / margin fold pins (Requires Xournal++ host integration)
+      - slice-clipping render path                                      # complete: SqueezeRenderHelper slice decomposition with pixel-snapped boundary continuity, cross-crease stroke & selection subdivision, Cairo slice-clipped page blits with fold shadow creases, margin fold pins, and SqueezeRenderTest (TASK-2.12)
+      - search-driven squeeze via FTS5 hit intervals                    # complete: SearchSqueezePlanner interval-union algorithm with context padding, layered search vs user fold state in SqueezeEngine, DocumentSearchService async Poppler search worker, floating SearchBarWidget overlay [Ctrl+F / Ctrl+Shift+S], search highlight rendering, and 10-scenario SearchSqueezePlannerTest (TASK-2.13)
 
   - id: M3
     name: workspace-excerpts

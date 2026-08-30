@@ -82,11 +82,11 @@ class CairoSurfaceHandle {
 // Byte-bounded LRU page tile cache for DocumentPane.
 // Avoids repeated poppler_page_render calls during continuous scrolling,
 // protects actively visible pages from eviction (anti-thrashing), and enforces
-// a strict memory working set fraction (default 256 MB <= 1.2 GB limit).
+// a strict memory working set fraction (default 64 MB <= 1.2 GB limit).
 class PageTileCache {
   public:
-    static constexpr std::size_t kDefaultMaxBytes = 256 * 1024 * 1024; // 256 MB
-    static constexpr std::size_t kDefaultMaxPages = 32;
+    static constexpr std::size_t kDefaultMaxBytes = 64 * 1024 * 1024; // 64 MB
+    static constexpr std::size_t kDefaultMaxPages = 8;
 
     explicit PageTileCache(std::size_t maxBytes = kDefaultMaxBytes,
                            std::size_t maxPages = kDefaultMaxPages);

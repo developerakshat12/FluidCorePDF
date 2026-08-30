@@ -249,6 +249,59 @@ void testWorkspaceMoveNodeCommand() {
     std::cout << "[PASS] testWorkspaceMoveNodeCommand\n";
 }
 
+void testUndoRedoByteTracking() {
+    UndoStack stack(100, 1000); // Max bytes: 1000
+    AnnotationStore store;
+
+    Stroke stroke;
+    stroke.color = 0x00FF00;
+    stroke.width = 1.0;
+    stroke.points = {{0.0, 0.0}, {10.0, 10.0}};
+
+    auto cmd = std::make_unique<AddStrokeCommand>(store, 0, stroke);
+    const std::size_t cmdSize = cmd->estimatedSizeBytes();
+    expect(cmdSize > 0, "command size is non-zero");
+
+    stack.pushAndExecute(std::move(cmd));
+    expect(stack.estimatedSizeBytes() == cmdSize, "bytes recorded after push");
+
+    stack.undo();
+    expect(stack.estimatedSizeBytes() == 0, "bytes decremented to 0 after undo");
+
+    stack.redo();
+    expect(stack.estimatedSizeBytes() == cmdSize, "bytes restored after redo");
+
+    stack.undo();
+    expect(stack.estimatedSizeBytes() == 0, "bytes decremented to 0 after second undo");
+
+    std::cout << "[PASS] testUndoRedoByteTracking\n";
+}
+
+void testAddStrokeAutoIdRedo() {
+    AnnotationStore store;
+    UndoStack stack;
+
+    Stroke strokeWithoutId; // id is empty
+    strokeWithoutId.points = {{5.0, 5.0}, {15.0, 15.0}};
+
+    stack.pushAndExecute(std::make_unique<AddStrokeCommand>(store, 0, strokeWithoutId));
+    expect(store.strokes().size() == 1, "store has 1 stroke");
+    const std::string initialId = store.strokes()[0].id;
+    expect(!initialId.empty(), "stroke ID was automatically generated");
+
+    stack.undo();
+    expect(store.strokes().empty(), "stroke removed on undo");
+
+    stack.redo();
+    expect(store.strokes().size() == 1, "stroke restored on redo");
+    expect(store.strokes()[0].id == initialId, "stroke ID preserved after redo");
+
+    stack.undo();
+    expect(store.strokes().empty(), "stroke successfully removed again on second undo");
+
+    std::cout << "[PASS] testAddStrokeAutoIdRedo\n";
+}
+
 int main() {
     testBasicUndoRedo();
     testRedoTruncationOnNewCommand();
@@ -256,6 +309,8 @@ int main() {
     testCompoundCommand();
     testAnnotationCommands();
     testWorkspaceMoveNodeCommand();
+    testUndoRedoByteTracking();
+    testAddStrokeAutoIdRedo();
     std::cout << "All UndoStack tests passed successfully!\n";
     return 0;
 }

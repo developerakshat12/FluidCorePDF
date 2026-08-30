@@ -1,0 +1,46 @@
+id: TASK-2.10-basic-text-selection-and-copy
+title: Basic text selection, multi-page highlight rendering, and clipboard copy
+milestone: M1
+workspace: D:\Reference Repos\fluidcore-platform
+specs:
+  - specs/integration.md (section 2 — cross-pane excerpt and selection)
+  - specs/system-architecture.md (Poppler/Cairo layer, input handling)
+  - specs/file-function-map.md (TextSelection, TextSelectionService, InkOverlay rows)
+  - skills/cpp-core-dev/SKILL.md
+  - skills/gtk-frontend/SKILL.md
+dependencies:
+  - TASK-2.1-poppler-document-pane
+  - TASK-2.5-ink-annotations-on-pdf
+  - TASK-2.6-thumbnails-sidebar
+  - TASK-2.7-dirty-rect-and-tile-cache
+  - TASK-2.8-stroke-stabilizer
+  - TASK-2.9-undo-redo-framework
+deliverables:
+  - src/libfluidcore/text/TextSelection.{h,cpp} — pure C++20 domain model for SelectionRect,
+    PageTextSelection, MultiPageSelectionState, line rect coalescing, clipboard formatting,
+    and scoped damage box computation (zero GUI/Poppler headers).
+  - src/libfluidcore/tests/TextSelectionTest.cpp — unit test suite for TextSelection.
+  - src/app/TextSelectionService.{h,cpp} — Poppler-GLib glyph layout caching, live drag tracking,
+    reading-order text extraction via poppler_page_get_selected_text, and GTK clipboard dispatch.
+  - src/app/InkOverlay.{h,cpp} modifications — text selection tool mode with I-beam cursor,
+    drag selection tracking, scoped damage invalidation, and semi-transparent Cairo highlight rendering.
+  - src/app/DocumentPane.{h,cpp} modifications — selection querying, copy forwarding, tool switching,
+    and explicit clear on destruction.
+  - src/app/main.cpp modifications — wire Ctrl+C (Copy), Escape (Clear), and Alt+1..4 / key shortcuts.
+  - src/libfluidcore/CMakeLists.txt & src/app/CMakeLists.txt — link text selection sources and register test.
+  - specs/file-function-map.md — new rows for TextSelection and TextSelectionService.
+  - planning/roadmap.yaml & planning/ROADMAP.md — mark text selection complete (M1 enters demo_gate_pending).
+acceptance_checks:
+  - "clang-format --dry-run --Werror clean on all touched files"
+  - "python ops/scripts/check_invariants.py passes (0 violations)"
+  - "all registered CTest targets pass (100%)"
+  - "Pure C++20 TextSelectionTest validates normalization, coalescing, multi-page, and damage math"
+  - "Live drag preserves performance budgets (< 0.05ms) via cached Poppler glyph layouts"
+  - "Text selection highlights render cleanly with semi-transparent fill and subtle outline"
+  - "Ctrl+C copies selected text to GDK_SELECTION_CLIPBOARD (and PRIMARY on Linux)"
+  - "Escape clears active selection with scoped damage invalidation"
+constraints:
+  - Do not add GUI/Poppler headers to src/libfluidcore/ (ADR-0001 clean separation)
+  - Do not touch the Xournal++ submodule
+  - Commit means commit AND push; every commit carries -s (DCO)
+  - Frontend targets GTK 3.24+ standard APIs

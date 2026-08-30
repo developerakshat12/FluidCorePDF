@@ -6,22 +6,46 @@ namespace FluidCore {
 
 FluidCoreEngine::FluidCoreEngine(std::string projectId) : m_model(std::move(projectId)) {}
 
-void FluidCoreEngine::registerDocumentGeometry(const std::string&,
-                                               const std::vector<PageGeometry>&) {
-    // TODO(M2): store per-document page stacks for the squeeze mapper.
+void FluidCoreEngine::registerDocumentGeometry(const std::string& docId,
+                                               const std::vector<PageGeometry>& pages) {
+    m_squeezeEngine.registerDocumentGeometry(docId, pages);
 }
 
-CoordinateTransformResult FluidCoreEngine::mapDocumentYToScreen(double, const std::string&) const {
-    return {};
+CoordinateTransformResult FluidCoreEngine::mapDocumentYToScreen(double docY,
+                                                               const std::string& docId) const {
+    return m_squeezeEngine.mapDocumentYToScreen(docY, docId);
 }
 
-CoordinateTransformResult FluidCoreEngine::mapScreenYToDocument(double, const std::string&) const {
-    return {};
+CoordinateTransformResult FluidCoreEngine::mapScreenYToDocument(double screenY,
+                                                               const std::string& docId) const {
+    return m_squeezeEngine.mapScreenYToDocument(screenY, docId);
 }
 
-void FluidCoreEngine::setSqueezeRegion(const std::string&, double, double, double) {}
+void FluidCoreEngine::setSqueezeRegion(const std::string& docId, double yStart, double yEnd,
+                                      double alpha) {
+    m_squeezeEngine.setSqueezeRegion(docId, yStart, yEnd, alpha);
+}
 
-void FluidCoreEngine::resetSqueeze(const std::string&) {}
+void FluidCoreEngine::setSqueezeRegionWithId(const std::string& docId, const std::string& regionId,
+                                            double yStart, double yEnd, double alpha) {
+    m_squeezeEngine.setSqueezeRegionWithId(docId, regionId, yStart, yEnd, alpha);
+}
+
+void FluidCoreEngine::removeSqueezeRegion(const std::string& docId, const std::string& regionId) {
+    m_squeezeEngine.removeSqueezeRegion(docId, regionId);
+}
+
+void FluidCoreEngine::resetSqueeze(const std::string& docId) {
+    m_squeezeEngine.resetSqueeze(docId);
+}
+
+std::vector<SqueezeSegment> FluidCoreEngine::getSqueezeSegments(const std::string& docId) const {
+    return m_squeezeEngine.getSegments(docId);
+}
+
+double FluidCoreEngine::getTotalSqueezedHeight(const std::string& docId) const {
+    return m_squeezeEngine.totalSqueezedHeight(docId);
+}
 
 std::string FluidCoreEngine::insertNode(std::unique_ptr<WorkspaceNode> node) {
     return m_model.insert(std::move(node));

@@ -182,7 +182,7 @@ std::uint32_t RTreeIndex::splitNode(std::uint32_t nodeIdx) {
             break;
         }
 
-        const Entry next = pool.back();
+        Entry next = std::move(pool.back());
         pool.pop_back();
 
         // Standard quadratic-split pickNext: prefer the group needing least

@@ -29,7 +29,14 @@ class StubApi final : public FluidCoreAPI {
         return {};
     }
     void setSqueezeRegion(const std::string&, double, double, double) override {}
+    void setSqueezeRegionWithId(const std::string&, const std::string&, double, double,
+                                double) override {}
+    void removeSqueezeRegion(const std::string&, const std::string&) override {}
     void resetSqueeze(const std::string&) override {}
+    std::vector<SqueezeSegment> getSqueezeSegments(const std::string&) const override {
+        return {};
+    }
+    double getTotalSqueezedHeight(const std::string&) const override { return 0.0; }
 
     std::string insertNode(std::unique_ptr<WorkspaceNode>) override { return {}; }
     void updateNodePosition(const std::string&, double, double) override {}

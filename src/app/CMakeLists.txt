@@ -7,11 +7,13 @@ pkg_check_modules(CAIRO REQUIRED IMPORTED_TARGET cairo)
 add_executable(fluidcore_app
     main.cpp
     DocumentPane.cpp
+    DocumentSearchService.cpp
     InkOverlay.cpp
     PageTileCache.cpp
+    SearchBarWidget.cpp
+    SqueezeRenderHelper.cpp
     StrokeStabilizer.cpp
-    ThumbnailCache.cpp
-    ThumbnailSidebar.cpp
+    TextSelectionService.cpp
     WorkspaceView.cpp
 )
 
@@ -26,15 +28,6 @@ else()
 endif()
 
 if(BUILD_TESTING)
-    add_executable(thumbnail_layout_test ThumbnailLayoutTest.cpp)
-    target_include_directories(thumbnail_layout_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-    if(MSVC)
-        target_compile_options(thumbnail_layout_test PRIVATE /W4 /permissive-)
-    else()
-        target_compile_options(thumbnail_layout_test PRIVATE -Wall -Wextra -Wpedantic)
-    endif()
-    add_test(NAME ThumbnailLayoutTest COMMAND thumbnail_layout_test)
-
     add_executable(damage_rect_test DamageRectTest.cpp)
     target_include_directories(damage_rect_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     if(MSVC)
@@ -62,4 +55,24 @@ if(BUILD_TESTING)
         target_compile_options(stroke_stabilizer_test PRIVATE -Wall -Wextra -Wpedantic)
     endif()
     add_test(NAME StrokeStabilizerTest COMMAND stroke_stabilizer_test)
+
+    add_executable(squeeze_render_test SqueezeRenderTest.cpp SqueezeRenderHelper.cpp)
+    target_include_directories(squeeze_render_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(squeeze_render_test PRIVATE fluidcore PkgConfig::CAIRO)
+    if(MSVC)
+        target_compile_options(squeeze_render_test PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(squeeze_render_test PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    add_test(NAME SqueezeRenderTest COMMAND squeeze_render_test)
+
+    add_executable(search_squeeze_planner_test SearchSqueezePlannerTest.cpp SqueezeRenderHelper.cpp)
+    target_include_directories(search_squeeze_planner_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(search_squeeze_planner_test PRIVATE fluidcore PkgConfig::CAIRO)
+    if(MSVC)
+        target_compile_options(search_squeeze_planner_test PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(search_squeeze_planner_test PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    add_test(NAME SearchSqueezePlannerTest COMMAND search_squeeze_planner_test)
 endif()

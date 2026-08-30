@@ -15,7 +15,7 @@ bool AddStrokeCommand::undo() {
 }
 
 bool AddStrokeCommand::redo() {
-    m_store.addStroke(m_pageIdx, m_stroke);
+    m_stroke.id = m_store.addStroke(m_pageIdx, m_stroke);
     return true;
 }
 

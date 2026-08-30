@@ -75,12 +75,16 @@ int main() {
                       "removeNode empties the scene");
     api.removeNode("missing"); // must not crash
 
-    // Milestone-stubbed surface stays callable with stub semantics.
+    // Squeeze mapping delegates to live SqueezeEngine
     api.registerDocumentGeometry("doc-1", {{0, 612.0, 792.0, 0.0}});
     failures += check(api.mapDocumentYToScreen(100.0, "doc-1").alpha == 1.0,
-                      "squeeze mapping still reports the unsqueezed default (M2)");
+                      "squeeze mapping reports unsqueezed alpha default when no regions set");
     api.setSqueezeRegion("doc-1", 10.0, 20.0, 0.5);
+    failures += check(std::abs(api.mapDocumentYToScreen(15.0, "doc-1").alpha - 0.5) < 1e-6,
+                      "squeeze mapping reports squeezed alpha in active region");
     api.resetSqueeze("doc-1");
+    failures += check(api.mapDocumentYToScreen(15.0, "doc-1").alpha == 1.0,
+                      "squeeze mapping resets to alpha 1.0 after resetSqueeze");
     failures +=
         check(api.getEdgeGeometry("e").controlPoints.empty(), "edge spline stub empty (M4)");
     failures += check(api.createInkLink("a", "b", {}).empty(), "ink-link stub returns no id (M4)");

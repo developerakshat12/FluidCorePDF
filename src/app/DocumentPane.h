@@ -1,6 +1,9 @@
 #pragma once
 
+#include "DocumentSearchService.h"
 #include "PageTileCache.h"
+#include "SearchBarWidget.h"
+#include "squeeze/SqueezeEngine.h"
 #include "storage/AnnotationStore.h"
 #include "undo/UndoStack.h"
 
@@ -15,24 +18,13 @@
 namespace FluidCoreApp {
 
 class InkOverlay;
-class ThumbnailSidebar;
 
-// Left-pane document viewport (specs/integration.md §1, M1 Reader Core):
-// A horizontal GtkPaned hosting the ThumbnailSidebar on the left (with draggable divider)
-// and a GtkScrolledWindow on the right containing the continuous Poppler PDF DrawingArea
-// and the interactive InkOverlay for live annotation.
-// Owns UndoStack for transactional stroke addition, erasure, and page clear actions.
-// Uses PageTileCache with LRU byte budgeting and visible-page pinning for instant blits.
-// On open <file>.pdf, automatically loads companion <file>.xopp if present;
-// on close or explicit save (Ctrl+S), writes companion .xopp via AnnotationStore.
+// Left-pane document viewport (specs/integration.md §1, M1 Reader Core & M2 Squeeze Engine):
+// A continuous Poppler PDF DrawingArea with LRU tile caching, interactive InkOverlay,
+// dynamic SqueezeEngine piecewise rendering, and search-driven accordion squeezing.
 class DocumentPane {
   public:
-    struct PageLayout {
-        PopplerPage* page = nullptr;
-        double y = 0.0;
-        double width = 0.0;
-        double height = 0.0;
-    };
+    using PageLayout = SearchPageLayout;
 
     // Empty path shows an empty-state label instead of a document.
     explicit DocumentPane(const std::string& pdfPath);
@@ -42,7 +34,7 @@ class DocumentPane {
     DocumentPane(const DocumentPane&) = delete;
     DocumentPane& operator=(const DocumentPane&) = delete;
 
-    GtkWidget* widget() const { return m_paned ? m_paned : m_scroller; }
+    GtkWidget* widget() const { return m_scroller; }
 
     bool save() { return saveAnnotations(); }
     bool saveAnnotations();
@@ -52,7 +44,13 @@ class DocumentPane {
     bool canUndo() const { return m_undoStack.canUndo(); }
     bool canRedo() const { return m_undoStack.canRedo(); }
 
-    void scrollToPage(std::size_t pageIndex);
+    void setTool(const std::string& tool);
+    const std::string& tool() const;
+
+    bool hasTextSelection() const;
+    void clearTextSelection();
+    bool copySelection();
+
     void clearCache() { m_pageTileCache.clear(); }
 
     const std::string& pdfPath() const { return m_pdfPath; }
@@ -66,17 +64,48 @@ class DocumentPane {
     const FluidCore::UndoStack& undoStack() const { return m_undoStack; }
 
     InkOverlay* inkOverlay() const { return m_inkOverlay.get(); }
-    ThumbnailSidebar* thumbnailSidebar() const { return m_thumbnailSidebar.get(); }
     PageTileCache& pageTileCache() { return m_pageTileCache; }
+
+    // Squeeze Engine facades for view & overlay components
+    double docYToScreen(double docY) const;
+    double screenYToDoc(double screenY) const;
+    std::vector<FluidCore::SqueezeSegment> squeezeSegments() const;
+    double totalSqueezedHeight() const;
+    bool isSqueezed() const;
+
+    FluidCore::SqueezeEngine& squeezeEngine() { return m_squeezeEngine; }
+    const FluidCore::SqueezeEngine& squeezeEngine() const { return m_squeezeEngine; }
+    const std::string& docId() const { return m_docId; }
+
+    // Transactional Squeeze controls
+    void setSqueezeFold(double yStart, double yEnd, double alpha);
+    void resetSqueeze();
+    void updateLayoutDimensions();
+
+    // Search-Driven Squeeze Subsystem
+    void openSearch(bool enableSqueeze = true);
+    void closeSearch();
+    void navigateSearch(int direction);
+    void scrollToSearchHit(std::size_t hitIndex);
+    bool isSearchActive() const;
+    const std::vector<SearchHit>& searchHits() const { return m_searchHits; }
+    std::size_t activeSearchHitIndex() const { return m_activeSearchHitIndex; }
 
   private:
     static void drawCallback(GtkWidget* area, cairo_t* cr, gpointer userData);
-    void draw(cairo_t* cr);
+    static gboolean scrollCallback(GtkWidget* widget, GdkEventScroll* event, gpointer userData);
 
-    static void onScrollValueChanged(GtkAdjustment* adj, gpointer userData);
+    void draw(cairo_t* cr);
+    gboolean onScroll(GdkEventScroll* event);
+    void commitScrollSqueeze();
+
+    void onSearchQueryChanged(const std::string& query, bool enableSqueeze);
+    void onSearchSqueezeToggled(bool enableSqueeze);
+    void applySearchSqueeze();
 
     std::string m_pdfPath;
-    GtkWidget* m_paned = nullptr;
+    std::string m_docId = "doc-primary";
+
     GtkWidget* m_scroller = nullptr;
     GtkWidget* m_overlay = nullptr;
     GtkWidget* m_area = nullptr;
@@ -88,8 +117,20 @@ class DocumentPane {
     PageTileCache m_pageTileCache;
     FluidCore::AnnotationStore m_annotationStore;
     FluidCore::UndoStack m_undoStack;
+    FluidCore::SqueezeEngine m_squeezeEngine;
     std::unique_ptr<InkOverlay> m_inkOverlay;
-    std::unique_ptr<ThumbnailSidebar> m_thumbnailSidebar;
+
+    // Interactive wheel squeeze state
+    double m_wheelSqueezeCenterDocY = 0.0;
+    double m_wheelSqueezeAlpha = 1.0;
+    bool m_hasActiveWheelSqueeze = false;
+    guint m_wheelDebounceTimerId = 0;
+
+    // Search subsystem state
+    std::unique_ptr<SearchBarWidget> m_searchBar;
+    DocumentSearchService m_searchService;
+    std::vector<SearchHit> m_searchHits;
+    std::size_t m_activeSearchHitIndex = 0;
 };
 
 } // namespace FluidCoreApp

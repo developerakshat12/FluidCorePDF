@@ -53,6 +53,21 @@ struct CoordinateTransformResult {
     double alpha = 1.0;
 };
 
+struct SqueezeRegion {
+    std::string id;
+    double yStart = 0.0;
+    double yEnd = 0.0;
+    double alpha = 1.0;
+};
+
+struct SqueezeSegment {
+    double docYStart = 0.0;
+    double docYEnd = 0.0;
+    double screenYStart = 0.0;
+    double screenYEnd = 0.0;
+    double alpha = 1.0;
+};
+
 struct BezierSpline {
     std::vector<Point> controlPoints;
 };
@@ -84,7 +99,12 @@ class FluidCoreAPI {
                                                            const std::string& docId) const = 0;
     virtual void setSqueezeRegion(const std::string& docId, double yStart, double yEnd,
                                   double alpha) = 0;
+    virtual void setSqueezeRegionWithId(const std::string& docId, const std::string& regionId,
+                                        double yStart, double yEnd, double alpha) = 0;
+    virtual void removeSqueezeRegion(const std::string& docId, const std::string& regionId) = 0;
     virtual void resetSqueeze(const std::string& docId) = 0;
+    virtual std::vector<SqueezeSegment> getSqueezeSegments(const std::string& docId) const = 0;
+    virtual double getTotalSqueezedHeight(const std::string& docId) const = 0;
 
     // Spatial Scene Graph API (UUID-based Identifiers matching SQLite Schema)
     virtual std::string insertNode(std::unique_ptr<WorkspaceNode> node) = 0;
