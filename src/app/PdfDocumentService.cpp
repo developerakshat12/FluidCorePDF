@@ -122,9 +122,10 @@ PopplerPagePtr PdfDocumentService::getBackgroundPage(const std::string& docId, s
     return PopplerPagePtr(page);
 }
 
-CairoSurfaceHandle PdfDocumentService::renderBackgroundCrop(
-    const std::string& docId, std::size_t pageNo, const FluidCore::Rectangle& normRect,
-    int targetW, int targetH) {
+CairoSurfaceHandle PdfDocumentService::renderBackgroundCrop(const std::string& docId,
+                                                            std::size_t pageNo,
+                                                            const FluidCore::Rectangle& normRect,
+                                                            int targetW, int targetH) {
     std::lock_guard<std::mutex> workerLock(m_workerPopplerMutex);
 
     std::string filePath;
