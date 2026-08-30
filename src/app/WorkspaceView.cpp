@@ -1376,8 +1376,10 @@ void WorkspaceView::draw(cairo_t* cr, int width, int height) {
     // Render infinite dot-grid
     drawBackgroundGrid(cr, width, height);
 
-    // Viewport spatial culling query (O(log N) R-tree query)
-    const FluidCore::Rectangle viewport{m_originX, m_originY, width / m_zoom, height / m_zoom};
+    // Viewport spatial culling query (O(log N) R-tree query with 150pt safety padding)
+    const double pad = 150.0 / m_zoom;
+    const FluidCore::Rectangle viewport{m_originX - pad, m_originY - pad, width / m_zoom + 2.0 * pad,
+                                        height / m_zoom + 2.0 * pad};
     const std::vector<FluidCore::WorkspaceNode*> visibleNodes = m_api.queryVisibleNodes(viewport);
 
     for (const FluidCore::WorkspaceNode* node : visibleNodes) {
