@@ -12,22 +12,22 @@ void FluidCoreEngine::registerDocumentGeometry(const std::string& docId,
 }
 
 CoordinateTransformResult FluidCoreEngine::mapDocumentYToScreen(double docY,
-                                                               const std::string& docId) const {
+                                                                const std::string& docId) const {
     return m_squeezeEngine.mapDocumentYToScreen(docY, docId);
 }
 
 CoordinateTransformResult FluidCoreEngine::mapScreenYToDocument(double screenY,
-                                                               const std::string& docId) const {
+                                                                const std::string& docId) const {
     return m_squeezeEngine.mapScreenYToDocument(screenY, docId);
 }
 
 void FluidCoreEngine::setSqueezeRegion(const std::string& docId, double yStart, double yEnd,
-                                      double alpha) {
+                                       double alpha) {
     m_squeezeEngine.setSqueezeRegion(docId, yStart, yEnd, alpha);
 }
 
 void FluidCoreEngine::setSqueezeRegionWithId(const std::string& docId, const std::string& regionId,
-                                            double yStart, double yEnd, double alpha) {
+                                             double yStart, double yEnd, double alpha) {
     m_squeezeEngine.setSqueezeRegionWithId(docId, regionId, yStart, yEnd, alpha);
 }
 

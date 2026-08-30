@@ -25,8 +25,7 @@ class SqueezeEngine {
     SqueezeEngine();
     ~SqueezeEngine() = default;
 
-    void registerDocumentGeometry(const std::string& docId,
-                                  const std::vector<PageGeometry>& pages);
+    void registerDocumentGeometry(const std::string& docId, const std::vector<PageGeometry>& pages);
 
     // Region management with IDs (User / Standard folds)
     std::string setSqueezeRegion(const std::string& docId, double yStart, double yEnd,

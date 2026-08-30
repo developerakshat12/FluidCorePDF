@@ -28,8 +28,7 @@ bool SetSqueezeRegionsCommand::redo() {
 }
 
 std::size_t SetSqueezeRegionsCommand::estimatedSizeBytes() const {
-    return sizeof(*this) + m_docId.capacity() +
-           m_newRegions.capacity() * sizeof(SqueezeRegion) +
+    return sizeof(*this) + m_docId.capacity() + m_newRegions.capacity() * sizeof(SqueezeRegion) +
            m_oldRegions.capacity() * sizeof(SqueezeRegion);
 }
 
@@ -56,8 +55,7 @@ bool ResetSqueezeCommand::redo() {
 }
 
 std::size_t ResetSqueezeCommand::estimatedSizeBytes() const {
-    return sizeof(*this) + m_docId.capacity() +
-           m_savedRegions.capacity() * sizeof(SqueezeRegion);
+    return sizeof(*this) + m_docId.capacity() + m_savedRegions.capacity() * sizeof(SqueezeRegion);
 }
 
 } // namespace FluidCore

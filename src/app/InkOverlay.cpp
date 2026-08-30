@@ -363,7 +363,8 @@ gboolean InkOverlay::onButtonPress(GdkEventButton* event) {
             } else {
                 const auto damage = DamageRect::computePointDamage({event->x, event->y},
                                                                    m_activeStroke.width * pressure);
-                gtk_widget_queue_draw_area(m_widget, damage.x, damage.y, damage.width, damage.height);
+                gtk_widget_queue_draw_area(m_widget, damage.x, damage.y, damage.width,
+                                           damage.height);
             }
             return TRUE;
         }
@@ -519,7 +520,8 @@ gboolean InkOverlay::onButtonRelease(GdkEventButton* event) {
                 const double maxP = std::max(seg.pressure0, seg.pressure1);
                 const auto damage =
                     DamageRect::computeBezierDamage(b0, b1, b2, b3, m_activeStroke.width * maxP);
-                gtk_widget_queue_draw_area(m_widget, damage.x, damage.y, damage.width, damage.height);
+                gtk_widget_queue_draw_area(m_widget, damage.x, damage.y, damage.width,
+                                           damage.height);
             }
         }
 

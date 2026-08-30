@@ -34,9 +34,7 @@ class SearchBarWidget {
     void setSqueezeToggleCallback(std::function<void(bool squeeze)> cb) {
         m_onSqueezeToggled = std::move(cb);
     }
-    void setCloseCallback(std::function<void()> cb) {
-        m_onClose = std::move(cb);
-    }
+    void setCloseCallback(std::function<void()> cb) { m_onClose = std::move(cb); }
 
     std::string currentQuery() const;
     bool isSqueezeEnabled() const;

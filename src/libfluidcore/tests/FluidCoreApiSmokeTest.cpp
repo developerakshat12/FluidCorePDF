@@ -33,9 +33,7 @@ class StubApi final : public FluidCoreAPI {
                                 double) override {}
     void removeSqueezeRegion(const std::string&, const std::string&) override {}
     void resetSqueeze(const std::string&) override {}
-    std::vector<SqueezeSegment> getSqueezeSegments(const std::string&) const override {
-        return {};
-    }
+    std::vector<SqueezeSegment> getSqueezeSegments(const std::string&) const override { return {}; }
     double getTotalSqueezedHeight(const std::string&) const override { return 0.0; }
 
     std::string insertNode(std::unique_ptr<WorkspaceNode>) override { return {}; }

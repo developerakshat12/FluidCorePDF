@@ -6,10 +6,10 @@
 
 namespace FluidCore {
 
-std::vector<SqueezeRegion> SearchSqueezePlanner::computeSearchSqueezeRegions(
-    double totalDocHeight,
-    const std::vector<SearchHitSpan>& hits,
-    const SearchSqueezeConfig& config) {
+std::vector<SqueezeRegion>
+SearchSqueezePlanner::computeSearchSqueezeRegions(double totalDocHeight,
+                                                  const std::vector<SearchHitSpan>& hits,
+                                                  const SearchSqueezeConfig& config) {
     std::vector<SqueezeRegion> gapRegions;
     if (hits.empty() || totalDocHeight <= 0.0) {
         return gapRegions;
@@ -17,10 +17,9 @@ std::vector<SqueezeRegion> SearchSqueezePlanner::computeSearchSqueezeRegions(
 
     // Step 1: Pre-sort spans by docYStart to guarantee monotonic interval processing
     std::vector<SearchHitSpan> sortedHits = hits;
-    std::sort(sortedHits.begin(), sortedHits.end(),
-              [](const SearchHitSpan& a, const SearchHitSpan& b) {
-                  return a.docYStart < b.docYStart;
-              });
+    std::sort(
+        sortedHits.begin(), sortedHits.end(),
+        [](const SearchHitSpan& a, const SearchHitSpan& b) { return a.docYStart < b.docYStart; });
 
     // Step 2: Expand each hit by context padding and clamp to document bounds [0, totalDocHeight]
     struct Interval {
@@ -62,15 +61,15 @@ std::vector<SqueezeRegion> SearchSqueezePlanner::computeSearchSqueezeRegions(
 
     for (const auto& m : merged) {
         if (m.y0 - curDocY >= config.minGapHeight) {
-            gapRegions.push_back(SqueezeRegion{
-                "search-gap-" + std::to_string(gapIdx++), curDocY, m.y0, config.gapAlpha});
+            gapRegions.push_back(SqueezeRegion{"search-gap-" + std::to_string(gapIdx++), curDocY,
+                                               m.y0, config.gapAlpha});
         }
         curDocY = m.y1;
     }
 
     if (totalDocHeight - curDocY >= config.minGapHeight) {
-        gapRegions.push_back(SqueezeRegion{
-            "search-gap-" + std::to_string(gapIdx++), curDocY, totalDocHeight, config.gapAlpha});
+        gapRegions.push_back(SqueezeRegion{"search-gap-" + std::to_string(gapIdx++), curDocY,
+                                           totalDocHeight, config.gapAlpha});
     }
 
     return gapRegions;

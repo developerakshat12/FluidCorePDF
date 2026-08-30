@@ -142,7 +142,8 @@ void testSqueezeUndoRedo() {
 
     const double squeezedHeight = engine.totalSqueezedHeight("doc-undo");
     check(squeezedHeight < initialHeight, "height decreased after fold");
-    check(std::abs(squeezedHeight - 700.0) < kEps, "squeezed height is exactly 700 (400 compressed to 100)");
+    check(std::abs(squeezedHeight - 700.0) < kEps,
+          "squeezed height is exactly 700 (400 compressed to 100)");
 
     // Undo fold
     stack.undo();

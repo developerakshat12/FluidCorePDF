@@ -179,8 +179,10 @@ void onActivate(GtkApplication* app, gpointer userData) {
                      }),
                      documentPane);
     g_action_map_add_action(G_ACTION_MAP(window), G_ACTION(resetSqueezeAction));
-    const gchar* resetSqueezeAccels[] = {"<Primary><Shift>0", "<Control><Shift>0", "<Primary><Shift>parenright", nullptr};
-    gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.reset_squeeze", resetSqueezeAccels);
+    const gchar* resetSqueezeAccels[] = {"<Primary><Shift>0", "<Control><Shift>0",
+                                         "<Primary><Shift>parenright", nullptr};
+    gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.reset_squeeze",
+                                          resetSqueezeAccels);
 
     // Wire Ctrl+F (Search) and Ctrl+Shift+S (Search Squeeze) actions
     GSimpleAction* searchAction = g_simple_action_new("search", nullptr);
@@ -206,8 +208,10 @@ void onActivate(GtkApplication* app, gpointer userData) {
                      }),
                      documentPane);
     g_action_map_add_action(G_ACTION_MAP(window), G_ACTION(searchSqueezeAction));
-    const gchar* searchSqueezeAccels[] = {"<Primary><Shift>s", "<Control><Shift>s", "<Primary><Shift>f", nullptr};
-    gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.search_squeeze", searchSqueezeAccels);
+    const gchar* searchSqueezeAccels[] = {"<Primary><Shift>s", "<Control><Shift>s",
+                                          "<Primary><Shift>f", nullptr};
+    gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.search_squeeze",
+                                          searchSqueezeAccels);
 
     // Direct key-press fallback for window-level shortcut handling
     g_signal_connect(

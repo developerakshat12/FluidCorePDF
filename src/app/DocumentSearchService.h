@@ -45,20 +45,16 @@ class DocumentSearchService {
     ~DocumentSearchService();
 
     // Synchronous search across all document pages, returning strictly sorted hits.
-    std::vector<SearchHit> searchSync(
-        PopplerDocument* document,
-        const std::vector<SearchPageLayout>& pages,
-        const std::string& query,
-        bool caseSensitive = false);
+    std::vector<SearchHit> searchSync(PopplerDocument* document,
+                                      const std::vector<SearchPageLayout>& pages,
+                                      const std::string& query, bool caseSensitive = false);
 
     // Asynchronous search running on a dedicated worker thread with cancellation support.
     // Dispatches results onto the GTK main loop via onComplete callback.
-    void searchAsync(
-        PopplerDocument* document,
-        const std::vector<SearchPageLayout>& pages,
-        const std::string& query,
-        std::function<void(std::vector<SearchHit>)> onComplete,
-        bool caseSensitive = false);
+    void searchAsync(PopplerDocument* document, const std::vector<SearchPageLayout>& pages,
+                     const std::string& query,
+                     std::function<void(std::vector<SearchHit>)> onComplete,
+                     bool caseSensitive = false);
 
     // Cancels any in-flight asynchronous search.
     void cancel();

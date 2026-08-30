@@ -25,10 +25,7 @@ bool close(double a, double b, double eps = 1e-6) {
 int testNoOpTransform() {
     int failures = 0;
     SqueezeEngine engine;
-    std::vector<PageGeometry> pages = {
-        {0, 612.0, 792.0, 0.0},
-        {1, 612.0, 792.0, 800.0}
-    };
+    std::vector<PageGeometry> pages = {{0, 612.0, 792.0, 0.0}, {1, 612.0, 792.0, 800.0}};
     engine.registerDocumentGeometry("doc-noop", pages);
 
     auto res1 = engine.mapDocumentYToScreen(100.0, "doc-noop");
@@ -55,7 +52,8 @@ int testSingleRegionSqueeze() {
     // Query point after region: docY = 400.
     // Screen should be: 100 + (200 * 0.5) + (400 - 300) = 100 + 100 + 100 = 300.
     auto res = engine.mapDocumentYToScreen(400.0, "doc-single");
-    failures += check(close(res.screenY, 300.0), "Single region query after region compressed correctly");
+    failures +=
+        check(close(res.screenY, 300.0), "Single region query after region compressed correctly");
     failures += check(close(res.alpha, 1.0), "Single region query after region reports alpha=1.0");
 
     // Inverse check: screenY = 300 -> docY = 400.
@@ -75,7 +73,8 @@ int testRoundTripAccuracy() {
     engine.setSqueezeRegion("doc-roundtrip", 200.0, 500.0, 0.3);
     engine.setSqueezeRegion("doc-roundtrip", 800.0, 1200.0, 0.6);
 
-    std::vector<double> testDocYs = {0.0, 50.0, 200.0, 350.0, 500.0, 650.0, 800.0, 1000.0, 1200.0, 1500.0, 2000.0};
+    std::vector<double> testDocYs = {0.0,   50.0,   200.0,  350.0,  500.0, 650.0,
+                                     800.0, 1000.0, 1200.0, 1500.0, 2000.0};
     for (double docY : testDocYs) {
         auto forward = engine.mapDocumentYToScreen(docY, "doc-roundtrip");
         auto backward = engine.mapScreenYToDocument(forward.screenY, "doc-roundtrip");
@@ -100,7 +99,8 @@ int testNestedOverlappingRegions() {
     // docY 200..300: alpha 0.2 (len 100 -> screen 150..170)
     // expected screenY = 170.0, alpha = 0.2
     auto res = engine.mapDocumentYToScreen(300.0, "doc-nested");
-    failures += check(close(res.screenY, 170.0), "Nested overlap query inside inner region correct");
+    failures +=
+        check(close(res.screenY, 170.0), "Nested overlap query inside inner region correct");
     failures += check(close(res.alpha, 0.2), "Nested overlap reports inner min alpha=0.2");
 
     // Outside inner region but inside outer region: docY = 450:
@@ -119,10 +119,7 @@ int testPageIndexResolution() {
     int failures = 0;
     SqueezeEngine engine;
     std::vector<PageGeometry> pages = {
-        {0, 612.0, 792.0, 0.0},
-        {1, 612.0, 792.0, 850.0},
-        {2, 612.0, 792.0, 1700.0}
-    };
+        {0, 612.0, 792.0, 0.0}, {1, 612.0, 792.0, 850.0}, {2, 612.0, 792.0, 1700.0}};
     engine.registerDocumentGeometry("doc-pages", pages);
     engine.setSqueezeRegion("doc-pages", 400.0, 1000.0, 0.5);
 
@@ -178,7 +175,8 @@ int testDegenerateAlphaClamping() {
     failures += check(close(res.alpha, 0.01), "Alpha=0.0 clamped to 0.01 reports alpha=0.01");
 
     auto inv = engine.mapScreenYToDocument(101.0, "doc-degen");
-    failures += check(close(inv.screenY, 200.0), "Alpha=0.0 inverse correctly maps 101.0 back to 200.0");
+    failures +=
+        check(close(inv.screenY, 200.0), "Alpha=0.0 inverse correctly maps 101.0 back to 200.0");
 
     return failures;
 }
@@ -246,7 +244,8 @@ int testPartialOverlapThreeSegmentMerge() {
     failures += check(close(r1.screenY, 125.0), "Partial overlap left segment screenY=125");
     failures += check(close(r1.alpha, 0.5), "Partial overlap left segment alpha=0.5");
 
-    // Segment 2 (middle intersection): docY = 250 -> screenY = 175, alpha = 0.5 (min of 0.5 and 0.8)
+    // Segment 2 (middle intersection): docY = 250 -> screenY = 175, alpha = 0.5 (min of 0.5 and
+    // 0.8)
     auto r2 = engine.mapDocumentYToScreen(250.0, "doc-partial");
     failures += check(close(r2.screenY, 175.0), "Partial overlap middle intersection screenY=175");
     failures += check(close(r2.alpha, 0.5), "Partial overlap middle intersection alpha=0.5");

@@ -104,9 +104,8 @@ DocumentPane::DocumentPane(const std::string& pdfPath) : m_pdfPath(pdfPath) {
         onSearchQueryChanged(query, enableSqueeze);
     });
     m_searchBar->setNavigateCallback([this](int dir) { navigateSearch(dir); });
-    m_searchBar->setSqueezeToggleCallback([this](bool enableSqueeze) {
-        onSearchSqueezeToggled(enableSqueeze);
-    });
+    m_searchBar->setSqueezeToggleCallback(
+        [this](bool enableSqueeze) { onSearchSqueezeToggled(enableSqueeze); });
     m_searchBar->setCloseCallback([this]() { closeSearch(); });
 
     gtk_overlay_add_overlay(GTK_OVERLAY(m_overlay), m_searchBar->widget());
@@ -241,8 +240,7 @@ void DocumentPane::onSearchQueryChanged(const std::string& query, bool enableSqu
     }
 
     m_searchService.searchAsync(
-        m_document, m_pages, query,
-        [this, enableSqueeze](std::vector<SearchHit> hits) {
+        m_document, m_pages, query, [this, enableSqueeze](std::vector<SearchHit> hits) {
             m_searchHits = std::move(hits);
             m_activeSearchHitIndex = 0;
             if (m_searchBar) {
@@ -585,8 +583,8 @@ void DocumentPane::draw(cairo_t* cr) {
                         cairo_set_source_rgba(cr, 1.0, 0.85, 0.15, 0.35);
                     }
 
-                    cairo_rectangle(cr, pageX + rX0 - 2.0, yOffset + rY0 - 1.0,
-                                    (rX1 - rX0) + 4.0, (rY1 - rY0) + 2.0);
+                    cairo_rectangle(cr, pageX + rX0 - 2.0, yOffset + rY0 - 1.0, (rX1 - rX0) + 4.0,
+                                    (rY1 - rY0) + 2.0);
                     cairo_fill_preserve(cr);
 
                     if (isActive) {
@@ -614,7 +612,7 @@ void DocumentPane::draw(cairo_t* cr) {
             // Accordion crease visual overlay if folded
             if (slice.isCompressed) {
                 SqueezeRenderHelper::renderAccordionCrease(cr, pageX, slice.screenYStart,
-                                                          layout.width, slice.alpha);
+                                                           layout.width, slice.alpha);
             }
         }
     }

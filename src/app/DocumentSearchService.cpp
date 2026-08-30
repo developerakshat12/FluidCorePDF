@@ -5,8 +5,7 @@
 
 namespace FluidCoreApp {
 
-DocumentSearchService::DocumentSearchService()
-    : m_alive(std::make_shared<bool>(true)) {
+DocumentSearchService::DocumentSearchService() : m_alive(std::make_shared<bool>(true)) {
     m_workerThread = std::thread(&DocumentSearchService::workerLoop, this);
 }
 
@@ -32,11 +31,10 @@ void DocumentSearchService::cancel() {
     }
 }
 
-std::vector<SearchHit> DocumentSearchService::searchSync(
-    PopplerDocument* document,
-    const std::vector<SearchPageLayout>& pages,
-    const std::string& query,
-    bool caseSensitive) {
+std::vector<SearchHit> DocumentSearchService::searchSync(PopplerDocument* document,
+                                                         const std::vector<SearchPageLayout>& pages,
+                                                         const std::string& query,
+                                                         bool caseSensitive) {
     std::vector<SearchHit> results;
     if (!document || pages.empty() || query.empty()) {
         return results;
@@ -87,12 +85,11 @@ std::vector<SearchHit> DocumentSearchService::searchSync(
     return results;
 }
 
-void DocumentSearchService::searchAsync(
-    PopplerDocument* document,
-    const std::vector<SearchPageLayout>& pages,
-    const std::string& query,
-    std::function<void(std::vector<SearchHit>)> onComplete,
-    bool caseSensitive) {
+void DocumentSearchService::searchAsync(PopplerDocument* document,
+                                        const std::vector<SearchPageLayout>& pages,
+                                        const std::string& query,
+                                        std::function<void(std::vector<SearchHit>)> onComplete,
+                                        bool caseSensitive) {
 
     if (query.empty() || !document || pages.empty()) {
         cancel();
@@ -107,14 +104,8 @@ void DocumentSearchService::searchAsync(
 
     {
         std::lock_guard<std::mutex> lock(m_searchMutex);
-        m_pendingRequest = SearchRequest{
-            searchId,
-            document,
-            pages,
-            query,
-            std::move(onComplete),
-            caseSensitive
-        };
+        m_pendingRequest =
+            SearchRequest{searchId, document, pages, query, std::move(onComplete), caseSensitive};
     }
     m_searchCv.notify_one();
 }
@@ -124,9 +115,8 @@ void DocumentSearchService::workerLoop() {
         SearchRequest req;
         {
             std::unique_lock<std::mutex> lock(m_searchMutex);
-            m_searchCv.wait(lock, [this]() {
-                return m_exitRequested.load() || m_pendingRequest.has_value();
-            });
+            m_searchCv.wait(
+                lock, [this]() { return m_exitRequested.load() || m_pendingRequest.has_value(); });
 
             if (m_exitRequested) {
                 break;
@@ -144,7 +134,8 @@ void DocumentSearchService::workerLoop() {
 
         auto hits = searchSync(req.document, req.pages, req.query, req.caseSensitive);
 
-        if (!m_cancelRequested && req.searchId == m_currentSearchId && req.onComplete && !m_exitRequested) {
+        if (!m_cancelRequested && req.searchId == m_currentSearchId && req.onComplete &&
+            !m_exitRequested) {
             struct CallbackData {
                 std::function<void(std::vector<SearchHit>)> callback;
                 std::vector<SearchHit> results;
@@ -168,8 +159,8 @@ void DocumentSearchService::workerLoop() {
     }
 }
 
-std::vector<FluidCore::SearchHitSpan> DocumentSearchService::toHitSpans(
-    const std::vector<SearchHit>& hits) {
+std::vector<FluidCore::SearchHitSpan>
+DocumentSearchService::toHitSpans(const std::vector<SearchHit>& hits) {
     std::vector<FluidCore::SearchHitSpan> spans;
     spans.reserve(hits.size());
     for (const auto& h : hits) {

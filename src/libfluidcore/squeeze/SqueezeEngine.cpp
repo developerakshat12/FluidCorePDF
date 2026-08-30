@@ -29,7 +29,7 @@ double clampAlpha(double alpha) {
 SqueezeEngine::SqueezeEngine() = default;
 
 void SqueezeEngine::registerDocumentGeometry(const std::string& docId,
-                                            const std::vector<PageGeometry>& pages) {
+                                             const std::vector<PageGeometry>& pages) {
     auto& doc = m_documents[docId];
     doc.pages = pages;
     doc.totalDocHeight = 0.0;
@@ -43,7 +43,7 @@ void SqueezeEngine::registerDocumentGeometry(const std::string& docId,
 }
 
 std::string SqueezeEngine::setSqueezeRegion(const std::string& docId, double yStart, double yEnd,
-                                           double alpha) {
+                                            double alpha) {
     auto it = m_documents.find(docId);
     if (it == m_documents.end()) {
         throw std::invalid_argument("Document ID not registered: " + docId);
@@ -55,7 +55,7 @@ std::string SqueezeEngine::setSqueezeRegion(const std::string& docId, double ySt
 }
 
 void SqueezeEngine::setSqueezeRegionWithId(const std::string& docId, const std::string& regionId,
-                                          double yStart, double yEnd, double alpha) {
+                                           double yStart, double yEnd, double alpha) {
     auto it = m_documents.find(docId);
     if (it == m_documents.end()) {
         throw std::invalid_argument("Document ID not registered: " + docId);
@@ -123,7 +123,7 @@ void SqueezeEngine::resetSqueeze(const std::string& docId) {
 }
 
 void SqueezeEngine::setSearchSqueezeRegions(const std::string& docId,
-                                           std::vector<SqueezeRegion> regions) {
+                                            std::vector<SqueezeRegion> regions) {
     auto it = m_documents.find(docId);
     if (it == m_documents.end()) {
         throw std::invalid_argument("Document ID not registered: " + docId);
@@ -156,7 +156,7 @@ bool SqueezeEngine::isSearchSqueezeActive(const std::string& docId) const {
 }
 
 void SqueezeEngine::setPreviewSqueezeRegion(const std::string& docId, double yStart, double yEnd,
-                                           double alpha) {
+                                            double alpha) {
     auto it = m_documents.find(docId);
     if (it == m_documents.end()) {
         throw std::invalid_argument("Document ID not registered: " + docId);
@@ -202,7 +202,7 @@ const std::vector<SqueezeRegion>& SqueezeEngine::getRawRegions(const std::string
 }
 
 void SqueezeEngine::setRawRegions(const std::string& docId,
-                                 const std::vector<SqueezeRegion>& regions) {
+                                  const std::vector<SqueezeRegion>& regions) {
     auto it = m_documents.find(docId);
     if (it == m_documents.end()) {
         throw std::invalid_argument("Document ID not registered: " + docId);
@@ -214,7 +214,7 @@ void SqueezeEngine::setRawRegions(const std::string& docId,
 }
 
 CoordinateTransformResult SqueezeEngine::mapDocumentYToScreen(double docY,
-                                                             const std::string& docId) const {
+                                                              const std::string& docId) const {
     auto it = m_documents.find(docId);
     if (it == m_documents.end()) {
         throw std::invalid_argument("Document ID not registered: " + docId);
@@ -237,9 +237,9 @@ CoordinateTransformResult SqueezeEngine::mapDocumentYToScreen(double docY,
         return CoordinateTransformResult{sY, pageIdx, 1.0};
     }
 
-    auto segIt = std::upper_bound(
-        doc.segments.begin(), doc.segments.end(), docY,
-        [](double val, const SqueezeSegment& seg) { return val < seg.docYEnd; });
+    auto segIt =
+        std::upper_bound(doc.segments.begin(), doc.segments.end(), docY,
+                         [](double val, const SqueezeSegment& seg) { return val < seg.docYEnd; });
 
     if (segIt != doc.segments.end()) {
         double sY = segIt->screenYStart + (docY - segIt->docYStart) * segIt->alpha;
@@ -250,7 +250,7 @@ CoordinateTransformResult SqueezeEngine::mapDocumentYToScreen(double docY,
 }
 
 CoordinateTransformResult SqueezeEngine::mapScreenYToDocument(double screenY,
-                                                             const std::string& docId) const {
+                                                              const std::string& docId) const {
     auto it = m_documents.find(docId);
     if (it == m_documents.end()) {
         throw std::invalid_argument("Document ID not registered: " + docId);
@@ -346,8 +346,8 @@ void SqueezeEngine::rebuildSegments(DocumentState& docState) {
 
     if (points.size() < 2) {
         if (docState.totalDocHeight > 0.0) {
-            docState.segments.push_back(SqueezeSegment{
-                0.0, docState.totalDocHeight, 0.0, docState.totalDocHeight, 1.0});
+            docState.segments.push_back(
+                SqueezeSegment{0.0, docState.totalDocHeight, 0.0, docState.totalDocHeight, 1.0});
         }
         return;
     }

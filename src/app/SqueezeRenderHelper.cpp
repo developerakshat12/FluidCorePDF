@@ -12,9 +12,9 @@ constexpr double kEps = 1e-9;
 
 } // namespace
 
-std::vector<PageSlice> SqueezeRenderHelper::decomposePage(
-    std::size_t pageIndex, double pageTopDocY, double pageHeight,
-    const std::vector<FluidCore::SqueezeSegment>& segments) {
+std::vector<PageSlice>
+SqueezeRenderHelper::decomposePage(std::size_t pageIndex, double pageTopDocY, double pageHeight,
+                                   const std::vector<FluidCore::SqueezeSegment>& segments) {
     std::vector<PageSlice> slices;
     if (pageHeight <= 0.0) {
         return slices;
@@ -39,10 +39,8 @@ std::vector<PageSlice> SqueezeRenderHelper::decomposePage(
             continue;
         }
 
-        const double sScreenStart =
-            seg.screenYStart + (sDocStart - seg.docYStart) * seg.alpha;
-        const double sScreenEnd =
-            seg.screenYStart + (sDocEnd - seg.docYStart) * seg.alpha;
+        const double sScreenStart = seg.screenYStart + (sDocStart - seg.docYStart) * seg.alpha;
+        const double sScreenEnd = seg.screenYStart + (sDocEnd - seg.docYStart) * seg.alpha;
 
         const double localDocStart = sDocStart - pageTopDocY;
         const double localDocEnd = sDocEnd - pageTopDocY;
@@ -62,8 +60,8 @@ std::vector<PageSlice> SqueezeRenderHelper::decomposePage(
     return slices;
 }
 
-std::vector<double> SqueezeRenderHelper::extractBreakpoints(
-    const std::vector<FluidCore::SqueezeSegment>& segments) {
+std::vector<double>
+SqueezeRenderHelper::extractBreakpoints(const std::vector<FluidCore::SqueezeSegment>& segments) {
     std::vector<double> bps;
     bps.reserve(segments.size() * 2);
     for (const auto& seg : segments) {
@@ -77,8 +75,9 @@ std::vector<double> SqueezeRenderHelper::extractBreakpoints(
     return bps;
 }
 
-std::vector<FluidCore::Point> SqueezeRenderHelper::subdividePointSpan(
-    FluidCore::Point p1, FluidCore::Point p2, const std::vector<double>& breakpoints) {
+std::vector<FluidCore::Point>
+SqueezeRenderHelper::subdividePointSpan(FluidCore::Point p1, FluidCore::Point p2,
+                                        const std::vector<double>& breakpoints) {
     std::vector<FluidCore::Point> result;
     result.push_back(p1);
 
@@ -114,8 +113,9 @@ std::vector<FluidCore::Point> SqueezeRenderHelper::subdividePointSpan(
     return result;
 }
 
-std::vector<FluidCore::Rectangle> SqueezeRenderHelper::subdivideRect(
-    const FluidCore::Rectangle& rect, const std::vector<double>& breakpoints) {
+std::vector<FluidCore::Rectangle>
+SqueezeRenderHelper::subdivideRect(const FluidCore::Rectangle& rect,
+                                   const std::vector<double>& breakpoints) {
     std::vector<FluidCore::Rectangle> result;
     if (rect.h <= 0.0 || rect.w <= 0.0) {
         return result;
@@ -147,8 +147,8 @@ std::vector<FluidCore::Rectangle> SqueezeRenderHelper::subdivideRect(
     return result;
 }
 
-void SqueezeRenderHelper::renderAccordionCrease(cairo_t* cr, double x, double screenY,
-                                                double width, double alpha) {
+void SqueezeRenderHelper::renderAccordionCrease(cairo_t* cr, double x, double screenY, double width,
+                                                double alpha) {
     if (width <= 0.0) {
         return;
     }

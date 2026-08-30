@@ -1,5 +1,5 @@
-#include "SqueezeRenderHelper.h"
 #include "search/SearchSqueezePlanner.h"
+#include "SqueezeRenderHelper.h"
 #include "squeeze/SqueezeEngine.h"
 
 #include <cmath>
@@ -104,7 +104,8 @@ void testManualVsSearchRegionIsolation() {
     check(engine.isSearchSqueezeActive("doc-iso"), "search squeeze active");
     // The search match at Y=400 MUST resolve to alpha=1.0 uncollapsed!
     auto resMatch = engine.mapDocumentYToScreen(400.0, "doc-iso");
-    check(std::abs(resMatch.alpha - 1.0) < kEps, "search match resolves to alpha=1.0 (uncollapsed)");
+    check(std::abs(resMatch.alpha - 1.0) < kEps,
+          "search match resolves to alpha=1.0 (uncollapsed)");
 
     // The gap before Y=350 MUST resolve to alpha=0.08
     auto resGap = engine.mapDocumentYToScreen(100.0, "doc-iso");
@@ -171,7 +172,7 @@ void testCrossCreaseHighlightSubdivision() {
     std::cout << "Running testCrossCreaseHighlightSubdivision...\n";
     // Hit bounding box that spans across a fold boundary
     Rectangle hitBox{20.0, 180.0, 300.0, 50.0}; // [180, 230]
-    std::vector<double> breakpoints = {200.0};   // Crease boundary at Y=200
+    std::vector<double> breakpoints = {200.0};  // Crease boundary at Y=200
 
     auto subBoxes = SqueezeRenderHelper::subdivideRect(hitBox, breakpoints);
     check(subBoxes.size() == 2, "search hit box subdivided into 2 rectangles at crease");
