@@ -71,7 +71,7 @@ gantt
 
 ### M3 — Workspace & Excerpts (Weeks 25–38)
 - [x] Infinite workspace canvas: pan/zoom, R*-tree spatial index, grid/minimap *(complete via TASK-3.1: 2D affine transform matrix [M_view], smooth focal zoom [5% to 1000%], pan gestures, zoom-adaptive infinite dot-grid, interactive minimap HUD with glowing viewport frame, O(log N) viewport culling, and 100k items benchmark with p99 <= 0.05ms << 1.0ms budget)*
-- [ ] Drag-out excerpts: text clips, image regions; normalized source bbox capture
+- [x] Drag-out excerpts: text clips, image regions; normalized source bbox capture *(complete via TASK-3.2: ExcerptCardNode pure domain model, binary/string ExcerptPayload serialization, InsertNodeCommand / RemoveNodeCommand undo/redo, InkOverlay drag source with SqueezeEngine document space unprojection, WorkspaceView drag destination, and rich Cairo card rendering with elevated shadow, header badge, return pill, and wrapped text)*
 - [ ] `ExcerptCardNode` rendering + live re-render on source zoom change
 - [ ] Bi-directional anchors + `ReturnAnchorPill` navigation
 - **Demo gate**: Sarah-persona workflow (extract 10 clauses from 3 PDFs into canvas, click any excerpt to jump back).

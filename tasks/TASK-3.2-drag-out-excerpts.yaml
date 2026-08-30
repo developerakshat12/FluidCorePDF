@@ -1,0 +1,34 @@
+id: TASK-3.2-drag-out-excerpts
+title: Drag-out excerpts (text & image) from DocumentPane into spatial cards on WorkspaceView with un-squeezed document unprojection
+milestone: M3
+workspace: D:\Reference Repos\fluidcore-platform
+specs:
+  - specs/new-features-backlog.md (section 2 — drag-out excerpts & spatial cards)
+  - specs/integration.md (section 2 — drag-and-drop protocol and ExcerptCardNode)
+  - specs/system-architecture.md (excerpt node domain model and Cairo card rendering)
+  - planning/ROADMAP.md (Milestone 3, Step 2)
+  - skills/cpp-core-dev/SKILL.md
+  - skills/gtk-frontend/SKILL.md
+dependencies:
+  - TASK-3.1-workspace-pan-zoom-and-spatial-index
+deliverables:
+  - src/libfluidcore/workspace/ExcerptCardNode.{h,cpp} — pure domain node with docId, pageNo, normalized [0, 1] document bounds, textSnippet, isImageExcerpt, highlight color, and timestamp (ADR-0001 compliant).
+  - src/libfluidcore/workspace/ExcerptPayload.{h,cpp} — self-contained binary/string drag-and-drop payload format with serialization/deserialization helpers and magic header FLUID_EXCERPT_V1.
+  - src/libfluidcore/undo/WorkspaceCommands.{h,cpp} — InsertNodeCommand and RemoveNodeCommand supporting full undo/redo cycles with UndoStack and WorkspaceModel.
+  - src/libfluidcore/tests/workspace/ExcerptCardNodeTest.cpp — comprehensive unit test suite verifying properties, clamping, cloning, payload serialization roundtrips, and command undo/redo.
+  - src/app/InkOverlay.{h,cpp} — drag source detection on active selection/lasso, GTK drag initiation (application/x-fluid-excerpt and text/plain), unprojecting screen coordinates to un-squeezed document bounds via SqueezeEngine::mapScreenYToDocument.
+  - src/app/WorkspaceView.{h,cpp} — drag destination handlers, world-space drop coordinate transformation, ExcerptCardNode instantiation, dynamic sizing, drop hover ghost preview, and rich Cairo card rendering with elevated drop shadow, document page badge, color accent strip, back-link return arrow, and text wrapping.
+  - src/app/main.cpp — seed rich initial ExcerptCardNodes in demo canvas.
+acceptance_checks:
+  - "clang-format --dry-run --Werror clean on all touched files"
+  - "python ops/scripts/check_invariants.py passes (0 GUI includes in libfluidcore)"
+  - "all registered CTest targets pass (100% - 16/16 test suites)"
+  - "ExcerptCardNode bounds clamping ensures normalized document coordinates remain in [0, 1] range"
+  - "ExcerptPayload serializes and deserializes UTF-8 text and geometry losslessly"
+  - "GTK DnD transfers excerpt payload from DocumentPane to WorkspaceView canvas"
+  - "WorkspaceView renders elevated excerpt cards with header badge, color bar, return pill, and wrapped text"
+constraints:
+  - Do not add GUI/Cairo/GTK headers to src/libfluidcore/ (ADR-0001 clean separation)
+  - Do not transfer raw cairo_surface_t* pointers across the DnD boundary; use self-contained ExcerptDropPayload
+  - Selection bounding boxes must be unprojected from screen space to un-squeezed document space
+  - Commit means commit AND push; every commit carries -s (DCO)

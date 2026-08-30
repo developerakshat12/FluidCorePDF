@@ -84,6 +84,7 @@ class WorkspaceNode {
     virtual ~WorkspaceNode() = default;
     virtual const std::string& id() const = 0;
     virtual Rectangle bounds() const = 0;
+    virtual std::unique_ptr<WorkspaceNode> clone() const { return nullptr; }
 };
 
 class FluidCoreAPI {

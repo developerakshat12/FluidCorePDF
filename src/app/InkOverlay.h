@@ -19,7 +19,7 @@ class DocumentPane;
 
 // GtkDrawingArea overlay on DocumentPane capturing pointer/stylus input,
 // streaming coordinates through StrokeStabilizer (Centripetal Catmull-Rom),
-// supporting text selection and clipboard copying via TextSelectionService,
+// supporting text selection, drag-out excerpts via GTK Drag-and-Drop,
 // rendering live inking with wet leading edge and text selection highlights,
 // and dispatching AddStrokeCommand/RemoveStrokeCommand to DocumentPane's UndoStack.
 class InkOverlay {
@@ -56,6 +56,11 @@ class InkOverlay {
 
     TextSelectionService& textSelectionService() { return m_textSelectionService; }
 
+    // Hit-testing and normalized document bounds calculation for drag-out excerpts
+    bool isPointInsideSelection(std::size_t pageIndex, double xp, double yp) const;
+    FluidCore::Rectangle computeNormalizedSelectionBounds(std::size_t pageIndex, double pageWidth,
+                                                          double pageHeight) const;
+
   private:
     static void drawCallback(GtkWidget* area, cairo_t* cr, gpointer userData);
     static gboolean buttonPressCallback(GtkWidget* widget, GdkEventButton* event,
@@ -64,11 +69,17 @@ class InkOverlay {
                                          gpointer userData);
     static gboolean buttonReleaseCallback(GtkWidget* widget, GdkEventButton* event,
                                           gpointer userData);
+    static void dragDataGetCallback(GtkWidget* widget, GdkDragContext* context,
+                                    GtkSelectionData* data, guint info, guint time,
+                                    gpointer userData);
+    static void dragEndCallback(GtkWidget* widget, GdkDragContext* context, gpointer userData);
 
     void draw(cairo_t* cr);
     gboolean onButtonPress(GdkEventButton* event);
     gboolean onMotionNotify(GdkEventMotion* event);
     gboolean onButtonRelease(GdkEventButton* event);
+    void onDragDataGet(GdkDragContext* context, GtkSelectionData* data, guint info, guint time);
+    void onDragEnd(GdkDragContext* context);
 
     void updateCursor();
 
@@ -98,6 +109,12 @@ class InkOverlay {
     bool m_isSelectingText = false;
     std::size_t m_dragStartPageIndex = 0;
     FluidCore::SelectionPoint m_dragStartPoint;
+
+    // Drag-out excerpt interaction state
+    bool m_isPotentialExcerptDrag = false;
+    double m_pressScreenX = 0.0;
+    double m_pressScreenY = 0.0;
+    std::size_t m_dragSourcePageIndex = 0;
 
     std::string m_currentTool = "pen";
     std::uint32_t m_currentColor = 0x000000;

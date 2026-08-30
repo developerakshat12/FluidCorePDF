@@ -1,6 +1,7 @@
 #include "DocumentPane.h"
 #include "FluidCoreEngine.h"
 #include "WorkspaceView.h"
+#include "workspace/ExcerptCardNode.h"
 
 #include <gtk/gtk.h>
 
@@ -10,12 +11,13 @@
 
 namespace {
 
+using FluidCore::Color;
+using FluidCore::ExcerptCardNode;
 using FluidCore::FluidCoreAPI;
 using FluidCore::FluidCoreEngine;
 using FluidCore::Rectangle;
 
-// Minimal concrete node so the demo shell can seed content through the abstract
-// boundary. Real node types (excerpt cards, notes, stacks) arrive with M1+.
+// Minimal concrete node so the demo shell can seed generic notes alongside excerpts.
 class SampleNode final : public FluidCore::WorkspaceNode {
   public:
     SampleNode(std::string id, Rectangle bounds) : m_id(std::move(id)), m_bounds(bounds) {}
@@ -28,19 +30,30 @@ class SampleNode final : public FluidCore::WorkspaceNode {
 };
 
 void seedDemoContent(FluidCoreAPI& api) {
-    // Cluster 1: Primary PDF excerpts
-    api.insertNode(
-        std::make_unique<SampleNode>("excerpt-clause-1", Rectangle{80.0, 80.0, 220.0, 140.0}));
-    api.insertNode(
-        std::make_unique<SampleNode>("excerpt-clause-2", Rectangle{340.0, 80.0, 220.0, 140.0}));
-    api.insertNode(
-        std::make_unique<SampleNode>("excerpt-statute", Rectangle{600.0, 80.0, 240.0, 160.0}));
+    // Cluster 1: Primary PDF excerpts (Drag-out Excerpt Cards)
+    api.insertNode(std::make_unique<ExcerptCardNode>(
+        "excerpt-clause-1", Rectangle{80.0, 80.0, 260.0, 150.0}, "doc-primary.pdf", 0,
+        Rectangle{0.08, 0.12, 0.84, 0.18},
+        "The infinite 2D canvas provides unconstrained spatial arrangement for research synthesis "
+        "and literature clustering.",
+        false, Color{255, 220, 0, 255}));
+
+    api.insertNode(std::make_unique<ExcerptCardNode>(
+        "excerpt-clause-2", Rectangle{370.0, 80.0, 260.0, 150.0}, "doc-primary.pdf", 1,
+        Rectangle{0.10, 0.20, 0.80, 0.22},
+        "Spatial indexing with R*-tree enables O(log N) viewport culling and sub-millisecond query "
+        "latencies across 100,000+ items.",
+        false, Color{56, 189, 248, 255}));
+
+    api.insertNode(std::make_unique<ExcerptCardNode>(
+        "excerpt-diagram-1", Rectangle{660.0, 80.0, 280.0, 180.0}, "doc-primary.pdf", 2,
+        Rectangle{0.15, 0.40, 0.70, 0.35}, "", true, Color{168, 85, 247, 255}));
 
     // Cluster 2: Synthesized notes
     api.insertNode(
-        std::make_unique<SampleNode>("note-synthesis", Rectangle{180.0, 280.0, 260.0, 120.0}));
+        std::make_unique<SampleNode>("note-synthesis", Rectangle{180.0, 300.0, 260.0, 120.0}));
     api.insertNode(
-        std::make_unique<SampleNode>("note-precedent", Rectangle{480.0, 280.0, 220.0, 110.0}));
+        std::make_unique<SampleNode>("note-precedent", Rectangle{480.0, 300.0, 220.0, 110.0}));
 
     // Cluster 3: Distant comparative nodes across infinite canvas space
     api.insertNode(

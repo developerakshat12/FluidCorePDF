@@ -46,7 +46,7 @@ milestones:
     status: in_progress
     items:
       - infinite canvas pan/zoom + R*-tree index                        # complete: 2D affine transform matrix (M_view), smooth focal zoom (5% to 1000%), pan gestures, zoom-adaptive infinite dot-grid, interactive minimap HUD with glowing viewport frame, O(log N) viewport culling, and 100k items benchmark with p99 <= 0.05ms << 1.0ms budget (TASK-3.1)
-      - drag-out excerpts (text + image)
+      - drag-out excerpts (text + image)                                # complete: ExcerptCardNode pure domain model, binary/string ExcerptPayload serialization, InsertNodeCommand / RemoveNodeCommand undo/redo, InkOverlay drag source with SqueezeEngine document space unprojection, WorkspaceView drag destination, and rich Cairo card rendering with elevated shadow, header badge, return pill, and wrapped text (TASK-3.2)
       - ExcerptCardNode live re-render
       - bi-directional anchors + ReturnAnchorPill
 

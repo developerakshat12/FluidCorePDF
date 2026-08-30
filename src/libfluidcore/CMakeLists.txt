@@ -3,6 +3,8 @@ add_library(fluidcore STATIC
     squeeze/SqueezeEngine.cpp
     workspace/RTreeIndex.cpp
     workspace/WorkspaceModel.cpp
+    workspace/ExcerptCardNode.cpp
+    workspace/ExcerptPayload.cpp
     graph/GraphTopology.cpp
     storage/ProjectStore.cpp
     storage/XoppDocument.cpp
@@ -48,6 +50,10 @@ if(BUILD_TESTING)
     add_executable(workspace_model_test tests/workspace/WorkspaceModelTest.cpp)
     target_link_libraries(workspace_model_test PRIVATE fluidcore)
     add_test(NAME WorkspaceModelTest COMMAND workspace_model_test)
+
+    add_executable(excerpt_card_node_test tests/workspace/ExcerptCardNodeTest.cpp)
+    target_link_libraries(excerpt_card_node_test PRIVATE fluidcore)
+    add_test(NAME ExcerptCardNodeTest COMMAND excerpt_card_node_test)
 
     add_executable(xopp_document_test tests/storage/XoppDocumentTest.cpp)
     target_link_libraries(xopp_document_test PRIVATE fluidcore)

@@ -9,8 +9,8 @@ namespace FluidCoreApp {
 // Right-pane workspace canvas (specs/integration.md §1, TRD §3.4):
 // An infinite 2D viewport (WorkspaceView) rendered via Cairo with 2D affine
 // transformation matrix M_view, smooth focal pan/zoom gestures, zoom-adaptive
-// infinite dot/grid background, floating overview minimap HUD, and O(log N)
-// spatial index viewport culling (meeting ROADMAP §5 latency budgets).
+// infinite dot/grid background, floating overview minimap HUD, drag-and-drop
+// excerpt destination, and O(log N) spatial index viewport culling.
 class WorkspaceView {
   public:
     explicit WorkspaceView(FluidCore::FluidCoreAPI& api);
@@ -49,15 +49,31 @@ class WorkspaceView {
     static gboolean motionCallback(GtkWidget* widget, GdkEventMotion* event, gpointer userData);
     static gboolean keyPressCallback(GtkWidget* widget, GdkEventKey* event, gpointer userData);
 
+    // GTK3 Drag and Drop destination callbacks
+    static void dragDataReceivedCallback(GtkWidget* widget, GdkDragContext* context, gint x, gint y,
+                                         GtkSelectionData* data, guint info, guint time,
+                                         gpointer userData);
+    static gboolean dragMotionCallback(GtkWidget* widget, GdkDragContext* context, gint x, gint y,
+                                       guint time, gpointer userData);
+    static void dragLeaveCallback(GtkWidget* widget, GdkDragContext* context, guint time,
+                                  gpointer userData);
+
     void draw(cairo_t* cr, int width, int height);
     void drawBackgroundGrid(cairo_t* cr, int width, int height);
     void drawMinimap(cairo_t* cr, int width, int height);
+    void drawExcerptCard(cairo_t* cr, const FluidCore::WorkspaceNode* node, double sx, double sy,
+                         double sw, double sh);
 
     gboolean onScroll(GdkEventScroll* event);
     gboolean onButtonPress(GdkEventButton* event);
     gboolean onButtonRelease(GdkEventButton* event);
     gboolean onMotion(GdkEventMotion* event);
     gboolean onKeyPress(GdkEventKey* event);
+
+    void onDragDataReceived(GdkDragContext* context, gint x, gint y, GtkSelectionData* data,
+                            guint info, guint time);
+    gboolean onDragMotion(GdkDragContext* context, gint x, gint y, guint time);
+    void onDragLeave(GdkDragContext* context, guint time);
 
     FluidCore::Rectangle getMinimapRect(int viewWidth, int viewHeight) const;
     bool minimapHitTest(double screenX, double screenY, int viewWidth, int viewHeight) const;
@@ -76,6 +92,11 @@ class WorkspaceView {
     bool m_isMinimapDragging = false;
     double m_lastMouseX = 0.0;
     double m_lastMouseY = 0.0;
+
+    // Drag-and-drop drop hover feedback
+    bool m_isDropHovering = false;
+    double m_dropHoverScreenX = 0.0;
+    double m_dropHoverScreenY = 0.0;
 
     // Minimap display settings
     bool m_showMinimap = true;

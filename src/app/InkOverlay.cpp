@@ -3,6 +3,7 @@
 #include "DocumentPane.h"
 #include "SqueezeRenderHelper.h"
 #include "undo/AnnotationCommands.h"
+#include "workspace/ExcerptPayload.h"
 
 #include <algorithm>
 #include <cmath>
@@ -113,6 +114,8 @@ InkOverlay::InkOverlay(DocumentPane& pane, FluidCore::AnnotationStore& store)
                      this);
     g_signal_connect(m_widget, "button-release-event",
                      G_CALLBACK(InkOverlay::buttonReleaseCallback), this);
+    g_signal_connect(m_widget, "drag-data-get", G_CALLBACK(InkOverlay::dragDataGetCallback), this);
+    g_signal_connect(m_widget, "drag-end", G_CALLBACK(InkOverlay::dragEndCallback), this);
     g_signal_connect(m_widget, "enter-notify-event",
                      G_CALLBACK(+[](GtkWidget*, GdkEventCrossing*, gpointer data) -> gboolean {
                          static_cast<InkOverlay*>(data)->updateCursor();
@@ -303,6 +306,18 @@ gboolean InkOverlay::onButtonPress(GdkEventButton* event) {
             const auto& layout = pages[i];
             if (docY >= layout.y && docY <= layout.y + layout.height && event->x >= pageX &&
                 event->x <= pageX + layout.width) {
+                const double xp = event->x - pageX;
+                const double yp = docY - layout.y;
+
+                if (m_selectionState.hasSelection && isPointInsideSelection(i, xp, yp)) {
+                    // Clicked inside existing selection -> potential drag-out excerpt
+                    m_isPotentialExcerptDrag = true;
+                    m_pressScreenX = event->x;
+                    m_pressScreenY = event->y;
+                    m_dragSourcePageIndex = i;
+                    return TRUE;
+                }
+
                 if (m_selectionState.hasSelection) {
                     invalidateSelection(m_selectionState);
                     m_selectionState.clear();
@@ -310,8 +325,6 @@ gboolean InkOverlay::onButtonPress(GdkEventButton* event) {
 
                 m_isSelectingText = true;
                 m_dragStartPageIndex = i;
-                const double xp = event->x - pageX;
-                const double yp = docY - layout.y;
                 m_dragStartPoint = {xp, yp};
 
                 m_textSelectionService.updateLiveDrag(pages, i, m_dragStartPoint, i, {xp, yp},
@@ -374,6 +387,26 @@ gboolean InkOverlay::onButtonPress(GdkEventButton* event) {
 }
 
 gboolean InkOverlay::onMotionNotify(GdkEventMotion* event) {
+    if (m_isPotentialExcerptDrag) {
+        const double dist = std::hypot(event->x - m_pressScreenX, event->y - m_pressScreenY);
+        if (dist >= 4.0) {
+            m_isPotentialExcerptDrag = false;
+            static const GtkTargetEntry dragTargets[] = {
+                {const_cast<gchar*>("application/x-fluid-excerpt"), GTK_TARGET_SAME_APP, 0},
+                {const_cast<gchar*>("text/plain"), 0, 1}};
+            GtkTargetList* targetList = gtk_target_list_new(dragTargets, G_N_ELEMENTS(dragTargets));
+            GdkDragContext* context = gtk_drag_begin_with_coordinates(
+                m_widget, targetList, GDK_ACTION_COPY, 1, reinterpret_cast<GdkEvent*>(event),
+                static_cast<gint>(event->x), static_cast<gint>(event->y));
+            gtk_target_list_unref(targetList);
+            if (context) {
+                gtk_drag_set_icon_name(context, "edit-copy", 0, 0);
+            }
+            return TRUE;
+        }
+        return TRUE;
+    }
+
     GtkAllocation allocation;
     gtk_widget_get_allocation(m_widget, &allocation);
     const double pageX =
@@ -478,6 +511,12 @@ gboolean InkOverlay::onMotionNotify(GdkEventMotion* event) {
 }
 
 gboolean InkOverlay::onButtonRelease(GdkEventButton* event) {
+    if (m_isPotentialExcerptDrag) {
+        m_isPotentialExcerptDrag = false;
+        clearSelection();
+        return TRUE;
+    }
+
     if (m_isSelectingText) {
         m_isSelectingText = false;
         m_textSelectionService.finalizeSelection(m_pane.pages(), m_selectionState);
@@ -797,6 +836,112 @@ void InkOverlay::draw(cairo_t* cr) {
             cairo_restore(cr);
         }
     }
+}
+
+bool InkOverlay::isPointInsideSelection(std::size_t pageIndex, double xp, double yp) const {
+    if (!m_selectionState.hasSelection) {
+        return false;
+    }
+    for (const auto& pageSel : m_selectionState.pages) {
+        if (pageSel.pageIndex == pageIndex) {
+            for (const auto& r : pageSel.lineRects) {
+                if (xp >= r.x0 && xp <= r.x1 && yp >= r.y0 && yp <= r.y1) {
+                    return true;
+                }
+            }
+            if (!pageSel.dragBounds.isEmpty() && xp >= pageSel.dragBounds.x0 &&
+                xp <= pageSel.dragBounds.x1 && yp >= pageSel.dragBounds.y0 &&
+                yp <= pageSel.dragBounds.y1) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+FluidCore::Rectangle InkOverlay::computeNormalizedSelectionBounds(std::size_t pageIndex,
+                                                                  double pageWidth,
+                                                                  double pageHeight) const {
+    if (!m_selectionState.hasSelection || pageWidth <= 0.0 || pageHeight <= 0.0) {
+        return {0.0, 0.0, 1.0, 1.0};
+    }
+
+    double minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
+    bool found = false;
+
+    for (const auto& pageSel : m_selectionState.pages) {
+        if (pageSel.pageIndex == pageIndex) {
+            for (const auto& r : pageSel.lineRects) {
+                minX = std::min(minX, r.x0);
+                minY = std::min(minY, r.y0);
+                maxX = std::max(maxX, r.x1);
+                maxY = std::max(maxY, r.y1);
+                found = true;
+            }
+            if (!pageSel.dragBounds.isEmpty()) {
+                minX = std::min(minX, pageSel.dragBounds.x0);
+                minY = std::min(minY, pageSel.dragBounds.y0);
+                maxX = std::max(maxX, pageSel.dragBounds.x1);
+                maxY = std::max(maxY, pageSel.dragBounds.y1);
+                found = true;
+            }
+        }
+    }
+
+    if (!found) {
+        return {0.0, 0.0, 1.0, 1.0};
+    }
+
+    const double nx = std::clamp(minX / pageWidth, 0.0, 1.0);
+    const double ny = std::clamp(minY / pageHeight, 0.0, 1.0);
+    const double nw = std::clamp((maxX - minX) / pageWidth, 0.0, 1.0 - nx);
+    const double nh = std::clamp((maxY - minY) / pageHeight, 0.0, 1.0 - ny);
+
+    return {nx, ny, nw, nh};
+}
+
+void InkOverlay::dragDataGetCallback(GtkWidget*, GdkDragContext* context, GtkSelectionData* data,
+                                     guint info, guint time, gpointer userData) {
+    static_cast<InkOverlay*>(userData)->onDragDataGet(context, data, info, time);
+}
+
+void InkOverlay::dragEndCallback(GtkWidget*, GdkDragContext* context, gpointer userData) {
+    static_cast<InkOverlay*>(userData)->onDragEnd(context);
+}
+
+void InkOverlay::onDragDataGet(GdkDragContext*, GtkSelectionData* data, guint info, guint) {
+    if (!m_selectionState.hasSelection) {
+        return;
+    }
+
+    const auto& pages = m_pane.pages();
+    std::size_t pageNo =
+        m_selectionState.pages.empty() ? 0 : m_selectionState.pages.front().pageIndex;
+    double pw = (pageNo < pages.size()) ? pages[pageNo].width : 612.0;
+    double ph = (pageNo < pages.size()) ? pages[pageNo].height : 792.0;
+
+    FluidCore::Rectangle normRect = computeNormalizedSelectionBounds(pageNo, pw, ph);
+
+    FluidCore::ExcerptDropPayload payload;
+    payload.sourceDocId = m_pane.pdfPath().empty() ? m_pane.docId() : m_pane.pdfPath();
+    payload.sourcePageNo = pageNo;
+    payload.sourceNormalizedRect = normRect;
+    payload.textSnippet = m_selectionState.fullText;
+    payload.isImageExcerpt = false;
+    payload.color = {255, 220, 0, 255};
+
+    if (info == 0) { // application/x-fluid-excerpt
+        std::string serialized = FluidCore::serializeExcerptPayload(payload);
+        gtk_selection_data_set(data, gdk_atom_intern_static_string("application/x-fluid-excerpt"),
+                               8, reinterpret_cast<const guchar*>(serialized.data()),
+                               static_cast<gint>(serialized.size()));
+    } else if (info == 1) { // text/plain
+        gtk_selection_data_set_text(data, m_selectionState.fullText.c_str(), -1);
+    }
+}
+
+void InkOverlay::onDragEnd(GdkDragContext*) {
+    m_isPotentialExcerptDrag = false;
 }
 
 } // namespace FluidCoreApp
