@@ -44,12 +44,12 @@ milestones:
   - id: M3
     name: workspace-excerpts
     window_weeks: [25, 38]
-    status: in_progress
+    status: complete
     items:
       - infinite canvas pan/zoom + R*-tree index                        # complete: 2D affine transform matrix (M_view), smooth focal zoom (5% to 1000%), pan gestures, zoom-adaptive infinite dot-grid, interactive minimap HUD with glowing viewport frame, O(log N) viewport culling, and 100k items benchmark with p99 <= 0.05ms << 1.0ms budget (TASK-3.1)
       - drag-out excerpts (text + image)                                # complete: ExcerptCardNode pure domain model, binary/string ExcerptPayload serialization, InsertNodeCommand / RemoveNodeCommand undo/redo, InkOverlay drag source with SqueezeEngine document space unprojection, WorkspaceView drag destination, and rich Cairo card rendering with elevated shadow, header badge, return pill, and wrapped text (TASK-3.2)
       - unified inking & real-time continuous eraser across panes       # complete: InkOverlay & WorkspaceView pen/highlighter/eraser tool switching w/ P/H/E/S hotkeys, live stabilizer curve rendering, real-time spatial hit erasure, and undo/redo
-      - ExcerptCardNode live re-render
+      - ExcerptCardNode live re-render                                  # complete: PdfDocumentService multi-document handle isolation and thread-safe Poppler lifecycle, ExcerptTileCache 128 MB byte-bounded LRU tile cache with discrete 0.5x-8.0x LoD tiers clamped to 1536px, asynchronous GThreadPool rasterization with generational cancellation, WorkspaceView 150ms zoom-settling debounce and high-DPI bilinear crop rendering, InkOverlay visual crop tool mode with marquee drag-and-drop, and ExcerptTileCacheTest (TASK-3.4)
       - bi-directional anchors + ReturnAnchorPill                       # complete: WorkspaceView [ ↗ Anchor ] hit-testing, SqueezeEngine auto-expansion, docYToScreen zoom contract, Cairo luminous pulse highlight with cancel-and-replace decay timer, floating glassmorphic ReturnAnchorPill overlay, smooth cubic ease-out camera gliding (glideToWorldCoord), active card focus aura, and 19/19 passing CTest suites (TASK-3.3)
 
   - id: M4

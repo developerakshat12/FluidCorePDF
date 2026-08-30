@@ -8,8 +8,10 @@ add_executable(fluidcore_app
     main.cpp
     DocumentPane.cpp
     DocumentSearchService.cpp
+    ExcerptTileCache.cpp
     InkOverlay.cpp
     PageTileCache.cpp
+    PdfDocumentService.cpp
     ReturnAnchorPill.cpp
     SearchBarWidget.cpp
     SqueezeRenderHelper.cpp
@@ -96,4 +98,14 @@ if(BUILD_TESTING)
         target_compile_options(bi_directional_anchor_test PRIVATE -Wall -Wextra -Wpedantic)
     endif()
     add_test(NAME BiDirectionalAnchorTest COMMAND bi_directional_anchor_test)
+
+    add_executable(excerpt_tile_cache_test ExcerptTileCacheTest.cpp ExcerptTileCache.cpp PdfDocumentService.cpp)
+    target_include_directories(excerpt_tile_cache_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(excerpt_tile_cache_test PRIVATE fluidcore PkgConfig::CAIRO PkgConfig::POPPLER_GLIB PkgConfig::GTK3)
+    if(MSVC)
+        target_compile_options(excerpt_tile_cache_test PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(excerpt_tile_cache_test PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    add_test(NAME ExcerptTileCacheTest COMMAND excerpt_tile_cache_test)
 endif()

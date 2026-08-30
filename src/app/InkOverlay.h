@@ -54,10 +54,24 @@ class InkOverlay {
     bool copySelection();
     void invalidateSelection(const FluidCore::MultiPageSelectionState& state);
 
+    // Visual diagram crop selection state
+    struct CropSelectionState {
+        bool hasSelection = false;
+        std::size_t pageIndex = 0;
+        FluidCore::Rectangle rectPt{0.0, 0.0, 0.0, 0.0};
+        FluidCore::Rectangle normRect{0.0, 0.0, 1.0, 1.0};
+    };
+
+    bool hasCropSelection() const { return m_cropSelectionState.hasSelection; }
+    const CropSelectionState& cropSelectionState() const { return m_cropSelectionState; }
+    void clearCropSelection();
+    void invalidateCropSelection();
+
     TextSelectionService& textSelectionService() { return m_textSelectionService; }
 
     // Hit-testing and normalized document bounds calculation for drag-out excerpts
     bool isPointInsideSelection(std::size_t pageIndex, double xp, double yp) const;
+    bool isPointInsideCropSelection(std::size_t pageIndex, double xp, double yp) const;
     FluidCore::Rectangle computeNormalizedSelectionBounds(std::size_t pageIndex, double pageWidth,
                                                           double pageHeight) const;
 
@@ -88,6 +102,7 @@ class InkOverlay {
     void renderBezierSegment(cairo_t* cr, const StrokeStabilizer::BezierSegment& seg,
                              double baseWidth) const;
     void renderTextSelection(cairo_t* cr, std::size_t pageIndex) const;
+    void renderCropSelection(cairo_t* cr, std::size_t pageIndex) const;
 
     DocumentPane& m_pane;
     FluidCore::AnnotationStore& m_annotationStore;
@@ -109,6 +124,11 @@ class InkOverlay {
     bool m_isSelectingText = false;
     std::size_t m_dragStartPageIndex = 0;
     FluidCore::SelectionPoint m_dragStartPoint;
+
+    // Visual diagram crop selection state
+    CropSelectionState m_cropSelectionState;
+    bool m_isSelectingCrop = false;
+    FluidCore::SelectionPoint m_cropDragStartPoint;
 
     // Drag-out excerpt interaction state
     bool m_isPotentialExcerptDrag = false;

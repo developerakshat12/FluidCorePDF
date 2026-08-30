@@ -1,0 +1,40 @@
+id: TASK-3.4-excerpt-card-tile-rasterization
+title: ExcerptCardNode High-DPI Visual Tile Rasterization, LRU Crop Cache, Live Dynamic Re-Render, and Visual Crop Tool
+milestone: M3
+status: complete
+workspace: D:\Reference Repos\fluidcore-platform
+specs:
+  - specs/integration.md (section 2 — drag-and-drop protocol and ExcerptCardNode)
+  - specs/new-features-backlog.md (section 1 & 2 — excerpt cards and rendering boundary rule)
+  - specs/features.md (section 3.4 — excerpt card visual rasterization & dynamic re-render)
+  - planning/ROADMAP.md (Milestone 3, Step 4)
+  - skills/cpp-core-dev/SKILL.md
+  - skills/gtk-frontend/SKILL.md
+dependencies:
+  - TASK-3.1-workspace-pan-zoom-and-spatial-index
+  - TASK-3.2-drag-out-excerpts
+  - TASK-3.3-bi-directional-anchors
+deliverables:
+  - src/app/PdfDocumentService.{h,cpp} — multi-document manager providing RAII PopplerPagePtr / PopplerDocumentPtr, UI vs background instance isolation, and proactive request cancellation.
+  - src/app/ExcerptTileCache.{h,cpp} — 128 MB byte-bounded LRU crop tile cache with discrete LoD zoom tiers (0.5x–8.0x, clamped to max 1536px), zero-lock background GThreadPool rasterizer, and sync testing fallback.
+  - src/app/WorkspaceView.{h,cpp} — High-DPI Cairo crop surface blitting in drawExcerptCard, 150ms zoom-settling debounce for 60 FPS panning/zooming, and dynamic TextLayoutCache per zoom tier.
+  - src/app/InkOverlay.{h,cpp} — interactive visual diagram crop tool ("crop" / "rect_select", hotkeys C / <Alt>5 / F5) with cyan selection marquee and isImageExcerpt drag-and-drop.
+  - src/app/DocumentPane.{h,cpp} — document registration with PdfDocumentService and cache invalidation on teardown.
+  - src/app/main.cpp — service wiring, crop tool action integration, and rich demo diagram seed targeting active PDF fixture.
+  - src/app/ExcerptTileCacheTest.cpp — headless unit test suite verifying quantization, LRU bounds, LoD clamping, cancellation, zero-lock separation, and refcount leak checks.
+acceptance_checks:
+  - "clang-format --dry-run --Werror clean on all touched files"
+  - "python ops/scripts/check_invariants.py passes (0 GUI includes in libfluidcore)"
+  - "all registered CTest targets pass (100% - 20/20 test suites)"
+  - "Visual diagram excerpt cards render crisp high-DPI cropped PDF graphics"
+  - "Zooming between 5% and 1000% dynamically scales tiles with smooth LoD re-render on settling"
+  - "Interactive crop tool creates new diagram excerpt cards via drag-and-drop across pane splitter"
+  - "Cache stays bounded within 128 MB budget under heavy multi-card scrolling and zooming"
+  - "Main-thread DocumentPane scrolling experiences zero mutex lock contention with background rasterizers"
+constraints:
+  - Do not add GUI/Cairo/GTK headers to src/libfluidcore/ (ADR-0001 clean separation)
+  - All PopplerPage and PopplerDocument handles must use RAII cleanup (g_object_unref)
+  - Max single tile dimension clamped to 1536px
+  - GTK main thread must never acquire background worker rasterization locks
+  - Hotkey C must be guarded against text entry focus
+  - Commit means commit AND push; every commit carries -s (DCO)

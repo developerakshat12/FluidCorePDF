@@ -65,6 +65,10 @@ WorkspaceView::WorkspaceView(FluidCore::FluidCoreAPI& api) : m_api(api) {
 }
 
 WorkspaceView::~WorkspaceView() {
+    if (m_zoomSettlingTimerId != 0) {
+        g_source_remove(m_zoomSettlingTimerId);
+        m_zoomSettlingTimerId = 0;
+    }
     if (m_glideTimerId != 0) {
         g_source_remove(m_glideTimerId);
         m_glideTimerId = 0;
@@ -73,6 +77,50 @@ WorkspaceView::~WorkspaceView() {
         g_source_remove(m_flashTimerId);
         m_flashTimerId = 0;
     }
+}
+
+void WorkspaceView::setExcerptTileCache(ExcerptTileCache* cache) {
+    m_excerptTileCache = cache;
+    if (m_excerptTileCache) {
+        m_excerptTileCache->setRenderReadyCallback(
+            [this](const std::string& /*excerptId*/, uint64_t /*requestId*/) {
+                if (m_area) {
+                    gtk_widget_queue_draw(m_area);
+                }
+            });
+    }
+}
+
+gboolean WorkspaceView::zoomSettlingTimeoutCallback(gpointer userData) {
+    auto* self = static_cast<WorkspaceView*>(userData);
+    if (self) {
+        self->m_zoomSettlingTimerId = 0;
+        self->onZoomSettled();
+    }
+    return G_SOURCE_REMOVE;
+}
+
+void WorkspaceView::onZoomSettled() {
+    if (!m_excerptTileCache || !m_area) {
+        return;
+    }
+
+    GtkAllocation alloc;
+    gtk_widget_get_allocation(m_area, &alloc);
+    const FluidCore::Rectangle viewport{m_originX, m_originY, alloc.width / m_zoom,
+                                        alloc.height / m_zoom};
+
+    auto visibleNodes = m_api.queryVisibleNodes(viewport);
+    for (const auto* node : visibleNodes) {
+        const auto* excerpt = dynamic_cast<const FluidCore::ExcerptCardNode*>(node);
+        if (excerpt && excerpt->isImageExcerpt()) {
+            m_excerptTileCache->requestCropAsync(
+                excerpt->id(), excerpt->sourceDocId(), excerpt->sourcePageNo(),
+                excerpt->sourceNormalizedRect(), excerpt->bounds().w - 16.0,
+                excerpt->bounds().h - 40.0, m_zoom);
+        }
+    }
+    gtk_widget_queue_draw(m_area);
 }
 
 FluidCore::Point WorkspaceView::screenToWorld(double screenX, double screenY) const {
@@ -95,6 +143,12 @@ void WorkspaceView::zoomAt(double factor, double focalScreenX, double focalScree
     m_zoom = newZoom;
     m_originX = focalWorldX - focalScreenX / newZoom;
     m_originY = focalWorldY - focalScreenY / newZoom;
+
+    if (m_zoomSettlingTimerId != 0) {
+        g_source_remove(m_zoomSettlingTimerId);
+        m_zoomSettlingTimerId = 0;
+    }
+    m_zoomSettlingTimerId = g_timeout_add(150, zoomSettlingTimeoutCallback, this);
 
     gtk_widget_queue_draw(m_area);
 }
@@ -1117,85 +1171,161 @@ void WorkspaceView::drawExcerptCard(cairo_t* cr, const FluidCore::WorkspaceNode*
     }
 
     // 8. Body Content Rendering
-    if (excerpt && m_zoom >= 0.25) {
+    if (excerpt) {
         if (excerpt->isImageExcerpt()) {
-            const double bodyX = sx + 12.0 * m_zoom;
-            const double bodyY = sy + headerH + 8.0 * m_zoom;
-            const double bodyW = sw - 24.0 * m_zoom;
-            const double bodyH = sh - headerH - 16.0 * m_zoom;
+            const double bodyX = sx + 10.0 * m_zoom;
+            const double bodyY = sy + headerH + 6.0 * m_zoom;
+            const double bodyW = sw - 20.0 * m_zoom;
+            const double bodyH = sh - headerH - 12.0 * m_zoom;
 
-            if (bodyW > 10.0 && bodyH > 10.0) {
-                drawRoundedRect(cr, bodyX, bodyY, bodyW, bodyH, 4.0);
-                cairo_set_source_rgb(cr, 0.93, 0.95, 0.98);
-                cairo_fill_preserve(cr);
-
-                cairo_set_source_rgb(cr, 0.75, 0.80, 0.88);
-                double dashes[] = {4.0, 4.0};
-                cairo_set_dash(cr, dashes, 2, 0.0);
-                cairo_set_line_width(cr, 1.0);
-                cairo_stroke(cr);
-                cairo_set_dash(cr, nullptr, 0, 0.0);
-
-                cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
-                cairo_set_font_size(cr, std::clamp(10.0 * m_zoom, 8.0, 12.0));
-                cairo_set_source_rgb(cr, 0.45, 0.52, 0.62);
-                cairo_text_extents_t ext;
-                cairo_text_extents(cr, "Visual Diagram Crop", &ext);
-                cairo_move_to(cr, bodyX + (bodyW - ext.width) / 2.0,
-                              bodyY + (bodyH + ext.height) / 2.0);
-                cairo_show_text(cr, "Visual Diagram Crop");
-            }
-        } else {
-            const double textStartX = sx + 14.0 * m_zoom;
-            double curY = sy + headerH + 18.0 * m_zoom;
-            const double maxW = sw - 28.0 * m_zoom;
-            const double fontSize = std::clamp(11.0 * m_zoom, 8.0, 14.0);
-            const double lineSpacing = 16.0 * m_zoom;
-
-            cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
-            cairo_set_font_size(cr, fontSize);
-            cairo_set_source_rgb(cr, 0.12, 0.17, 0.24);
-
-            const std::string& snippet = excerpt->textSnippet();
-            std::istringstream stream(snippet);
-            std::string line;
-
-            while (std::getline(stream, line)) {
-                if (curY + lineSpacing > sy + sh) {
-                    cairo_move_to(cr, textStartX, curY);
-                    cairo_show_text(cr, "...");
-                    break;
-                }
-
-                std::istringstream wordStream(line);
-                std::string word;
-                std::string currentLine;
-
-                while (wordStream >> word) {
-                    std::string testLine = currentLine.empty() ? word : currentLine + " " + word;
-                    cairo_text_extents_t ext;
-                    cairo_text_extents(cr, testLine.c_str(), &ext);
-
-                    if (ext.width > maxW && !currentLine.empty()) {
-                        if (curY + lineSpacing > sy + sh) {
-                            cairo_move_to(cr, textStartX, curY);
-                            cairo_show_text(cr, (currentLine + "...").c_str());
-                            currentLine.clear();
-                            break;
-                        }
-                        cairo_move_to(cr, textStartX, curY);
-                        cairo_show_text(cr, currentLine.c_str());
-                        curY += lineSpacing;
-                        currentLine = word;
-                    } else {
-                        currentLine = testLine;
+            if (bodyW > 8.0 && bodyH > 8.0) {
+                CairoSurfaceHandle surface;
+                if (m_excerptTileCache) {
+                    LodTier tier = computeLodTierFromZoom(m_zoom);
+                    CropCacheKey key = CropCacheKey::fromNormalizedRect(
+                        excerpt->sourceDocId(), excerpt->sourcePageNo(),
+                        excerpt->sourceNormalizedRect(), tier);
+                    surface = m_excerptTileCache->get(key);
+                    if (!surface) {
+                        surface = m_excerptTileCache->getBestAvailableSurface(
+                            excerpt->sourceDocId(), excerpt->sourcePageNo(),
+                            excerpt->sourceNormalizedRect());
+                        // Dispatch async request for target LoD tier
+                        m_excerptTileCache->requestCropAsync(
+                            excerpt->id(), excerpt->sourceDocId(), excerpt->sourcePageNo(),
+                            excerpt->sourceNormalizedRect(), excerpt->bounds().w - 20.0,
+                            excerpt->bounds().h - 36.0, m_zoom);
                     }
                 }
 
-                if (!currentLine.empty()) {
-                    cairo_move_to(cr, textStartX, curY);
-                    cairo_show_text(cr, currentLine.c_str());
-                    curY += lineSpacing;
+                if (surface) {
+                    drawRoundedRect(cr, bodyX, bodyY, bodyW, bodyH, 4.0);
+                    cairo_save(cr);
+                    cairo_clip(cr);
+
+                    // Solid background container
+                    cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+                    cairo_rectangle(cr, bodyX, bodyY, bodyW, bodyH);
+                    cairo_fill(cr);
+
+                    double surfW = surface.width();
+                    double surfH = surface.height();
+                    if (surfW > 0.0 && surfH > 0.0) {
+                        double scale = std::min(bodyW / surfW, bodyH / surfH);
+                        double destW = surfW * scale;
+                        double destH = surfH * scale;
+                        double destX = bodyX + (bodyW - destW) / 2.0;
+                        double destY = bodyY + (bodyH - destH) / 2.0;
+
+                        cairo_save(cr);
+                        cairo_translate(cr, destX, destY);
+                        cairo_scale(cr, scale, scale);
+                        cairo_set_source_surface(cr, surface.get(), 0, 0);
+                        cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_BILINEAR);
+                        cairo_paint(cr);
+                        cairo_restore(cr);
+                    }
+
+                    cairo_restore(cr);
+
+                    // Crisp container border
+                    drawRoundedRect(cr, bodyX, bodyY, bodyW, bodyH, 4.0);
+                    cairo_set_source_rgba(cr, 0.75, 0.82, 0.90, 0.9);
+                    cairo_set_line_width(cr, 1.0);
+                    cairo_stroke(cr);
+                } else {
+                    // Fallback / Loading glassmorphic placeholder
+                    drawRoundedRect(cr, bodyX, bodyY, bodyW, bodyH, 4.0);
+                    cairo_set_source_rgb(cr, 0.94, 0.96, 0.99);
+                    cairo_fill_preserve(cr);
+
+                    cairo_set_source_rgb(cr, 0.75, 0.80, 0.88);
+                    double dashes[] = {4.0, 4.0};
+                    cairo_set_dash(cr, dashes, 2, 0.0);
+                    cairo_set_line_width(cr, 1.0);
+                    cairo_stroke(cr);
+                    cairo_set_dash(cr, nullptr, 0, 0.0);
+
+                    if (m_zoom >= 0.25) {
+                        cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL,
+                                               CAIRO_FONT_WEIGHT_BOLD);
+                        cairo_set_font_size(cr, std::clamp(10.0 * m_zoom, 8.0, 12.0));
+                        cairo_set_source_rgb(cr, 0.45, 0.52, 0.62);
+                        cairo_text_extents_t ext;
+                        cairo_text_extents(cr, "Visual Diagram Crop", &ext);
+                        cairo_move_to(cr, bodyX + (bodyW - ext.width) / 2.0,
+                                      bodyY + (bodyH + ext.height) / 2.0);
+                        cairo_show_text(cr, "Visual Diagram Crop");
+                    }
+                }
+            }
+        } else {
+            if (m_zoom < 0.25) {
+                // Micro zoom: render abstracted overview paragraph bars
+                const double barStartX = sx + 14.0 * m_zoom;
+                const double barW = sw - 28.0 * m_zoom;
+                double curY = sy + headerH + 6.0 * m_zoom;
+                cairo_set_source_rgba(cr, 0.70, 0.75, 0.83, 0.7);
+                for (int i = 0; i < 4 && curY + 4.0 * m_zoom < sy + sh - 4.0 * m_zoom; ++i) {
+                    double wFraction = (i == 3) ? 0.6 : ((i % 2 == 0) ? 0.95 : 0.85);
+                    cairo_rectangle(cr, barStartX, curY, barW * wFraction, 2.5 * m_zoom);
+                    cairo_fill(cr);
+                    curY += 5.0 * m_zoom;
+                }
+            } else {
+                const double textStartX = sx + 14.0 * m_zoom;
+                double curY = sy + headerH + 18.0 * m_zoom;
+                const double maxW = sw - 28.0 * m_zoom;
+                const double fontSize = std::clamp(11.0 * m_zoom, 8.0, 14.0);
+                const double lineSpacing = 16.0 * m_zoom;
+
+                cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL,
+                                       CAIRO_FONT_WEIGHT_NORMAL);
+                cairo_set_font_size(cr, fontSize);
+                cairo_set_source_rgb(cr, 0.12, 0.17, 0.24);
+
+                const std::string& snippet = excerpt->textSnippet();
+                std::istringstream stream(snippet);
+                std::string line;
+
+                while (std::getline(stream, line)) {
+                    if (curY + lineSpacing > sy + sh) {
+                        cairo_move_to(cr, textStartX, curY);
+                        cairo_show_text(cr, "...");
+                        break;
+                    }
+
+                    std::istringstream wordStream(line);
+                    std::string word;
+                    std::string currentLine;
+
+                    while (wordStream >> word) {
+                        std::string testLine =
+                            currentLine.empty() ? word : currentLine + " " + word;
+                        cairo_text_extents_t ext;
+                        cairo_text_extents(cr, testLine.c_str(), &ext);
+
+                        if (ext.width > maxW && !currentLine.empty()) {
+                            if (curY + lineSpacing > sy + sh) {
+                                cairo_move_to(cr, textStartX, curY);
+                                cairo_show_text(cr, (currentLine + "...").c_str());
+                                currentLine.clear();
+                                break;
+                            }
+                            cairo_move_to(cr, textStartX, curY);
+                            cairo_show_text(cr, currentLine.c_str());
+                            curY += lineSpacing;
+                            currentLine = word;
+                        } else {
+                            currentLine = testLine;
+                        }
+                    }
+
+                    if (!currentLine.empty()) {
+                        cairo_move_to(cr, textStartX, curY);
+                        cairo_show_text(cr, currentLine.c_str());
+                        curY += lineSpacing;
+                    }
                 }
             }
         }

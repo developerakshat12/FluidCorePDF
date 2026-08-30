@@ -156,7 +156,8 @@ void InkOverlay::updateCursor() {
         if (!cursor) {
             cursor = gdk_cursor_new_for_display(display, GDK_XTERM);
         }
-    } else if (m_currentTool == "eraser") {
+    } else if (m_currentTool == "crop" || m_currentTool == "rect_select" ||
+               m_currentTool == "eraser") {
         cursor = gdk_cursor_new_from_name(display, "crosshair");
         if (!cursor) {
             cursor = gdk_cursor_new_for_display(display, GDK_CROSSHAIR);
@@ -176,6 +177,27 @@ void InkOverlay::clearSelection() {
         invalidateSelection(m_selectionState);
         m_selectionState.clear();
     }
+}
+
+void InkOverlay::clearCropSelection() {
+    if (m_cropSelectionState.hasSelection) {
+        invalidateCropSelection();
+        m_cropSelectionState = CropSelectionState{};
+    }
+}
+
+void InkOverlay::invalidateCropSelection() {
+    if (m_widget) {
+        gtk_widget_queue_draw(m_widget);
+    }
+}
+
+bool InkOverlay::isPointInsideCropSelection(std::size_t pageIndex, double xp, double yp) const {
+    if (!m_cropSelectionState.hasSelection || m_cropSelectionState.pageIndex != pageIndex) {
+        return false;
+    }
+    const auto& r = m_cropSelectionState.rectPt;
+    return (xp >= r.x && xp <= r.x + r.w && yp >= r.y && yp <= r.y + r.h);
 }
 
 bool InkOverlay::copySelection() {
@@ -311,6 +333,43 @@ gboolean InkOverlay::onButtonPress(GdkEventButton* event) {
     const double screenX = event->x / zoom;
     const double docY = m_pane.screenYToDoc(event->y);
 
+    if (m_currentTool == "crop" || m_currentTool == "rect_select") {
+        // Visual diagram crop selection mode
+        for (std::size_t i = 0; i < pages.size(); ++i) {
+            const auto& layout = pages[i];
+            if (docY >= layout.y && docY <= layout.y + layout.height && screenX >= pageX &&
+                screenX <= pageX + layout.width) {
+                const double xp = screenX - pageX;
+                const double yp = docY - layout.y;
+
+                if (m_cropSelectionState.hasSelection && isPointInsideCropSelection(i, xp, yp)) {
+                    // Clicked inside existing crop selection -> potential drag-out excerpt
+                    m_isPotentialExcerptDrag = true;
+                    m_pressScreenX = event->x;
+                    m_pressScreenY = event->y;
+                    m_dragSourcePageIndex = i;
+                    return TRUE;
+                }
+
+                clearCropSelection();
+                clearSelection();
+
+                m_isSelectingCrop = true;
+                m_dragStartPageIndex = i;
+                m_cropDragStartPoint = {xp, yp};
+
+                m_cropSelectionState.hasSelection = true;
+                m_cropSelectionState.pageIndex = i;
+                m_cropSelectionState.rectPt = {xp, yp, 0.0, 0.0};
+                m_cropSelectionState.normRect = {xp / layout.width, yp / layout.height, 0.0, 0.0};
+
+                gtk_widget_queue_draw(m_widget);
+                return TRUE;
+            }
+        }
+        return FALSE;
+    }
+
     if (m_currentTool == "select" || m_currentTool == "text") {
         // Text selection mode
         for (std::size_t i = 0; i < pages.size(); ++i) {
@@ -334,6 +393,8 @@ gboolean InkOverlay::onButtonPress(GdkEventButton* event) {
                     m_selectionState.clear();
                 }
 
+                clearCropSelection();
+
                 m_isSelectingText = true;
                 m_dragStartPageIndex = i;
                 m_dragStartPoint = {xp, yp};
@@ -347,9 +408,12 @@ gboolean InkOverlay::onButtonPress(GdkEventButton* event) {
         return FALSE;
     }
 
-    // Inking mode: clear any existing text selection when starting a stroke
+    // Inking mode: clear any existing text and crop selections when starting a stroke
     if (m_selectionState.hasSelection) {
         clearSelection();
+    }
+    if (m_cropSelectionState.hasSelection) {
+        clearCropSelection();
     }
 
     for (std::size_t i = 0; i < pages.size(); ++i) {
@@ -432,6 +496,27 @@ gboolean InkOverlay::onMotionNotify(GdkEventMotion* event) {
     const auto& pages = m_pane.pages();
     const double screenX = event->x / zoom;
     const double docY = m_pane.screenYToDoc(event->y);
+
+    if (m_isSelectingCrop) {
+        if (m_dragStartPageIndex < pages.size()) {
+            const auto& layout = pages[m_dragStartPageIndex];
+            const double xp = std::clamp(screenX - pageX, 0.0, layout.width);
+            const double yp = std::clamp(docY - layout.y, 0.0, layout.height);
+            double minX = std::min(m_cropDragStartPoint.x, xp);
+            double minY = std::min(m_cropDragStartPoint.y, yp);
+            double maxX = std::max(m_cropDragStartPoint.x, xp);
+            double maxY = std::max(m_cropDragStartPoint.y, yp);
+
+            m_cropSelectionState.hasSelection = true;
+            m_cropSelectionState.pageIndex = m_dragStartPageIndex;
+            m_cropSelectionState.rectPt = {minX, minY, maxX - minX, maxY - minY};
+            m_cropSelectionState.normRect = {minX / layout.width, minY / layout.height,
+                                             (maxX - minX) / layout.width,
+                                             (maxY - minY) / layout.height};
+            gtk_widget_queue_draw(m_widget);
+            return TRUE;
+        }
+    }
 
     if (m_isSelectingText) {
         if (pages.empty()) {
@@ -521,6 +606,16 @@ gboolean InkOverlay::onButtonRelease(GdkEventButton* event) {
     if (m_isPotentialExcerptDrag) {
         m_isPotentialExcerptDrag = false;
         clearSelection();
+        clearCropSelection();
+        return TRUE;
+    }
+
+    if (m_isSelectingCrop) {
+        m_isSelectingCrop = false;
+        if (m_cropSelectionState.rectPt.w < 6.0 || m_cropSelectionState.rectPt.h < 6.0) {
+            clearCropSelection();
+        }
+        gtk_widget_queue_draw(m_widget);
         return TRUE;
     }
 
@@ -548,12 +643,6 @@ gboolean InkOverlay::onButtonRelease(GdkEventButton* event) {
     }
 
     m_isDrawing = false;
-    const double zoom = m_pane.zoom();
-    GtkAllocation allocation;
-    gtk_widget_get_allocation(m_widget, &allocation);
-    const double unscaledWidth = allocation.width / zoom;
-    const double pageX = kPageMargin + std::max(0.0, (unscaledWidth - m_pane.layoutWidth()) / 2.0);
-
     const auto& pages = m_pane.pages();
     if (m_activePageIndex < pages.size()) {
         auto tailSegs = m_stabilizer.endStroke();
@@ -804,6 +893,9 @@ void InkOverlay::draw(cairo_t* cr) {
             // Render text selection highlight
             renderTextSelection(cr, i);
 
+            // Render visual diagram crop selection
+            renderCropSelection(cr, i);
+
             // Render strokes
             const std::vector<FluidCore::Stroke> pageStrokes = m_annotationStore.strokesForPage(i);
             for (const FluidCore::Stroke& stroke : pageStrokes) {
@@ -841,6 +933,42 @@ void InkOverlay::draw(cairo_t* cr) {
             cairo_restore(cr);
         }
     }
+
+    cairo_restore(cr);
+}
+
+void InkOverlay::renderCropSelection(cairo_t* cr, std::size_t pageIndex) const {
+    if (!m_cropSelectionState.hasSelection || m_cropSelectionState.pageIndex != pageIndex) {
+        return;
+    }
+
+    const auto& r = m_cropSelectionState.rectPt;
+    if (r.w <= 0.0 || r.h <= 0.0) {
+        return;
+    }
+
+    cairo_save(cr);
+    cairo_rectangle(cr, r.x, r.y, r.w, r.h);
+    cairo_set_source_rgba(cr, 0.22, 0.74, 0.97, 0.18);
+    cairo_fill_preserve(cr);
+
+    double dashes[] = {4.0, 4.0};
+    cairo_set_dash(cr, dashes, 2, 0.0);
+    cairo_set_source_rgba(cr, 0.05, 0.65, 0.95, 0.95);
+    cairo_set_line_width(cr, 1.5);
+    cairo_stroke(cr);
+
+    // Render corner control points
+    cairo_set_dash(cr, nullptr, 0, 0.0);
+    cairo_set_source_rgb(cr, 0.05, 0.65, 0.95);
+    cairo_rectangle(cr, r.x - 3.0, r.y - 3.0, 6.0, 6.0);
+    cairo_fill(cr);
+    cairo_rectangle(cr, r.x + r.w - 3.0, r.y - 3.0, 6.0, 6.0);
+    cairo_fill(cr);
+    cairo_rectangle(cr, r.x - 3.0, r.y + r.h - 3.0, 6.0, 6.0);
+    cairo_fill(cr);
+    cairo_rectangle(cr, r.x + r.w - 3.0, r.y + r.h - 3.0, 6.0, 6.0);
+    cairo_fill(cr);
 
     cairo_restore(cr);
 }
@@ -917,6 +1045,27 @@ void InkOverlay::dragEndCallback(GtkWidget*, GdkDragContext* context, gpointer u
 }
 
 void InkOverlay::onDragDataGet(GdkDragContext*, GtkSelectionData* data, guint info, guint) {
+    if (m_cropSelectionState.hasSelection) {
+        FluidCore::ExcerptDropPayload payload;
+        payload.sourceDocId = m_pane.pdfPath().empty() ? m_pane.docId() : m_pane.pdfPath();
+        payload.sourcePageNo = m_cropSelectionState.pageIndex;
+        payload.sourceNormalizedRect = m_cropSelectionState.normRect;
+        payload.textSnippet = "";
+        payload.isImageExcerpt = true;
+        payload.color = {168, 85, 247, 255}; // Radiant diagram accent
+
+        if (info == 0) { // application/x-fluid-excerpt
+            std::string serialized = FluidCore::serializeExcerptPayload(payload);
+            gtk_selection_data_set(data,
+                                   gdk_atom_intern_static_string("application/x-fluid-excerpt"), 8,
+                                   reinterpret_cast<const guchar*>(serialized.data()),
+                                   static_cast<gint>(serialized.size()));
+        } else if (info == 1) { // text/plain
+            gtk_selection_data_set_text(data, "[Visual Diagram Crop]", -1);
+        }
+        return;
+    }
+
     if (!m_selectionState.hasSelection) {
         return;
     }

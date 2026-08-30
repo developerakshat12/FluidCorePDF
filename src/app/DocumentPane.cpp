@@ -676,6 +676,13 @@ bool DocumentPane::hasTextSelection() const {
 void DocumentPane::clearTextSelection() {
     if (m_inkOverlay) {
         m_inkOverlay->clearSelection();
+        m_inkOverlay->clearCropSelection();
+    }
+}
+
+void DocumentPane::clearCropSelection() {
+    if (m_inkOverlay) {
+        m_inkOverlay->clearCropSelection();
     }
 }
 

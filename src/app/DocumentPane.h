@@ -63,8 +63,10 @@ class DocumentPane {
 
     bool hasTextSelection() const;
     void clearTextSelection();
+    void clearCropSelection();
     bool copySelection();
 
+    PopplerDocument* document() const { return m_document; }
     void clearCache() { m_pageTileCache.clear(); }
 
     const std::string& pdfPath() const { return m_pdfPath; }

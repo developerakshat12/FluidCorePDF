@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ExcerptTileCache.h"
 #include "FluidCoreAPI.h"
 #include "StrokeStabilizer.h"
 #include "storage/AnnotationStore.h"
@@ -7,6 +8,8 @@
 
 #include <functional>
 #include <string>
+#include <unordered_map>
+#include <vector>
 
 #include <gtk/gtk.h>
 
@@ -16,7 +19,8 @@ namespace FluidCoreApp {
 // An infinite 2D viewport (WorkspaceView) rendered via Cairo with 2D affine
 // transformation matrix M_view, smooth focal pan/zoom gestures, zoom-adaptive
 // infinite dot/grid background, floating overview minimap HUD, drag-and-drop
-// excerpt destination, and O(log N) spatial index viewport culling.
+// excerpt destination, high-DPI visual diagram crop rendering, and O(log N) spatial index viewport
+// culling.
 class WorkspaceView {
   public:
     using NavigateToSourceCallback =
@@ -33,6 +37,9 @@ class WorkspaceView {
     WorkspaceView& operator=(const WorkspaceView&) = delete;
 
     GtkWidget* widget() const { return m_area; }
+
+    void setExcerptTileCache(ExcerptTileCache* cache);
+    ExcerptTileCache* excerptTileCache() const { return m_excerptTileCache; }
 
     // Coordinate conversions between screen pixels and infinite world space
     FluidCore::Point screenToWorld(double screenX, double screenY) const;
@@ -67,6 +74,13 @@ class WorkspaceView {
     FluidCore::Rectangle getExcerptAnchorPillRect(const FluidCore::WorkspaceNode* node) const;
 
   private:
+    struct TextLayoutCacheEntry {
+        std::string text;
+        double cardWidth = 0.0;
+        double fontSize = 0.0;
+        std::vector<std::string> lines;
+    };
+
     static void drawCallback(GtkWidget* area, cairo_t* cr, gpointer userData);
     static gboolean scrollCallback(GtkWidget* widget, GdkEventScroll* event, gpointer userData);
     static gboolean buttonPressCallback(GtkWidget* widget, GdkEventButton* event,
@@ -75,6 +89,9 @@ class WorkspaceView {
                                           gpointer userData);
     static gboolean motionCallback(GtkWidget* widget, GdkEventMotion* event, gpointer userData);
     static gboolean keyPressCallback(GtkWidget* widget, GdkEventKey* event, gpointer userData);
+
+    static gboolean zoomSettlingTimeoutCallback(gpointer userData);
+    void onZoomSettled();
 
     // GTK3 Drag and Drop destination callbacks
     static void dragDataReceivedCallback(GtkWidget* widget, GdkDragContext* context, gint x, gint y,
@@ -110,6 +127,7 @@ class WorkspaceView {
 
     FluidCore::FluidCoreAPI& m_api;
     GtkWidget* m_area = nullptr;
+    ExcerptTileCache* m_excerptTileCache = nullptr;
 
     // Viewport affine transform state (screen = (world - origin) * zoom)
     double m_originX = 0.0;
@@ -165,6 +183,10 @@ class WorkspaceView {
 
     // Anchor hover state
     std::string m_hoveredAnchorCardId;
+
+    // Zoom debounce & dynamic text layout cache
+    guint m_zoomSettlingTimerId = 0;
+    std::unordered_map<std::string, TextLayoutCacheEntry> m_textLayoutCache;
 };
 
 } // namespace FluidCoreApp

@@ -1,5 +1,7 @@
 #include "DocumentPane.h"
+#include "ExcerptTileCache.h"
 #include "FluidCoreEngine.h"
+#include "PdfDocumentService.h"
 #include "WorkspaceView.h"
 #include "workspace/ExcerptCardNode.h"
 
@@ -30,25 +32,27 @@ class SampleNode final : public FluidCore::WorkspaceNode {
     Rectangle m_bounds;
 };
 
-void seedDemoContent(FluidCoreAPI& api) {
+void seedDemoContent(FluidCoreAPI& api, const std::string& docPath) {
+    const std::string docRef = docPath.empty() ? "doc-primary.pdf" : docPath;
+
     // Cluster 1: Primary PDF excerpts (Drag-out Excerpt Cards)
     api.insertNode(std::make_unique<ExcerptCardNode>(
-        "excerpt-clause-1", Rectangle{80.0, 80.0, 260.0, 150.0}, "doc-primary.pdf", 0,
+        "excerpt-clause-1", Rectangle{80.0, 80.0, 260.0, 150.0}, docRef, 0,
         Rectangle{0.08, 0.12, 0.84, 0.18},
         "The infinite 2D canvas provides unconstrained spatial arrangement for research synthesis "
         "and literature clustering.",
         false, Color{255, 220, 0, 255}));
 
     api.insertNode(std::make_unique<ExcerptCardNode>(
-        "excerpt-clause-2", Rectangle{370.0, 80.0, 260.0, 150.0}, "doc-primary.pdf", 1,
+        "excerpt-clause-2", Rectangle{370.0, 80.0, 260.0, 150.0}, docRef, 1,
         Rectangle{0.10, 0.20, 0.80, 0.22},
         "Spatial indexing with R*-tree enables O(log N) viewport culling and sub-millisecond query "
         "latencies across 100,000+ items.",
         false, Color{56, 189, 248, 255}));
 
     api.insertNode(std::make_unique<ExcerptCardNode>(
-        "excerpt-diagram-1", Rectangle{660.0, 80.0, 280.0, 180.0}, "doc-primary.pdf", 2,
-        Rectangle{0.15, 0.40, 0.70, 0.35}, "", true, Color{168, 85, 247, 255}));
+        "excerpt-diagram-1", Rectangle{660.0, 80.0, 280.0, 180.0}, docRef, 0,
+        Rectangle{0.08, 0.15, 0.84, 0.35}, "", true, Color{168, 85, 247, 255}));
 
     // Cluster 2: Synthesized notes
     api.insertNode(
@@ -84,6 +88,30 @@ void onActivate(GtkApplication* app, gpointer userData) {
     g_object_set_data_full(
         G_OBJECT(app), "workspace-view", workspace,
         +[](gpointer data) { delete static_cast<FluidCoreApp::WorkspaceView*>(data); });
+
+    // Multi-document resolution and high-DPI crop tile cache
+    auto* pdfDocService = new FluidCoreApp::PdfDocumentService();
+    g_object_set_data_full(
+        G_OBJECT(app), "pdf-doc-service", pdfDocService,
+        +[](gpointer data) { delete static_cast<FluidCoreApp::PdfDocumentService*>(data); });
+
+    if (documentPane->document()) {
+        pdfDocService->registerMainDocument(documentPane->docId(), documentPane->document(),
+                                            *context->pdfPath);
+        pdfDocService->registerMainDocument("doc-primary.pdf", documentPane->document(),
+                                            *context->pdfPath);
+        if (!context->pdfPath->empty()) {
+            pdfDocService->registerMainDocument(*context->pdfPath, documentPane->document(),
+                                                *context->pdfPath);
+        }
+    }
+
+    auto* excerptTileCache = new FluidCoreApp::ExcerptTileCache(*pdfDocService);
+    g_object_set_data_full(
+        G_OBJECT(app), "excerpt-tile-cache", excerptTileCache,
+        +[](gpointer data) { delete static_cast<FluidCoreApp::ExcerptTileCache*>(data); });
+
+    workspace->setExcerptTileCache(excerptTileCache);
 
     // Wire Bi-Directional Anchor Navigation (TASK-3.3)
     workspace->setNavigateToSourceCallback(
@@ -266,6 +294,22 @@ void onActivate(GtkApplication* app, gpointer userData) {
     g_action_map_add_action(G_ACTION_MAP(window), G_ACTION(selectAction));
     const gchar* selectAccels[] = {"<Alt>4", "F4", nullptr};
     gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.tool_select", selectAccels);
+
+    GSimpleAction* cropAction = g_simple_action_new("tool_crop", nullptr);
+    g_signal_connect(cropAction, "activate",
+                     G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
+                         auto* ctx = static_cast<AppViewContext*>(data);
+                         if (ctx) {
+                             if (ctx->pane)
+                                 ctx->pane->setTool("crop");
+                             if (ctx->workspace)
+                                 ctx->workspace->setTool("crop");
+                         }
+                     }),
+                     viewCtx);
+    g_action_map_add_action(G_ACTION_MAP(window), G_ACTION(cropAction));
+    const gchar* cropAccels[] = {"<Alt>5", "F5", nullptr};
+    gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.tool_crop", cropAccels);
 
     // Wire Ctrl+Shift+0 (Reset Squeeze) action
     GSimpleAction* resetSqueezeAction = g_simple_action_new("reset_squeeze", nullptr);
@@ -488,6 +532,13 @@ void onActivate(GtkApplication* app, gpointer userData) {
                         ws->setTool("eraser");
                     return TRUE;
                 }
+                if (event->keyval == GDK_KEY_c || event->keyval == GDK_KEY_C) {
+                    if (pane)
+                        pane->setTool("crop");
+                    if (ws)
+                        ws->setTool("crop");
+                    return TRUE;
+                }
             }
 
             return FALSE;
@@ -539,12 +590,13 @@ std::string normalizePath(std::string path) {
 } // namespace
 
 int main(int argc, char** argv) {
-    FluidCoreEngine engine("default-project");
-    seedDemoContent(engine);
-
     // Capture before g_application_run(): GApplication may consume argv.
     const std::string rawArg = argc > 1 ? argv[1] : "";
     const std::string pdfPath = normalizePath(rawArg);
+
+    FluidCoreEngine engine("default-project");
+    seedDemoContent(engine, pdfPath);
+
     AppContext context{&engine, &pdfPath};
 
     std::cout << "[FluidCore] Starting application with document: "
