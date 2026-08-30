@@ -35,10 +35,11 @@ milestones:
     status: complete
     perf_gates: { squeeze_fps_min: 30 }
     items:
-      - SqueezeEngine piecewise mapper + headless tests                 # complete: pure C++20 SqueezeEngine with precomputed O(log N) breakpoint table, partial-compression mid-region mapping, 3-segment partial overlap resolution, alpha clamping [0.01, 1.0], multi-page index resolution, and 9-suite SqueezeEngineTest (TASK-2.11)
-      - touch pinch / Ctrl+Shift+Scroll / margin fold pins (Requires Xournal++ host integration)
+      - SqueezeEngine piecewise mapper + headless tests                 # complete: pure C++20 SqueezeEngine with precomputed O(log N) breakpoint table, partial-compression mid-region mapping, 3-segment partial overlap resolution, alpha clamping [0.04, 1.0], multi-page index resolution, and 9-suite SqueezeEngineTest (TASK-2.11)
+      - touch pinch / Shift+Scroll fold-and-pull / margin fold pins      # complete: AnchorSqueezePlanner unified multi-anchor engine, SqueezeEngine highlight/search/preview layers, DocumentPane continuous gesture handling w/ re-entrancy protection and cursor pinning, Ctrl+Shift+0 / Ctrl+Shift+R global reset
       - slice-clipping render path                                      # complete: SqueezeRenderHelper slice decomposition with pixel-snapped boundary continuity, cross-crease stroke & selection subdivision, Cairo slice-clipped page blits with fold shadow creases, margin fold pins, and SqueezeRenderTest (TASK-2.12)
-      - search-driven squeeze via FTS5 hit intervals                    # complete: SearchSqueezePlanner interval-union algorithm with context padding, layered search vs user fold state in SqueezeEngine, DocumentSearchService async Poppler search worker, floating SearchBarWidget overlay [Ctrl+F / Ctrl+Shift+S], search highlight rendering, and 10-scenario SearchSqueezePlannerTest (TASK-2.13)
+      - search-driven squeeze via FTS5 hit intervals                    # complete: AnchorSqueezePlanner interval-union algorithm with context padding, layered search vs user fold state in SqueezeEngine, DocumentSearchService async Poppler search worker with inverted Cairo coordinate space alignment, floating SearchBarWidget overlay [Ctrl+F / Ctrl+Shift+S], search highlight rendering, and SearchSqueezePlannerTest (TASK-2.13)
+      - highlight-driven squeeze (HighlightView)                        # complete: Ctrl+Shift+H accelerator, AnnotationStore stroke extraction, excerpt source interval synchronization
 
   - id: M3
     name: workspace-excerpts
@@ -47,6 +48,7 @@ milestones:
     items:
       - infinite canvas pan/zoom + R*-tree index                        # complete: 2D affine transform matrix (M_view), smooth focal zoom (5% to 1000%), pan gestures, zoom-adaptive infinite dot-grid, interactive minimap HUD with glowing viewport frame, O(log N) viewport culling, and 100k items benchmark with p99 <= 0.05ms << 1.0ms budget (TASK-3.1)
       - drag-out excerpts (text + image)                                # complete: ExcerptCardNode pure domain model, binary/string ExcerptPayload serialization, InsertNodeCommand / RemoveNodeCommand undo/redo, InkOverlay drag source with SqueezeEngine document space unprojection, WorkspaceView drag destination, and rich Cairo card rendering with elevated shadow, header badge, return pill, and wrapped text (TASK-3.2)
+      - unified inking & real-time continuous eraser across panes       # complete: InkOverlay & WorkspaceView pen/highlighter/eraser tool switching w/ P/H/E/S hotkeys, live stabilizer curve rendering, real-time spatial hit erasure, and undo/redo
       - ExcerptCardNode live re-render
       - bi-directional anchors + ReturnAnchorPill
 

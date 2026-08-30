@@ -1,6 +1,7 @@
 #pragma once
 
 #include "FluidCoreAPI.h"
+#include "search/AnchorSqueezePlanner.h"
 
 #include <cstddef>
 #include <vector>
@@ -14,7 +15,7 @@ struct SearchHitSpan {
 
 struct SearchSqueezeConfig {
     double contextPadding = 40.0; // Context padding above and below each hit in document points
-    double gapAlpha = 0.08;       // Canonical compression alpha for non-matching gaps
+    double gapAlpha = 0.04;       // Canonical compression alpha for non-matching gaps
     double minGapHeight = 16.0;   // Minimum gap height worth squeezing
 };
 

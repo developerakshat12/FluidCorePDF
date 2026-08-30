@@ -107,9 +107,9 @@ void testManualVsSearchRegionIsolation() {
     check(std::abs(resMatch.alpha - 1.0) < kEps,
           "search match resolves to alpha=1.0 (uncollapsed)");
 
-    // The gap before Y=350 MUST resolve to alpha=0.08
+    // The gap before Y=350 MUST resolve to alpha=0.04 (canonical kSqueezeMinAlpha)
     auto resGap = engine.mapDocumentYToScreen(100.0, "doc-iso");
-    check(std::abs(resGap.alpha - 0.08) < kEps, "gap resolves to alpha=0.08");
+    check(std::abs(resGap.alpha - 0.04) < kEps, "gap resolves to alpha=0.04");
 }
 
 void testSnapshotAndRestoreOnClose() {

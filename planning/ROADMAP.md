@@ -62,16 +62,18 @@ gantt
 - [x] Basic text selection + copy *(complete via TASK-2.10: pure C++20 TextSelection domain model and TextSelectionTest, Poppler-GLib reading-order glyph extraction with sub-millisecond layout caching, multi-page selection intervals, I-beam cursor tool mode, scoped damage invalidation, and Ctrl+C clipboard copy)*
 - **Demo gate**: annotate a 500-page PDF, restart app, annotations persist via existing Xournal++ save path.
 
-### M2 — Squeeze Engine (Weeks 15–24)
-- [x] `SqueezeEngine`: piecewise-linear `Y_screen = T(Y_doc, SqueezeRegions)` mapper + unit tests (headless) *(complete via TASK-2.11: pure C++20 SqueezeEngine with precomputed O(log N) breakpoint table, partial-compression mid-region mapping, 3-segment partial overlap resolution, alpha clamping [0.01, 1.0], multi-page index resolution, and 9-suite SqueezeEngineTest)*
-- [ ] Two-finger touch pinch gesture; desktop `Ctrl+Shift+Scroll`; margin fold pins *(Requires Xournal++ host integration)*
+### M2 — Squeeze Engine (Weeks 15–24) — EXITED ✅
+- [x] `SqueezeEngine`: piecewise-linear `Y_screen = T(Y_doc, SqueezeRegions)` mapper + unit tests (headless) *(complete via TASK-2.11: pure C++20 SqueezeEngine with precomputed O(log N) breakpoint table, partial-compression mid-region mapping, 3-segment partial overlap resolution, alpha clamping [0.04, 1.0], multi-page index resolution, and 9-suite SqueezeEngineTest)*
+- [x] Two-finger touch pinch gesture; desktop `Shift+Scroll` / `Ctrl+Shift+Scroll` downward fold-and-pull with cursor fold pinning and local reverse-scroll unfolding; margin fold pins *(complete: AnchorSqueezePlanner unified multi-anchor engine, SqueezeEngine highlight/search/preview layers, DocumentPane continuous gesture handling w/ re-entrancy protection and cursor pinning, Ctrl+Shift+0 / Ctrl+Shift+R global reset)*
 - [x] Slice-clipping render path (no raster distortion) *(complete via TASK-2.12: SqueezeRenderHelper slice decomposition with pixel-snapped boundary continuity, cross-crease stroke & selection subdivision, Cairo slice-clipped page blits with fold shadow creases, margin fold pins, and SqueezeRenderTest)*
-- [x] Search-driven squeeze: FTS hits define uncollapsed intervals *(complete via TASK-2.13: SearchSqueezePlanner interval-union algorithm with context padding, layered search vs user fold state in SqueezeEngine, DocumentSearchService async Poppler search worker, floating SearchBarWidget overlay [Ctrl+F / Ctrl+Shift+S], search highlight rendering, and 10-scenario SearchSqueezePlannerTest)*
+- [x] Search-driven squeeze: FTS hits define uncollapsed intervals *(complete via TASK-2.13: AnchorSqueezePlanner interval-union algorithm with context padding, layered search vs user fold state in SqueezeEngine, DocumentSearchService async Poppler search worker with inverted Cairo coordinate space alignment, floating SearchBarWidget overlay [Ctrl+F / Ctrl+Shift+S], search highlight rendering, and SearchSqueezePlannerTest)*
+- [x] HighlightView Squeeze: un-highlighted passages collapse into continuous montage *(complete: Ctrl+Shift+H accelerator, AnnotationStore stroke extraction, excerpt source interval synchronization)*
 - **Perf gate**: ≥ 30 FPS during interactive squeeze on 1080p, mid-range hardware (i5-8th-gen class). *(gated & verified)*
 
-### M3 — Workspace & Excerpts (Weeks 25–38)
+### M3 — Workspace & Excerpts (Weeks 25–38) — IN PROGRESS 🟡
 - [x] Infinite workspace canvas: pan/zoom, R*-tree spatial index, grid/minimap *(complete via TASK-3.1: 2D affine transform matrix [M_view], smooth focal zoom [5% to 1000%], pan gestures, zoom-adaptive infinite dot-grid, interactive minimap HUD with glowing viewport frame, O(log N) viewport culling, and 100k items benchmark with p99 <= 0.05ms << 1.0ms budget)*
 - [x] Drag-out excerpts: text clips, image regions; normalized source bbox capture *(complete via TASK-3.2: ExcerptCardNode pure domain model, binary/string ExcerptPayload serialization, InsertNodeCommand / RemoveNodeCommand undo/redo, InkOverlay drag source with SqueezeEngine document space unprojection, WorkspaceView drag destination, and rich Cairo card rendering with elevated shadow, header badge, return pill, and wrapped text)*
+- [x] Unified inking, highlighting, and real-time continuous eraser across document pane and infinite canvas *(complete: InkOverlay & WorkspaceView pen/highlighter/eraser tool switching w/ P/H/E/S hotkeys, live stabilizer curve rendering, real-time spatial hit erasure, and undo/redo)*
 - [ ] `ExcerptCardNode` rendering + live re-render on source zoom change
 - [ ] Bi-directional anchors + `ReturnAnchorPill` navigation
 - **Demo gate**: Sarah-persona workflow (extract 10 clauses from 3 PDFs into canvas, click any excerpt to jump back).

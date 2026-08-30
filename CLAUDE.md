@@ -36,5 +36,13 @@ Open-source, offline-first alternative to LiquidText: fluid PDF reader + infinit
 - Never introduce network calls at runtime (offline-first guarantee)
 - Ask before creating files outside the workspace you were routed to
 
+## Common Gotchas & Troubleshooting
+- **GTK Container Lifecycle**: Root widgets returned by `widget()` (such as `m_viewOverlay` in `DocumentPane`) MUST be instantiated at the top of the constructor before any early returns (e.g. on invalid PDF paths). Returning `nullptr` breaks GTK window hierarchy mapping and prevents windows from appearing.
+- **Running via WSL from PowerShell**: Avoid wrapping commands with nested quotes in `wsl bash -c "..."` because PowerShell strips inner quotes around paths with spaces (e.g., `study material`). Instead, invoke directly:
+  ```powershell
+  wsl -d Ubuntu --cd "<workspace>/build-wsl" ./src/app/fluidcore_app "<path-to-pdf>"
+  ```
+  FluidCore's `normalizePath` automatically maps Windows drive paths (`D:\...`) into WSL mount paths (`/mnt/d/...`).
+
 ## Full Doc Map
 See `references/REFERENCES.md` for one-line summaries of every document.

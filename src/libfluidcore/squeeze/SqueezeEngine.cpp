@@ -10,16 +10,14 @@ namespace FluidCore {
 
 namespace {
 
-constexpr double kMinAlpha = 0.01;
-constexpr double kMaxAlpha = 1.0;
 constexpr double kEps = 1e-9;
 
 double clampAlpha(double alpha) {
-    if (alpha < kMinAlpha) {
-        return kMinAlpha;
+    if (alpha < kSqueezeMinAlpha) {
+        return kSqueezeMinAlpha;
     }
-    if (alpha > kMaxAlpha) {
-        return kMaxAlpha;
+    if (alpha > kSqueezeMaxAlpha) {
+        return kSqueezeMaxAlpha;
     }
     return alpha;
 }
@@ -118,8 +116,43 @@ void SqueezeEngine::resetSqueeze(const std::string& docId) {
     it->second.rawRegions.clear();
     it->second.searchRegions.clear();
     it->second.hasSearchSqueeze = false;
+    it->second.highlightRegions.clear();
+    it->second.hasHighlightSqueeze = false;
     it->second.previewRegion.reset();
     rebuildSegments(it->second);
+}
+
+std::optional<SqueezeRegion> SqueezeEngine::findFoldRegionAt(const std::string& docId, double docY,
+                                                             double tolerance) const {
+    auto it = m_documents.find(docId);
+    if (it == m_documents.end()) {
+        return std::nullopt;
+    }
+
+    for (const auto& r : it->second.rawRegions) {
+        if (docY >= (r.yStart - tolerance) && docY <= (r.yEnd + tolerance)) {
+            return r;
+        }
+    }
+    return std::nullopt;
+}
+
+bool SqueezeEngine::updateFoldAlpha(const std::string& docId, const std::string& regionId,
+                                    double alpha) {
+    auto it = m_documents.find(docId);
+    if (it == m_documents.end()) {
+        return false;
+    }
+
+    auto& regions = it->second.rawRegions;
+    auto regIt = std::find_if(regions.begin(), regions.end(),
+                              [&regionId](const SqueezeRegion& r) { return r.id == regionId; });
+    if (regIt != regions.end()) {
+        regIt->alpha = clampAlpha(alpha);
+        rebuildSegments(it->second);
+        return true;
+    }
+    return false;
 }
 
 void SqueezeEngine::setSearchSqueezeRegions(const std::string& docId,
@@ -153,6 +186,39 @@ bool SqueezeEngine::isSearchSqueezeActive(const std::string& docId) const {
         return false;
     }
     return it->second.hasSearchSqueeze;
+}
+
+void SqueezeEngine::setHighlightSqueezeRegions(const std::string& docId,
+                                               std::vector<SqueezeRegion> regions) {
+    auto it = m_documents.find(docId);
+    if (it == m_documents.end()) {
+        throw std::invalid_argument("Document ID not registered: " + docId);
+    }
+
+    it->second.highlightRegions = std::move(regions);
+    it->second.hasHighlightSqueeze = true;
+    it->second.previewRegion.reset();
+    rebuildSegments(it->second);
+}
+
+void SqueezeEngine::clearHighlightSqueeze(const std::string& docId) {
+    auto it = m_documents.find(docId);
+    if (it == m_documents.end()) {
+        throw std::invalid_argument("Document ID not registered: " + docId);
+    }
+
+    it->second.highlightRegions.clear();
+    it->second.hasHighlightSqueeze = false;
+    it->second.previewRegion.reset();
+    rebuildSegments(it->second);
+}
+
+bool SqueezeEngine::isHighlightSqueezeActive(const std::string& docId) const {
+    auto it = m_documents.find(docId);
+    if (it == m_documents.end()) {
+        return false;
+    }
+    return it->second.hasHighlightSqueeze;
 }
 
 void SqueezeEngine::setPreviewSqueezeRegion(const std::string& docId, double yStart, double yEnd,
@@ -318,6 +384,8 @@ void SqueezeEngine::rebuildSegments(DocumentState& docState) {
     std::vector<SqueezeRegion> effectiveRegions;
     if (docState.hasSearchSqueeze) {
         effectiveRegions = docState.searchRegions;
+    } else if (docState.hasHighlightSqueeze) {
+        effectiveRegions = docState.highlightRegions;
     } else {
         effectiveRegions = docState.rawRegions;
         if (docState.previewRegion.has_value()) {

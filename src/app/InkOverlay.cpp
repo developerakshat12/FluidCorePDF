@@ -128,6 +128,15 @@ InkOverlay::~InkOverlay() = default;
 
 void InkOverlay::setTool(const std::string& tool) {
     m_currentTool = tool;
+    if (tool == "highlighter") {
+        m_currentColor = 0xFFFF00; // Yellow highlighter
+        m_currentWidth = 14.0;
+    } else if (tool == "pen") {
+        m_currentColor = 0x000000; // Black ink pen
+        m_currentWidth = 2.0;
+    } else if (tool == "eraser") {
+        m_currentWidth = 20.0;
+    }
     updateCursor();
 }
 
@@ -292,21 +301,24 @@ gboolean InkOverlay::onButtonPress(GdkEventButton* event) {
         return FALSE;
     }
 
+    const double zoom = m_pane.zoom();
     GtkAllocation allocation;
     gtk_widget_get_allocation(m_widget, &allocation);
+    const double unscaledWidth = allocation.width / zoom;
     const double pageX =
-        kPageMargin + std::max(0.0, (allocation.width - m_pane.layoutWidth()) / 2.0);
+        kPageMargin + std::max(0.0, (unscaledWidth - m_pane.layoutWidth()) / 2.0);
 
     const auto& pages = m_pane.pages();
+    const double screenX = event->x / zoom;
     const double docY = m_pane.screenYToDoc(event->y);
 
     if (m_currentTool == "select" || m_currentTool == "text") {
         // Text selection mode
         for (std::size_t i = 0; i < pages.size(); ++i) {
             const auto& layout = pages[i];
-            if (docY >= layout.y && docY <= layout.y + layout.height && event->x >= pageX &&
-                event->x <= pageX + layout.width) {
-                const double xp = event->x - pageX;
+            if (docY >= layout.y && docY <= layout.y + layout.height && screenX >= pageX &&
+                screenX <= pageX + layout.width) {
+                const double xp = screenX - pageX;
                 const double yp = docY - layout.y;
 
                 if (m_selectionState.hasSelection && isPointInsideSelection(i, xp, yp)) {
@@ -343,8 +355,8 @@ gboolean InkOverlay::onButtonPress(GdkEventButton* event) {
 
     for (std::size_t i = 0; i < pages.size(); ++i) {
         const auto& layout = pages[i];
-        if (docY >= layout.y && docY <= layout.y + layout.height && event->x >= pageX &&
-            event->x <= pageX + layout.width) {
+        if (docY >= layout.y && docY <= layout.y + layout.height && screenX >= pageX &&
+            screenX <= pageX + layout.width) {
             m_isDrawing = true;
             m_activePageIndex = i;
 
@@ -362,7 +374,7 @@ gboolean InkOverlay::onButtonPress(GdkEventButton* event) {
             m_activeStroke.width = m_currentWidth;
             m_activeStroke.timestamp = static_cast<std::uint64_t>(event->time);
 
-            const double xp = event->x - pageX;
+            const double xp = screenX - pageX;
             const double yp = docY - layout.y;
 
             m_stabilizer.beginStroke({xp, yp}, pressure, static_cast<std::uint64_t>(event->time),
@@ -371,14 +383,20 @@ gboolean InkOverlay::onButtonPress(GdkEventButton* event) {
             m_wetTip = {xp, yp};
             m_hasWetSegment = false;
 
-            if (m_pane.isSqueezed()) {
-                gtk_widget_queue_draw(m_widget);
-            } else {
-                const auto damage = DamageRect::computePointDamage({event->x, event->y},
-                                                                   m_activeStroke.width * pressure);
-                gtk_widget_queue_draw_area(m_widget, damage.x, damage.y, damage.width,
-                                           damage.height);
+            if (m_activeStroke.tool == "eraser") {
+                const auto existingStrokes = m_annotationStore.strokesForPage(i);
+                const auto& samples = m_stabilizer.rawSamples();
+                for (const auto& s : existingStrokes) {
+                    if (strokeIntersectsEraser(s, samples, 24.0)) {
+                        invalidateStroke(s);
+                        m_pane.undoStack().pushAndExecute(
+                            std::make_unique<FluidCore::RemoveStrokeCommand>(
+                                m_annotationStore, i, s));
+                    }
+                }
             }
+
+            gtk_widget_queue_draw(m_widget);
             return TRUE;
         }
     }
@@ -407,11 +425,14 @@ gboolean InkOverlay::onMotionNotify(GdkEventMotion* event) {
         return TRUE;
     }
 
+    const double zoom = m_pane.zoom();
     GtkAllocation allocation;
     gtk_widget_get_allocation(m_widget, &allocation);
+    const double unscaledWidth = allocation.width / zoom;
     const double pageX =
-        kPageMargin + std::max(0.0, (allocation.width - m_pane.layoutWidth()) / 2.0);
+        kPageMargin + std::max(0.0, (unscaledWidth - m_pane.layoutWidth()) / 2.0);
     const auto& pages = m_pane.pages();
+    const double screenX = event->x / zoom;
     const double docY = m_pane.screenYToDoc(event->y);
 
     if (m_isSelectingText) {
@@ -434,7 +455,7 @@ gboolean InkOverlay::onMotionNotify(GdkEventMotion* event) {
         }
 
         const auto& layout = pages[currPage];
-        const double xp = std::clamp(event->x - pageX, 0.0, layout.width);
+        const double xp = std::clamp(screenX - pageX, 0.0, layout.width);
         const double yp = std::clamp(docY - layout.y, 0.0, layout.height);
 
         FluidCore::MultiPageSelectionState oldState = m_selectionState;
@@ -450,19 +471,33 @@ gboolean InkOverlay::onMotionNotify(GdkEventMotion* event) {
         return FALSE;
     }
 
-    GdkDevice* device = gdk_event_get_source_device(reinterpret_cast<GdkEvent*>(event));
-    const GdkInputSource source = device ? gdk_device_get_source(device) : GDK_SOURCE_MOUSE;
-    if (source == GDK_SOURCE_TOUCHSCREEN) {
-        return FALSE;
-    }
-
     if (m_activePageIndex >= pages.size()) {
         return FALSE;
     }
 
     const auto& layout = pages[m_activePageIndex];
-    const double xp = event->x - pageX;
+    const double xp = screenX - pageX;
     const double yp = docY - layout.y;
+
+    if (m_activeStroke.tool == "eraser") {
+        m_stabilizer.pushPoint({xp, yp}, 1.0, static_cast<std::uint64_t>(event->time));
+        const auto existingStrokes = m_annotationStore.strokesForPage(m_activePageIndex);
+        const auto& samples = m_stabilizer.rawSamples();
+        bool erasedAny = false;
+        for (const auto& s : existingStrokes) {
+            if (strokeIntersectsEraser(s, samples, 24.0)) {
+                invalidateStroke(s);
+                m_pane.undoStack().pushAndExecute(
+                    std::make_unique<FluidCore::RemoveStrokeCommand>(
+                        m_annotationStore, m_activePageIndex, s));
+                erasedAny = true;
+            }
+        }
+        if (erasedAny) {
+            gtk_widget_queue_draw(m_widget);
+        }
+        return TRUE;
+    }
 
     gdouble pressure = 1.0;
     if (!gdk_event_get_axis(reinterpret_cast<GdkEvent*>(event), GDK_AXIS_PRESSURE, &pressure) ||
@@ -470,42 +505,17 @@ gboolean InkOverlay::onMotionNotify(GdkEventMotion* event) {
         pressure = 1.0;
     }
 
-    const double prevTipScreenX = pageX + m_wetTip.x;
-    const double prevTipScreenY = m_pane.docYToScreen(layout.y + m_wetTip.y);
-
     auto pushResult =
         m_stabilizer.pushPoint({xp, yp}, pressure, static_cast<std::uint64_t>(event->time));
 
     for (const auto& seg : pushResult.newlyCommitted) {
         m_activeBezierSegments.push_back(seg);
-        if (!m_pane.isSqueezed()) {
-            const DamageRect::Point2D b0 = {pageX + seg.p0.x, layout.y + seg.p0.y};
-            const DamageRect::Point2D b1 = {pageX + seg.p1.x, layout.y + seg.p1.y};
-            const DamageRect::Point2D b2 = {pageX + seg.p2.x, layout.y + seg.p2.y};
-            const DamageRect::Point2D b3 = {pageX + seg.p3.x, layout.y + seg.p3.y};
-            const double maxP = std::max(seg.pressure0, seg.pressure1);
-            const auto damage =
-                DamageRect::computeBezierDamage(b0, b1, b2, b3, m_activeStroke.width * maxP);
-            gtk_widget_queue_draw_area(m_widget, damage.x, damage.y, damage.width, damage.height);
-        }
     }
 
     m_wetTip = pushResult.wetTip;
     m_hasWetSegment = pushResult.hasWetSegment;
 
-    if (m_pane.isSqueezed()) {
-        gtk_widget_queue_draw(m_widget);
-    } else {
-        const double currTipScreenX = pageX + m_wetTip.x;
-        const double currTipScreenY = layout.y + m_wetTip.y;
-        const double maxP = std::max(m_lastPressure, pressure);
-        const auto leadDamage = DamageRect::computeSegmentDamage({prevTipScreenX, prevTipScreenY},
-                                                                 {currTipScreenX, currTipScreenY},
-                                                                 m_activeStroke.width * maxP);
-        gtk_widget_queue_draw_area(m_widget, leadDamage.x, leadDamage.y, leadDamage.width,
-                                   leadDamage.height);
-    }
-
+    gtk_widget_queue_draw(m_widget);
     m_lastPressure = pressure;
     return TRUE;
 }
@@ -532,6 +542,7 @@ gboolean InkOverlay::onButtonRelease(GdkEventButton* event) {
                 clearSelection();
             }
         }
+        gtk_widget_queue_draw(m_widget);
         return TRUE;
     }
 
@@ -540,29 +551,20 @@ gboolean InkOverlay::onButtonRelease(GdkEventButton* event) {
     }
 
     m_isDrawing = false;
+    const double zoom = m_pane.zoom();
     GtkAllocation allocation;
     gtk_widget_get_allocation(m_widget, &allocation);
+    const double unscaledWidth = allocation.width / zoom;
     const double pageX =
-        kPageMargin + std::max(0.0, (allocation.width - m_pane.layoutWidth()) / 2.0);
+        kPageMargin + std::max(0.0, (unscaledWidth - m_pane.layoutWidth()) / 2.0);
 
     const auto& pages = m_pane.pages();
     if (m_activePageIndex < pages.size()) {
-        const auto& layout = pages[m_activePageIndex];
         auto tailSegs = m_stabilizer.endStroke();
         for (const auto& seg : tailSegs) {
             m_activeBezierSegments.push_back(seg);
-            if (!m_pane.isSqueezed()) {
-                const DamageRect::Point2D b0 = {pageX + seg.p0.x, layout.y + seg.p0.y};
-                const DamageRect::Point2D b1 = {pageX + seg.p1.x, layout.y + seg.p1.y};
-                const DamageRect::Point2D b2 = {pageX + seg.p2.x, layout.y + seg.p2.y};
-                const DamageRect::Point2D b3 = {pageX + seg.p3.x, layout.y + seg.p3.y};
-                const double maxP = std::max(seg.pressure0, seg.pressure1);
-                const auto damage =
-                    DamageRect::computeBezierDamage(b0, b1, b2, b3, m_activeStroke.width * maxP);
-                gtk_widget_queue_draw_area(m_widget, damage.x, damage.y, damage.width,
-                                           damage.height);
-            }
         }
+        gtk_widget_queue_draw(m_widget);
 
         const auto& samples = m_stabilizer.rawSamples();
         if (m_activeStroke.tool == "eraser") {
@@ -763,8 +765,6 @@ void InkOverlay::renderStroke(cairo_t* cr, const FluidCore::Stroke& stroke) cons
 void InkOverlay::draw(cairo_t* cr) {
     GtkAllocation allocation;
     gtk_widget_get_allocation(m_widget, &allocation);
-    const double pageX =
-        kPageMargin + std::max(0.0, (allocation.width - m_pane.layoutWidth()) / 2.0);
 
     GdkRectangle clip;
     if (!gdk_cairo_get_clip_rectangle(cr, &clip)) {
@@ -774,6 +774,16 @@ void InkOverlay::draw(cairo_t* cr) {
         clip.height = allocation.height;
     }
 
+    const double zoom = m_pane.zoom();
+    const double clipYStart = clip.y / zoom;
+    const double clipYEnd = (clip.y + clip.height) / zoom;
+    const double unscaledWidth = allocation.width / zoom;
+    const double pageX =
+        kPageMargin + std::max(0.0, (unscaledWidth - m_pane.layoutWidth()) / 2.0);
+
+    cairo_save(cr);
+    cairo_scale(cr, zoom, zoom);
+
     const auto segments = m_pane.squeezeSegments();
     const auto& pages = m_pane.pages();
 
@@ -782,7 +792,7 @@ void InkOverlay::draw(cairo_t* cr) {
         auto slices = SqueezeRenderHelper::decomposePage(i, layout.y, layout.height, segments);
 
         for (const auto& slice : slices) {
-            if (slice.screenYEnd < clip.y || slice.screenYStart > clip.y + clip.height) {
+            if (slice.screenYEnd < clipYStart || slice.screenYStart > clipYEnd) {
                 continue;
             }
 
@@ -836,6 +846,8 @@ void InkOverlay::draw(cairo_t* cr) {
             cairo_restore(cr);
         }
     }
+
+    cairo_restore(cr);
 }
 
 bool InkOverlay::isPointInsideSelection(std::size_t pageIndex, double xp, double yp) const {

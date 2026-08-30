@@ -161,22 +161,22 @@ int testPartialCompressionMidSqueeze() {
     return failures;
 }
 
-// 7. Degenerate Alpha Behavior: alpha <= 0 clamped to 0.01, ensuring invertibility.
+// 7. Degenerate Alpha Behavior: alpha <= 0 clamped to 0.04, ensuring invertibility.
 int testDegenerateAlphaClamping() {
     int failures = 0;
     SqueezeEngine engine;
     std::vector<PageGeometry> pages = {{0, 612.0, 1000.0, 0.0}};
     engine.registerDocumentGeometry("doc-degen", pages);
-    engine.setSqueezeRegion("doc-degen", 100.0, 300.0, 0.0); // 0.0 clamped to 0.01
+    engine.setSqueezeRegion("doc-degen", 100.0, 300.0, 0.0); // 0.0 clamped to 0.04
 
     auto res = engine.mapDocumentYToScreen(200.0, "doc-degen");
-    // screenY = 100 + (100 * 0.01) = 101.0
-    failures += check(close(res.screenY, 101.0), "Alpha=0.0 clamped to 0.01, screenY is 101.0");
-    failures += check(close(res.alpha, 0.01), "Alpha=0.0 clamped to 0.01 reports alpha=0.01");
+    // screenY = 100 + (100 * 0.04) = 104.0
+    failures += check(close(res.screenY, 104.0), "Alpha=0.0 clamped to 0.04, screenY is 104.0");
+    failures += check(close(res.alpha, 0.04), "Alpha=0.0 clamped to 0.04 reports alpha=0.04");
 
-    auto inv = engine.mapScreenYToDocument(101.0, "doc-degen");
+    auto inv = engine.mapScreenYToDocument(104.0, "doc-degen");
     failures +=
-        check(close(inv.screenY, 200.0), "Alpha=0.0 inverse correctly maps 101.0 back to 200.0");
+        check(close(inv.screenY, 200.0), "Alpha=0.0 inverse correctly maps 104.0 back to 200.0");
 
     return failures;
 }

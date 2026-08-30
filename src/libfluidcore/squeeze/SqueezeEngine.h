@@ -9,11 +9,16 @@
 
 namespace FluidCore {
 
+constexpr double kSqueezeMinAlpha = 0.04;
+constexpr double kSqueezeMaxAlpha = 1.0;
+
 struct DocumentState {
     std::vector<PageGeometry> pages;
     std::vector<SqueezeRegion> rawRegions;
     std::vector<SqueezeRegion> searchRegions;
     bool hasSearchSqueeze = false;
+    std::vector<SqueezeRegion> highlightRegions;
+    bool hasHighlightSqueeze = false;
     std::optional<SqueezeRegion> previewRegion;
     std::vector<SqueezeSegment> segments;
     double totalDocHeight = 0.0;
@@ -35,10 +40,20 @@ class SqueezeEngine {
     bool removeSqueezeRegion(const std::string& docId, const std::string& regionId);
     void resetSqueeze(const std::string& docId);
 
+    // Local fold inspection and targeted manipulation
+    std::optional<SqueezeRegion> findFoldRegionAt(const std::string& docId, double docY,
+                                                  double tolerance = 60.0) const;
+    bool updateFoldAlpha(const std::string& docId, const std::string& regionId, double alpha);
+
     // Layered Search Squeeze folds (takes precedence over user folds while active)
     void setSearchSqueezeRegions(const std::string& docId, std::vector<SqueezeRegion> regions);
     void clearSearchSqueeze(const std::string& docId);
     bool isSearchSqueezeActive(const std::string& docId) const;
+
+    // Layered Highlight Squeeze folds
+    void setHighlightSqueezeRegions(const std::string& docId, std::vector<SqueezeRegion> regions);
+    void clearHighlightSqueeze(const std::string& docId);
+    bool isHighlightSqueezeActive(const std::string& docId) const;
 
     // Transient preview during live drag/scroll
     void setPreviewSqueezeRegion(const std::string& docId, double yStart, double yEnd,

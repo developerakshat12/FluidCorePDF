@@ -1,6 +1,9 @@
 #include "WorkspaceView.h"
+#include "workspace/CanvasStrokeNode.h"
 #include "workspace/ExcerptCardNode.h"
 #include "workspace/ExcerptPayload.h"
+#include "undo/WorkspaceCommands.h"
+
 
 #include <algorithm>
 #include <cmath>
@@ -141,6 +144,43 @@ void WorkspaceView::setMinimapVisible(bool visible) {
     if (m_showMinimap != visible) {
         m_showMinimap = visible;
         gtk_widget_queue_draw(m_area);
+    }
+}
+
+void WorkspaceView::setTool(const std::string& tool) {
+    if (m_currentTool != tool) {
+        m_currentTool = tool;
+        if (tool == "highlighter") {
+            m_currentColor = 0xFFFF00; // Bright yellow highlighter
+            m_currentWidth = 14.0;
+        } else if (tool == "pen") {
+            m_currentColor = 0x000000; // Black pen
+            m_currentWidth = 2.0;
+        } else if (tool == "eraser") {
+            m_currentWidth = 24.0;
+        }
+        m_isDrawing = false;
+        m_hasWetSegment = false;
+
+        if (m_area) {
+            GdkWindow* win = gtk_widget_get_window(m_area);
+            if (win) {
+                GdkDisplay* display = gdk_window_get_display(win);
+                GdkCursor* cursor = nullptr;
+                if (tool == "eraser") {
+                    cursor = gdk_cursor_new_for_display(display, GDK_CROSSHAIR);
+                } else if (tool == "pen" || tool == "highlighter") {
+                    cursor = gdk_cursor_new_for_display(display, GDK_PENCIL);
+                    if (!cursor) {
+                        cursor = gdk_cursor_new_for_display(display, GDK_CROSSHAIR);
+                    }
+                }
+                gdk_window_set_cursor(win, cursor);
+                if (cursor) {
+                    g_object_unref(cursor);
+                }
+            }
+        }
     }
 }
 
@@ -379,7 +419,7 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
     }
 
     if (event->button == GDK_BUTTON_MIDDLE ||
-        (event->button == GDK_BUTTON_PRIMARY && (event->state & GDK_MOD1_MASK))) {
+        (event->button == GDK_BUTTON_PRIMARY && ((event->state & GDK_MOD1_MASK) || m_currentTool == "pan"))) {
         m_isPanning = true;
         m_lastMouseX = event->x;
         m_lastMouseY = event->y;
@@ -395,10 +435,52 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
         return TRUE;
     }
 
-    if (event->button == GDK_BUTTON_PRIMARY && event->type == GDK_2BUTTON_PRESS) {
-        FluidCore::Point worldPt = screenToWorld(event->x, event->y);
-        centerOn(worldPt.x, worldPt.y);
-        return TRUE;
+    if (event->button == GDK_BUTTON_PRIMARY) {
+        if (event->type == GDK_2BUTTON_PRESS) {
+            FluidCore::Point worldPt = screenToWorld(event->x, event->y);
+            centerOn(worldPt.x, worldPt.y);
+            return TRUE;
+        }
+
+        if (m_currentTool == "pen" || m_currentTool == "highlighter") {
+            m_isDrawing = true;
+            m_activeStroke = FluidCore::Stroke{};
+            
+            static std::size_t s_strokeCounter = 1;
+            m_activeStroke.id = "stroke-" + std::to_string(s_strokeCounter++);
+            
+            m_activeStroke.tool = m_currentTool;
+            m_activeStroke.color = m_currentColor;
+            m_activeStroke.width = m_currentWidth;
+            m_activeStroke.timestamp = g_get_real_time();
+            m_activeSegments.clear();
+            m_hasWetSegment = false;
+            
+            FluidCore::Point wPt = screenToWorld(event->x, event->y);
+            m_stabilizer.beginStroke(FluidCoreApp::StrokeStabilizer::Point2D{wPt.x, wPt.y}, 1.0, g_get_real_time());
+            gtk_widget_queue_draw(m_area);
+            return TRUE;
+        } else if (m_currentTool == "eraser") {
+            m_isDrawing = true;
+            m_lastMouseX = event->x;
+            m_lastMouseY = event->y;
+            FluidCore::Point wPt = screenToWorld(event->x, event->y);
+            const double wRadius = 30.0 / m_zoom; // 30 screen pixels
+            const FluidCore::Rectangle queryRect{wPt.x - wRadius, wPt.y - wRadius, wRadius * 2.0, wRadius * 2.0};
+            
+            auto hits = m_api.queryVisibleNodes(queryRect);
+            bool removed = false;
+            for (const auto* hit : hits) {
+                if (const auto* strokeNode = dynamic_cast<const FluidCore::CanvasStrokeNode*>(hit)) {
+                    m_api.removeNode(strokeNode->id());
+                    removed = true;
+                }
+            }
+            if (removed) {
+                gtk_widget_queue_draw(m_area);
+            }
+            return TRUE;
+        }
     }
 
     return FALSE;
@@ -419,6 +501,28 @@ gboolean WorkspaceView::onButtonRelease(GdkEventButton* event) {
         }
         return TRUE;
     }
+
+    if (m_isDrawing) {
+        m_isDrawing = false;
+        if (m_currentTool == "pen" || m_currentTool == "highlighter") {
+            m_stabilizer.endStroke();
+            m_hasWetSegment = false;
+            
+            // Reconstruct FluidCore::Stroke points from stabilizer raw samples
+            m_activeStroke.points.clear();
+            for (const auto& sample : m_stabilizer.rawSamples()) {
+                m_activeStroke.points.push_back(FluidCore::XoppPoint{sample.point.x, sample.point.y});
+            }
+            
+            if (!m_activeStroke.points.empty()) {
+                m_api.insertNode(std::make_unique<FluidCore::CanvasStrokeNode>(m_activeStroke));
+            }
+            m_activeSegments.clear();
+            gtk_widget_queue_draw(m_area);
+        }
+        return TRUE;
+    }
+
     return FALSE;
 }
 
@@ -437,6 +541,36 @@ gboolean WorkspaceView::onMotion(GdkEventMotion* event) {
         m_lastMouseX = event->x;
         m_lastMouseY = event->y;
         panBy(dx, dy);
+        return TRUE;
+    }
+
+    if (m_isDrawing) {
+        FluidCore::Point wPt = screenToWorld(event->x, event->y);
+        
+        if (m_currentTool == "pen" || m_currentTool == "highlighter") {
+            auto result = m_stabilizer.pushPoint(FluidCoreApp::StrokeStabilizer::Point2D{wPt.x, wPt.y}, 1.0, g_get_real_time());
+            for (const auto& seg : result.newlyCommitted) {
+                m_activeSegments.push_back(seg);
+            }
+            m_hasWetSegment = result.hasWetSegment;
+            m_activeWetTip = result.wetTip;
+            gtk_widget_queue_draw(m_area);
+        } else if (m_currentTool == "eraser") {
+            const double wRadius = 30.0 / m_zoom; // 30 screen pixels
+            const FluidCore::Rectangle queryRect{wPt.x - wRadius, wPt.y - wRadius, wRadius * 2.0, wRadius * 2.0};
+            
+            auto hits = m_api.queryVisibleNodes(queryRect);
+            bool removed = false;
+            for (const auto* hit : hits) {
+                if (const auto* strokeNode = dynamic_cast<const FluidCore::CanvasStrokeNode*>(hit)) {
+                    m_api.removeNode(strokeNode->id());
+                    removed = true;
+                }
+            }
+            if (removed) {
+                gtk_widget_queue_draw(m_area);
+            }
+        }
         return TRUE;
     }
 
@@ -844,6 +978,40 @@ void WorkspaceView::drawExcerptCard(cairo_t* cr, const FluidCore::WorkspaceNode*
     cairo_restore(cr);
 }
 
+void WorkspaceView::drawGenericNode(cairo_t* cr, const FluidCore::WorkspaceNode* node, double sx,
+                                    double sy, double sw, double sh) {
+    const double radius = 8.0 * std::min(1.0, m_zoom);
+
+    // Card shadow
+    cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.06);
+    drawRoundedRect(cr, sx + 2.0, sy + 3.0, sw, sh, radius);
+    cairo_fill(cr);
+
+    // Card background
+    drawRoundedRect(cr, sx, sy, sw, sh, radius);
+    cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+    cairo_fill_preserve(cr);
+    cairo_set_source_rgba(cr, 0.80, 0.85, 0.90, 0.9);
+    cairo_set_line_width(cr, 1.0);
+    cairo_stroke(cr);
+
+    // Top accent bar
+    cairo_save(cr);
+    drawRoundedRect(cr, sx, sy, sw, 6.0 * m_zoom, radius);
+    cairo_clip(cr);
+    cairo_set_source_rgb(cr, 0.25, 0.55, 0.90);
+    cairo_rectangle(cr, sx, sy, sw, 6.0 * m_zoom);
+    cairo_fill(cr);
+    cairo_restore(cr);
+
+    // Title / ID text
+    cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
+    cairo_set_font_size(cr, std::clamp(11.0 * m_zoom, 8.0, 14.0));
+    cairo_set_source_rgb(cr, 0.20, 0.25, 0.35);
+    cairo_move_to(cr, sx + 12.0 * m_zoom, sy + 24.0 * m_zoom);
+    cairo_show_text(cr, node->id().c_str());
+}
+
 void WorkspaceView::draw(cairo_t* cr, int width, int height) {
     // Clear background canvas with modern slate-50 tone
     cairo_set_source_rgb(cr, 0.975, 0.982, 0.990);
@@ -857,13 +1025,76 @@ void WorkspaceView::draw(cairo_t* cr, int width, int height) {
     const std::vector<FluidCore::WorkspaceNode*> visibleNodes = m_api.queryVisibleNodes(viewport);
 
     for (const FluidCore::WorkspaceNode* node : visibleNodes) {
-        const FluidCore::Rectangle b = node->bounds();
-        const double sx = (b.x - m_originX) * m_zoom;
-        const double sy = (b.y - m_originY) * m_zoom;
-        const double sw = b.w * m_zoom;
-        const double sh = b.h * m_zoom;
+        if (const auto* card = dynamic_cast<const FluidCore::ExcerptCardNode*>(node)) {
+            const FluidCore::Rectangle b = node->bounds();
+            const double sx = (b.x - m_originX) * m_zoom;
+            const double sy = (b.y - m_originY) * m_zoom;
+            const double sw = b.w * m_zoom;
+            const double sh = b.h * m_zoom;
+            drawExcerptCard(cr, node, sx, sy, sw, sh);
+        } else if (const auto* strokeNode = dynamic_cast<const FluidCore::CanvasStrokeNode*>(node)) {
+            const auto& stroke = strokeNode->stroke();
+            if (stroke.points.empty()) continue;
 
-        drawExcerptCard(cr, node, sx, sy, sw, sh);
+            cairo_set_source_rgba(cr, ((stroke.color >> 16) & 0xFF) / 255.0,
+                                  ((stroke.color >> 8) & 0xFF) / 255.0,
+                                  (stroke.color & 0xFF) / 255.0,
+                                  stroke.tool == "highlighter" ? 0.45 : 1.0);
+            cairo_set_line_width(cr, stroke.width * m_zoom);
+            cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+            cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
+
+            cairo_new_path(cr);
+            const auto& pt0 = stroke.points[0];
+            cairo_move_to(cr, (pt0.x - m_originX) * m_zoom, (pt0.y - m_originY) * m_zoom);
+            
+            if (stroke.points.size() == 1) {
+                cairo_arc(cr, (pt0.x - m_originX) * m_zoom, (pt0.y - m_originY) * m_zoom,
+                          std::max(1.0, stroke.width * m_zoom / 2.0), 0, 2 * M_PI);
+                cairo_fill(cr);
+            } else {
+                for (size_t i = 1; i < stroke.points.size(); ++i) {
+                    const auto& pt = stroke.points[i];
+                    cairo_line_to(cr, (pt.x - m_originX) * m_zoom, (pt.y - m_originY) * m_zoom);
+                }
+                cairo_stroke(cr);
+            }
+        } else {
+            const FluidCore::Rectangle b = node->bounds();
+            const double sx = (b.x - m_originX) * m_zoom;
+            const double sy = (b.y - m_originY) * m_zoom;
+            const double sw = b.w * m_zoom;
+            const double sh = b.h * m_zoom;
+            drawGenericNode(cr, node, sx, sy, sw, sh);
+        }
+    }
+
+    // Render active wet ink
+    if (m_isDrawing && (m_currentTool == "pen" || m_currentTool == "highlighter")) {
+        cairo_set_source_rgba(cr, ((m_currentColor >> 16) & 0xFF) / 255.0,
+                              ((m_currentColor >> 8) & 0xFF) / 255.0,
+                              (m_currentColor & 0xFF) / 255.0,
+                              m_currentTool == "highlighter" ? 0.45 : 1.0);
+        cairo_set_line_width(cr, m_currentWidth * m_zoom);
+        cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+        cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
+        cairo_new_path(cr);
+
+        const auto& samples = m_stabilizer.rawSamples();
+        if (samples.size() == 1) {
+            cairo_arc(cr, (samples[0].point.x - m_originX) * m_zoom,
+                      (samples[0].point.y - m_originY) * m_zoom,
+                      std::max(1.0, m_currentWidth * m_zoom / 2.0), 0, 2 * M_PI);
+            cairo_fill(cr);
+        } else if (samples.size() > 1) {
+            cairo_move_to(cr, (samples[0].point.x - m_originX) * m_zoom,
+                          (samples[0].point.y - m_originY) * m_zoom);
+            for (size_t i = 1; i < samples.size(); ++i) {
+                cairo_line_to(cr, (samples[i].point.x - m_originX) * m_zoom,
+                              (samples[i].point.y - m_originY) * m_zoom);
+            }
+            cairo_stroke(cr);
+        }
     }
 
     // Render drop target ghost box during active drag hover

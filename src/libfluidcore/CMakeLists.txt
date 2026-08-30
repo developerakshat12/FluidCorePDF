@@ -4,6 +4,7 @@ add_library(fluidcore STATIC
     workspace/RTreeIndex.cpp
     workspace/WorkspaceModel.cpp
     workspace/ExcerptCardNode.cpp
+    workspace/CanvasStrokeNode.cpp
     workspace/ExcerptPayload.cpp
     graph/GraphTopology.cpp
     storage/ProjectStore.cpp
@@ -14,6 +15,7 @@ add_library(fluidcore STATIC
     undo/WorkspaceCommands.cpp
     undo/SqueezeCommands.cpp
     text/TextSelection.cpp
+    search/AnchorSqueezePlanner.cpp
     search/SearchSqueezePlanner.cpp
 )
 
@@ -74,6 +76,10 @@ if(BUILD_TESTING)
     add_executable(squeeze_engine_test tests/SqueezeEngineTest.cpp)
     target_link_libraries(squeeze_engine_test PRIVATE fluidcore)
     add_test(NAME SqueezeEngineTest COMMAND squeeze_engine_test)
+
+    add_executable(anchor_squeeze_planner_test tests/AnchorSqueezePlannerTest.cpp)
+    target_link_libraries(anchor_squeeze_planner_test PRIVATE fluidcore)
+    add_test(NAME AnchorSqueezePlannerTest COMMAND anchor_squeeze_planner_test)
 
     add_executable(rtree_benchmark_test tests/workspace/RTreeBenchmarkTest.cpp)
     target_link_libraries(rtree_benchmark_test PRIVATE fluidcore)

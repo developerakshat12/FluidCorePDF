@@ -14,9 +14,23 @@ SearchBarWidget::SearchBarWidget() {
     gtk_widget_set_valign(m_container, GTK_ALIGN_START);
 
     // Apply custom styling for a sleek floating search pill
+    GtkCssProvider* provider = gtk_css_provider_new();
+    gtk_css_provider_load_from_data(provider,
+        ".search-bar-pill {"
+        "  background-color: rgba(255, 255, 255, 0.98);"
+        "  border: 1px solid #94a3b8;"
+        "  border-radius: 8px;"
+        "  padding: 6px 12px;"
+        "  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);"
+        "}"
+        ".search-bar-pill label { color: #0f172a; font-weight: 600; font-size: 13px; }"
+        ".search-bar-pill entry { min-height: 28px; font-size: 13px; }",
+        -1, nullptr);
     GtkStyleContext* context = gtk_widget_get_style_context(m_container);
-    gtk_style_context_add_class(context, "osd");
-    gtk_style_context_add_class(context, "toolbar");
+    gtk_style_context_add_class(context, "search-bar-pill");
+    gtk_style_context_add_provider(context, GTK_STYLE_PROVIDER(provider),
+                                   GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+    g_object_unref(provider);
 
     m_entry = gtk_search_entry_new();
     gtk_widget_set_size_request(m_entry, 220, -1);
@@ -57,6 +71,7 @@ SearchBarWidget::SearchBarWidget() {
                      G_CALLBACK(SearchBarWidget::onSqueezeSwitchToggled), this);
     g_signal_connect(m_closeBtn, "clicked", G_CALLBACK(SearchBarWidget::onCloseClicked), this);
 
+    gtk_widget_show_all(m_container);
     gtk_widget_set_no_show_all(m_container, TRUE);
     gtk_widget_hide(m_container);
 }
@@ -70,7 +85,10 @@ SearchBarWidget::~SearchBarWidget() {
 
 void SearchBarWidget::show(bool enableSqueeze) {
     gtk_switch_set_active(GTK_SWITCH(m_squeezeSwitch), enableSqueeze);
+    gtk_widget_set_no_show_all(m_container, FALSE);
     gtk_widget_show_all(m_container);
+    gtk_widget_set_no_show_all(m_container, TRUE);
+    gtk_widget_show(m_container);
     grabFocus();
 }
 

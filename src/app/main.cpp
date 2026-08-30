@@ -4,6 +4,7 @@
 #include "workspace/ExcerptCardNode.h"
 
 #include <gtk/gtk.h>
+#include <iostream>
 
 #include <memory>
 #include <string>
@@ -84,6 +85,23 @@ void onActivate(GtkApplication* app, gpointer userData) {
         G_OBJECT(app), "workspace-view", workspace,
         +[](gpointer data) { delete static_cast<FluidCoreApp::WorkspaceView*>(data); });
 
+    // Sync initial excerpt document source anchors into DocumentPane
+    if (context->api) {
+        std::vector<FluidCore::AnchorSpan> excerptAnchors;
+        const auto& pages = documentPane->pages();
+        for (const auto* node : context->api->queryVisibleNodes(FluidCore::Rectangle{-1e6, -1e6, 2e6, 2e6})) {
+            auto* excerpt = dynamic_cast<const FluidCore::ExcerptCardNode*>(node);
+            if (excerpt && excerpt->sourcePageNo() < pages.size()) {
+                const auto& page = pages[excerpt->sourcePageNo()];
+                const auto& srcRect = excerpt->sourceNormalizedRect();
+                double y0 = page.y + srcRect.y * page.height;
+                double y1 = y0 + srcRect.h * page.height;
+                excerptAnchors.push_back(FluidCore::AnchorSpan{y0, y1, "excerpt", 9});
+            }
+        }
+        documentPane->setExcerptAnchors(std::move(excerptAnchors));
+    }
+
     GtkWidget* window = gtk_application_window_new(app);
     gtk_window_set_title(GTK_WINDOW(window), "FluidCore");
     gtk_window_set_default_size(GTK_WINDOW(window), 1200, 800);
@@ -149,15 +167,26 @@ void onActivate(GtkApplication* app, gpointer userData) {
     const gchar* copyAccels[] = {"<Primary>c", "<Control>c", nullptr};
     gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.copy", copyAccels);
 
+    struct AppViewContext {
+        FluidCoreApp::DocumentPane* pane;
+        FluidCoreApp::WorkspaceView* workspace;
+    };
+    auto* viewCtx = new AppViewContext{documentPane, workspace};
+    g_object_set_data_full(
+        G_OBJECT(app), "app-view-context", viewCtx,
+        +[](gpointer data) { delete static_cast<AppViewContext*>(data); });
+
     // Wire tool switching actions
     GSimpleAction* penAction = g_simple_action_new("tool_pen", nullptr);
     g_signal_connect(penAction, "activate",
                      G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
-                         auto* pane = static_cast<FluidCoreApp::DocumentPane*>(data);
-                         if (pane)
-                             pane->setTool("pen");
+                         auto* ctx = static_cast<AppViewContext*>(data);
+                         if (ctx) {
+                             if (ctx->pane) ctx->pane->setTool("pen");
+                             if (ctx->workspace) ctx->workspace->setTool("pen");
+                         }
                      }),
-                     documentPane);
+                     viewCtx);
     g_action_map_add_action(G_ACTION_MAP(window), G_ACTION(penAction));
     const gchar* penAccels[] = {"<Alt>1", "F1", nullptr};
     gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.tool_pen", penAccels);
@@ -165,11 +194,13 @@ void onActivate(GtkApplication* app, gpointer userData) {
     GSimpleAction* highAction = g_simple_action_new("tool_highlighter", nullptr);
     g_signal_connect(highAction, "activate",
                      G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
-                         auto* pane = static_cast<FluidCoreApp::DocumentPane*>(data);
-                         if (pane)
-                             pane->setTool("highlighter");
+                         auto* ctx = static_cast<AppViewContext*>(data);
+                         if (ctx) {
+                             if (ctx->pane) ctx->pane->setTool("highlighter");
+                             if (ctx->workspace) ctx->workspace->setTool("highlighter");
+                         }
                      }),
-                     documentPane);
+                     viewCtx);
     g_action_map_add_action(G_ACTION_MAP(window), G_ACTION(highAction));
     const gchar* highAccels[] = {"<Alt>2", "F2", nullptr};
     gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.tool_highlighter", highAccels);
@@ -177,11 +208,13 @@ void onActivate(GtkApplication* app, gpointer userData) {
     GSimpleAction* eraserAction = g_simple_action_new("tool_eraser", nullptr);
     g_signal_connect(eraserAction, "activate",
                      G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
-                         auto* pane = static_cast<FluidCoreApp::DocumentPane*>(data);
-                         if (pane)
-                             pane->setTool("eraser");
+                         auto* ctx = static_cast<AppViewContext*>(data);
+                         if (ctx) {
+                             if (ctx->pane) ctx->pane->setTool("eraser");
+                             if (ctx->workspace) ctx->workspace->setTool("eraser");
+                         }
                      }),
-                     documentPane);
+                     viewCtx);
     g_action_map_add_action(G_ACTION_MAP(window), G_ACTION(eraserAction));
     const gchar* eraserAccels[] = {"<Alt>3", "F3", nullptr};
     gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.tool_eraser", eraserAccels);
@@ -189,11 +222,13 @@ void onActivate(GtkApplication* app, gpointer userData) {
     GSimpleAction* selectAction = g_simple_action_new("tool_select", nullptr);
     g_signal_connect(selectAction, "activate",
                      G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
-                         auto* pane = static_cast<FluidCoreApp::DocumentPane*>(data);
-                         if (pane)
-                             pane->setTool("select");
+                         auto* ctx = static_cast<AppViewContext*>(data);
+                         if (ctx) {
+                             if (ctx->pane) ctx->pane->setTool("select");
+                             if (ctx->workspace) ctx->workspace->setTool("select");
+                         }
                      }),
-                     documentPane);
+                     viewCtx);
     g_action_map_add_action(G_ACTION_MAP(window), G_ACTION(selectAction));
     const gchar* selectAccels[] = {"<Alt>4", "F4", nullptr};
     gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.tool_select", selectAccels);
@@ -242,6 +277,21 @@ void onActivate(GtkApplication* app, gpointer userData) {
                                           "<Primary><Shift>f", nullptr};
     gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.search_squeeze",
                                           searchSqueezeAccels);
+
+    // Wire Ctrl+Shift+H (Highlight Squeeze / Highlight View) action
+    GSimpleAction* highlightSqueezeAction = g_simple_action_new("highlight_squeeze", nullptr);
+    g_signal_connect(highlightSqueezeAction, "activate",
+                     G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
+                         auto* ctx = static_cast<AppViewContext*>(data);
+                         if (ctx && ctx->pane) {
+                             ctx->pane->toggleHighlightView();
+                         }
+                     }),
+                     viewCtx);
+    g_action_map_add_action(G_ACTION_MAP(window), G_ACTION(highlightSqueezeAction));
+    const gchar* highlightSqueezeAccels[] = {"<Primary><Shift>h", "<Control><Shift>h", nullptr};
+    gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.highlight_squeeze",
+                                          highlightSqueezeAccels);
 
     // Wire Workspace canvas zoom, reset, and minimap actions
     GSimpleAction* wsZoomInAction = g_simple_action_new("ws_zoom_in", nullptr);
@@ -308,52 +358,96 @@ void onActivate(GtkApplication* app, gpointer userData) {
     // Direct key-press fallback for window-level shortcut handling
     g_signal_connect(
         window, "key-press-event",
-        G_CALLBACK(+[](GtkWidget*, GdkEventKey* event, gpointer data) -> gboolean {
-            auto* pane = static_cast<FluidCoreApp::DocumentPane*>(data);
-            if (!pane) {
+        G_CALLBACK(+[](GtkWidget* windowWidget, GdkEventKey* event, gpointer data) -> gboolean {
+            auto* ctx = static_cast<AppViewContext*>(data);
+            if (!ctx) {
                 return FALSE;
             }
+            auto* pane = ctx->pane;
+            auto* ws = ctx->workspace;
 
             const bool ctrl = (event->state & GDK_CONTROL_MASK) != 0;
             const bool shift = (event->state & GDK_SHIFT_MASK) != 0;
             const bool alt = (event->state & GDK_MOD1_MASK) != 0;
 
+            if (ctrl && !shift && (event->keyval == GDK_KEY_f || event->keyval == GDK_KEY_F)) {
+                if (pane) {
+                    pane->openSearch(false);
+                    return TRUE;
+                }
+            }
             if (ctrl && !shift && (event->keyval == GDK_KEY_c || event->keyval == GDK_KEY_C)) {
-                pane->copySelection();
+                if (pane) pane->copySelection();
                 return TRUE;
             }
             if (!ctrl && !alt && event->keyval == GDK_KEY_Escape) {
-                pane->clearTextSelection();
+                if (pane) {
+                    if (pane->isSearchActive()) {
+                        pane->closeSearch();
+                    } else {
+                        pane->clearTextSelection();
+                    }
+                }
                 return TRUE;
             }
             if (ctrl && !shift && (event->keyval == GDK_KEY_s || event->keyval == GDK_KEY_S)) {
-                pane->save();
+                if (pane) pane->save();
                 return TRUE;
+            }
+            if (ctrl && shift && (event->keyval == GDK_KEY_0 || event->keyval == GDK_KEY_parenright ||
+                                  event->keyval == GDK_KEY_KP_0 || event->keyval == GDK_KEY_r ||
+                                  event->keyval == GDK_KEY_R)) {
+                if (pane) {
+                    pane->resetSqueeze();
+                    return TRUE;
+                }
+            }
+            if (ctrl && shift && (event->keyval == GDK_KEY_h || event->keyval == GDK_KEY_H)) {
+                if (pane) {
+                    pane->toggleHighlightView();
+                    return TRUE;
+                }
+            }
+            if (ctrl && shift && (event->keyval == GDK_KEY_s || event->keyval == GDK_KEY_S)) {
+                if (pane) {
+                    pane->openSearch(true);
+                    return TRUE;
+                }
             }
 
             // Quick single-key tool switching when no modifier is held
             if (!ctrl && !alt && !shift) {
+                GtkWidget* focusWidget = gtk_window_get_focus(GTK_WINDOW(windowWidget));
+                if (focusWidget && GTK_IS_ENTRY(focusWidget)) {
+                    // Do not intercept typing in search bar
+                    return FALSE;
+                }
+
                 if (event->keyval == GDK_KEY_s || event->keyval == GDK_KEY_S) {
-                    pane->setTool("select");
+                    if (pane) pane->setTool("select");
+                    if (ws) ws->setTool("select");
                     return TRUE;
                 }
                 if (event->keyval == GDK_KEY_p || event->keyval == GDK_KEY_P) {
-                    pane->setTool("pen");
+                    if (pane) pane->setTool("pen");
+                    if (ws) ws->setTool("pen");
                     return TRUE;
                 }
                 if (event->keyval == GDK_KEY_h || event->keyval == GDK_KEY_H) {
-                    pane->setTool("highlighter");
+                    if (pane) pane->setTool("highlighter");
+                    if (ws) ws->setTool("highlighter");
                     return TRUE;
                 }
                 if (event->keyval == GDK_KEY_e || event->keyval == GDK_KEY_E) {
-                    pane->setTool("eraser");
+                    if (pane) pane->setTool("eraser");
+                    if (ws) ws->setTool("eraser");
                     return TRUE;
                 }
             }
 
             return FALSE;
         }),
-        documentPane);
+        viewCtx);
 
     GtkWidget* paned = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
     GtkWidget* documentWidget = documentPane->widget();
@@ -365,8 +459,15 @@ void onActivate(GtkApplication* app, gpointer userData) {
     gtk_paned_set_position(GTK_PANED(paned), 480);
 
     gtk_container_add(GTK_CONTAINER(window), paned);
+    gtk_window_set_position(GTK_WINDOW(window), GTK_WIN_POS_CENTER);
+    gtk_window_set_keep_above(GTK_WINDOW(window), TRUE);
+    gtk_window_set_urgency_hint(GTK_WINDOW(window), TRUE);
     gtk_widget_show_all(window);
+    gtk_window_deiconify(GTK_WINDOW(window));
     gtk_window_present(GTK_WINDOW(window));
+
+    std::cout << "[FluidCore] Window ready and presented (" << documentPane->pages().size()
+              << " pages loaded)." << std::endl;
 }
 
 std::string normalizePath(std::string path) {
@@ -400,6 +501,9 @@ int main(int argc, char** argv) {
     const std::string rawArg = argc > 1 ? argv[1] : "";
     const std::string pdfPath = normalizePath(rawArg);
     AppContext context{&engine, &pdfPath};
+
+    std::cout << "[FluidCore] Starting application with document: "
+              << (pdfPath.empty() ? "(none)" : pdfPath) << std::endl;
 
     GtkApplication* app = gtk_application_new("org.fluidcore.platform", G_APPLICATION_NON_UNIQUE);
     g_signal_connect(app, "activate", G_CALLBACK(onActivate), &context);

@@ -54,20 +54,22 @@ std::vector<SearchHit> DocumentSearchService::searchSync(PopplerDocument* docume
         }
 
         GList* matches = poppler_page_find_text_with_options(page, query.c_str(), flags);
+        const double pHeight = pages[i].height;
         for (GList* l = matches; l != nullptr; l = l->next) {
             auto* rect = static_cast<PopplerRectangle*>(l->data);
             if (rect) {
-                const double rMinY = std::min(rect->y1, rect->y2);
-                const double rMaxY = std::max(rect->y1, rect->y2);
+                // Convert Poppler bottom-left PDF coordinate system to Cairo top-left coordinate system
+                const double cairoY0 = pHeight - std::max(rect->y1, rect->y2);
+                const double cairoY1 = pHeight - std::min(rect->y1, rect->y2);
                 const double rMinX = std::min(rect->x1, rect->x2);
                 const double rMaxX = std::max(rect->x1, rect->x2);
 
-                const double docY0 = pages[i].y + rMinY;
-                const double docY1 = pages[i].y + rMaxY;
+                const double docY0 = pages[i].y + cairoY0;
+                const double docY1 = pages[i].y + cairoY1;
 
                 SearchHit hit;
                 hit.pageIndex = i;
-                hit.pageBounds = PopplerRectangle{rMinX, rMinY, rMaxX, rMaxY};
+                hit.pageBounds = PopplerRectangle{rMinX, cairoY0, rMaxX, cairoY1};
                 hit.docYStart = docY0;
                 hit.docYEnd = docY1;
                 results.push_back(hit);

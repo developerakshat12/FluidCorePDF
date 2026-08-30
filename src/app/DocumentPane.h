@@ -3,6 +3,7 @@
 #include "DocumentSearchService.h"
 #include "PageTileCache.h"
 #include "SearchBarWidget.h"
+#include "search/AnchorSqueezePlanner.h"
 #include "squeeze/SqueezeEngine.h"
 #include "storage/AnnotationStore.h"
 #include "undo/UndoStack.h"
@@ -21,7 +22,7 @@ class InkOverlay;
 
 // Left-pane document viewport (specs/integration.md §1, M1 Reader Core & M2 Squeeze Engine):
 // A continuous Poppler PDF DrawingArea with LRU tile caching, interactive InkOverlay,
-// dynamic SqueezeEngine piecewise rendering, and search-driven accordion squeezing.
+// dynamic SqueezeEngine piecewise rendering, and search/highlight-driven accordion squeezing.
 class DocumentPane {
   public:
     using PageLayout = SearchPageLayout;
@@ -34,7 +35,7 @@ class DocumentPane {
     DocumentPane(const DocumentPane&) = delete;
     DocumentPane& operator=(const DocumentPane&) = delete;
 
-    GtkWidget* widget() const { return m_scroller; }
+    GtkWidget* widget() const { return m_viewOverlay; }
 
     bool save() { return saveAnnotations(); }
     bool saveAnnotations();
@@ -57,6 +58,12 @@ class DocumentPane {
     const std::vector<PageLayout>& pages() const { return m_pages; }
     double layoutWidth() const { return m_layoutWidth; }
     double layoutHeight() const { return m_layoutHeight; }
+
+    double zoom() const { return m_zoom; }
+    void setZoom(double zoom);
+    void zoomIn();
+    void zoomOut();
+    void resetZoom();
 
     FluidCore::AnnotationStore& annotationStore() { return m_annotationStore; }
     const FluidCore::AnnotationStore& annotationStore() const { return m_annotationStore; }
@@ -82,6 +89,13 @@ class DocumentPane {
     void resetSqueeze();
     void updateLayoutDimensions();
 
+    // HighlightView & Excerpt anchor integration
+    void setHighlightView(bool enable);
+    bool isHighlightViewActive() const { return m_highlightViewActive; }
+    void toggleHighlightView();
+    void setExcerptAnchors(std::vector<FluidCore::AnchorSpan> anchors);
+    void applyHighlightSqueeze();
+
     // Search-Driven Squeeze Subsystem
     void openSearch(bool enableSqueeze = true);
     void closeSearch();
@@ -98,6 +112,12 @@ class DocumentPane {
     void draw(cairo_t* cr);
     gboolean onScroll(GdkEventScroll* event);
     void commitScrollSqueeze();
+    void commitZoom();
+
+    // Unified Anchor Squeeze Pipeline
+    std::vector<FluidCore::AnchorSpan> collectActiveAnchors(double cursorDocY = -1.0) const;
+    void applyContinuousSqueezeDelta(double delta, double cursorScreenY);
+    void stabilizeViewportAroundCursor(double anchorDocY, double cursorScreenY);
 
     void onSearchQueryChanged(const std::string& query, bool enableSqueeze);
     void onSearchSqueezeToggled(bool enableSqueeze);
@@ -106,9 +126,11 @@ class DocumentPane {
     std::string m_pdfPath;
     std::string m_docId = "doc-primary";
 
+    GtkWidget* m_viewOverlay = nullptr;
     GtkWidget* m_scroller = nullptr;
     GtkWidget* m_overlay = nullptr;
     GtkWidget* m_area = nullptr;
+    GtkGesture* m_pinchGesture = nullptr;
     PopplerDocument* m_document = nullptr;
     std::vector<PageLayout> m_pages;
     double m_layoutWidth = 0.0;
@@ -120,17 +142,29 @@ class DocumentPane {
     FluidCore::SqueezeEngine m_squeezeEngine;
     std::unique_ptr<InkOverlay> m_inkOverlay;
 
-    // Interactive wheel squeeze state
-    double m_wheelSqueezeCenterDocY = 0.0;
-    double m_wheelSqueezeAlpha = 1.0;
-    bool m_hasActiveWheelSqueeze = false;
+    // Interactive downward fold squeeze state
+    double m_activeFoldStartDocY = 0.0;
+    double m_activeFoldSpan = 0.0;
+    std::string m_activeFoldRegionId;
+    bool m_hasActiveFoldGesture = false;
     guint m_wheelDebounceTimerId = 0;
+    bool m_isAdjustingScrollPosition = false;
+
+    // HighlightView & Excerpt anchor state
+    bool m_highlightViewActive = false;
+    double m_highlightSqueezeAlpha = 1.0;
+    std::vector<FluidCore::AnchorSpan> m_excerptAnchors;
+
+    double m_zoom = 1.0;
+    bool m_isZooming = false;
+    guint m_zoomDebounceTimerId = 0;
 
     // Search subsystem state
     std::unique_ptr<SearchBarWidget> m_searchBar;
     DocumentSearchService m_searchService;
     std::vector<SearchHit> m_searchHits;
     std::size_t m_activeSearchHitIndex = 0;
+    double m_searchSqueezeAlpha = 0.04;
 };
 
 } // namespace FluidCoreApp

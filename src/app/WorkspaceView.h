@@ -1,6 +1,8 @@
 #pragma once
 
 #include "FluidCoreAPI.h"
+#include "StrokeStabilizer.h"
+#include "storage/AnnotationStore.h"
 
 #include <gtk/gtk.h>
 
@@ -39,6 +41,11 @@ class WorkspaceView {
     bool isMinimapVisible() const { return m_showMinimap; }
     void setMinimapVisible(bool visible);
 
+    void setTool(const std::string& tool);
+    const std::string& tool() const { return m_currentTool; }
+    void setColor(uint32_t color) { m_currentColor = color; }
+    void setStrokeWidth(double width) { m_currentWidth = width; }
+
   private:
     static void drawCallback(GtkWidget* area, cairo_t* cr, gpointer userData);
     static gboolean scrollCallback(GtkWidget* widget, GdkEventScroll* event, gpointer userData);
@@ -62,6 +69,8 @@ class WorkspaceView {
     void drawBackgroundGrid(cairo_t* cr, int width, int height);
     void drawMinimap(cairo_t* cr, int width, int height);
     void drawExcerptCard(cairo_t* cr, const FluidCore::WorkspaceNode* node, double sx, double sy,
+                         double sw, double sh);
+    void drawGenericNode(cairo_t* cr, const FluidCore::WorkspaceNode* node, double sx, double sy,
                          double sw, double sh);
 
     gboolean onScroll(GdkEventScroll* event);
@@ -97,6 +106,18 @@ class WorkspaceView {
     bool m_isDropHovering = false;
     double m_dropHoverScreenX = 0.0;
     double m_dropHoverScreenY = 0.0;
+
+    // Canvas inking state
+    std::string m_currentTool = "select";
+    uint32_t m_currentColor = 0x000000;
+    double m_currentWidth = 1.5;
+
+    StrokeStabilizer m_stabilizer;
+    bool m_isDrawing = false;
+    FluidCore::Stroke m_activeStroke;
+    std::vector<StrokeStabilizer::BezierSegment> m_activeSegments;
+    StrokeStabilizer::Point2D m_activeWetTip;
+    bool m_hasWetSegment = false;
 
     // Minimap display settings
     bool m_showMinimap = true;
