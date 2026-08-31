@@ -204,19 +204,20 @@ void WorkspaceInteraction::showNodeContextMenu(WorkspaceState& state, FluidCore:
 
     if (isStack) {
         GtkWidget* renameItem = gtk_menu_item_new_with_label("Rename Stack…");
-        g_signal_connect_data(renameItem, "activate", G_CALLBACK(+[](GtkMenuItem*, gpointer data) {
-                                  auto* c = static_cast<MenuContext*>(data);
-                                  if (c && c->area) {
-                                      auto* renameFn = static_cast<std::function<void(const std::string&)>*>(
-                                          g_object_get_data(G_OBJECT(c->area), "workspace-rename-handler"));
-                                      if (renameFn) {
-                                          (*renameFn)(c->nodeId);
-                                      } else {
-                                          promptRenameStack(*c->api, c->area, c->nodeId);
-                                      }
-                                  }
-                              }),
-                              ctx, nullptr, static_cast<GConnectFlags>(0));
+        g_signal_connect_data(
+            renameItem, "activate", G_CALLBACK(+[](GtkMenuItem*, gpointer data) {
+                auto* c = static_cast<MenuContext*>(data);
+                if (c && c->area) {
+                    auto* renameFn = static_cast<std::function<void(const std::string&)>*>(
+                        g_object_get_data(G_OBJECT(c->area), "workspace-rename-handler"));
+                    if (renameFn) {
+                        (*renameFn)(c->nodeId);
+                    } else {
+                        promptRenameStack(*c->api, c->area, c->nodeId);
+                    }
+                }
+            }),
+            ctx, nullptr, static_cast<GConnectFlags>(0));
         gtk_menu_shell_append(GTK_MENU_SHELL(menu), renameItem);
 
         GtkWidget* sep = gtk_separator_menu_item_new();
@@ -292,8 +293,7 @@ void WorkspaceInteraction::promptRenameStack(FluidCore::FluidCoreAPI& api, GtkWi
     auto* ctx = new DialogCtx{&api, area, entry, stackId};
 
     g_signal_connect_data(
-        dialog, "response",
-        G_CALLBACK(+[](GtkDialog* dlg, gint response, gpointer data) {
+        dialog, "response", G_CALLBACK(+[](GtkDialog* dlg, gint response, gpointer data) {
             auto* c = static_cast<DialogCtx*>(data);
             if (c && response == GTK_RESPONSE_ACCEPT) {
                 const gchar* newText = gtk_entry_get_text(GTK_ENTRY(c->entry));

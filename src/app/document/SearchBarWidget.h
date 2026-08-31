@@ -9,9 +9,9 @@
 namespace FluidCoreApp {
 
 enum class SearchScope {
-    Document = 0,   // In-document PDF search (Poppler + Squeeze)
-    Workspace = 1,  // In-memory workspace canvas search (Cards, Stacks, Tags)
-    All = 2         // Unified search across both document and workspace
+    Document = 0,  // In-document PDF search (Poppler + Squeeze)
+    Workspace = 1, // In-memory workspace canvas search (Cards, Stacks, Tags)
+    All = 2        // Unified search across both document and workspace
 };
 
 class SearchBarWidget {

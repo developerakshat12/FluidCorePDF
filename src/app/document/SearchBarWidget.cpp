@@ -181,7 +181,7 @@ void SearchBarWidget::setMatchStatus(std::size_t activeIndex, std::size_t totalM
 }
 
 void SearchBarWidget::setScopedMatchStatus(std::size_t activeIndex, std::size_t totalMatches,
-                                          std::size_t docMatches, std::size_t wsMatches) {
+                                           std::size_t docMatches, std::size_t wsMatches) {
     if (totalMatches == 0) {
         gtk_label_set_text(GTK_LABEL(m_countLabel), "No matches");
     } else {

@@ -1,5 +1,5 @@
-#include "FluidCoreEngine.h"
 #include "export/WorkspaceExportEngine.h"
+#include "FluidCoreEngine.h"
 #include "workspace/CardStackNode.h"
 #include "workspace/ExcerptCardNode.h"
 #include "workspace/WorkspaceModel.h"
@@ -37,14 +37,14 @@ void testBasicMarkdownFormatting() {
 
     auto card1 = std::make_unique<ExcerptCardNode>(
         "excerpt-1", Rectangle{100.0, 100.0, 200.0, 100.0}, "doc1.pdf", 0,
-        Rectangle{0.1, 0.1, 0.5, 0.2},
-        "Spatial indexing enables sub-millisecond search latencies.", false);
+        Rectangle{0.1, 0.1, 0.5, 0.2}, "Spatial indexing enables sub-millisecond search latencies.",
+        false);
     card1->addTag("indexing");
     card1->addTag("performance");
 
-    auto card2 = std::make_unique<ExcerptCardNode>(
-        "crop-1", Rectangle{400.0, 100.0, 200.0, 100.0}, "doc1.pdf", 1,
-        Rectangle{0.08, 0.12, 0.84, 0.35}, "", true);
+    auto card2 = std::make_unique<ExcerptCardNode>("crop-1", Rectangle{400.0, 100.0, 200.0, 100.0},
+                                                   "doc1.pdf", 1, Rectangle{0.08, 0.12, 0.84, 0.35},
+                                                   "", true);
     card2->addTag("diagram");
 
     model.insert(std::move(card1));
@@ -62,7 +62,8 @@ void testBasicMarkdownFormatting() {
     assert(result.markdown.find("`#diagram`") != std::string::npos);
 
     // Verify Excerpt blockquote and citation
-    assert(result.markdown.find("> Spatial indexing enables sub-millisecond search latencies.") != std::string::npos);
+    assert(result.markdown.find("> Spatial indexing enables sub-millisecond search latencies.") !=
+           std::string::npos);
     assert(result.markdown.find("— *Source: `doc1.pdf` (Page 1)*") != std::string::npos);
     assert(result.markdown.find("· *Tags: `#indexing` `#performance`*") != std::string::npos);
 
@@ -77,21 +78,22 @@ void testHierarchicalStackNesting() {
     WorkspaceModel model("nested-project");
     GraphTopology graph;
 
-    auto rootStack = std::make_unique<CardStackNode>("stack-root", Rectangle{50.0, 50.0, 400.0, 300.0},
-                                                    "Machine Learning Foundations");
+    auto rootStack = std::make_unique<CardStackNode>(
+        "stack-root", Rectangle{50.0, 50.0, 400.0, 300.0}, "Machine Learning Foundations");
     rootStack->addTag("ml");
 
     auto cardInRoot = std::make_unique<ExcerptCardNode>(
-        "card-root", Rectangle{60.0, 90.0, 200.0, 80.0}, "ml.pdf", 3,
-        Rectangle{0.1, 0.1, 0.8, 0.2}, "Deep learning models require balanced datasets.");
+        "card-root", Rectangle{60.0, 90.0, 200.0, 80.0}, "ml.pdf", 3, Rectangle{0.1, 0.1, 0.8, 0.2},
+        "Deep learning models require balanced datasets.");
 
-    auto childStack = std::make_unique<CardStackNode>("stack-child", Rectangle{60.0, 180.0, 350.0, 150.0},
-                                                     "Transformer Architectures");
+    auto childStack = std::make_unique<CardStackNode>(
+        "stack-child", Rectangle{60.0, 180.0, 350.0, 150.0}, "Transformer Architectures");
     childStack->addTag("transformers");
 
     auto cardInChild = std::make_unique<ExcerptCardNode>(
         "card-child", Rectangle{70.0, 220.0, 200.0, 80.0}, "attention.pdf", 0,
-        Rectangle{0.1, 0.2, 0.8, 0.3}, "Attention mechanisms replace recurrence with self-attention.");
+        Rectangle{0.1, 0.2, 0.8, 0.3},
+        "Attention mechanisms replace recurrence with self-attention.");
 
     childStack->addChild(std::move(cardInChild));
     rootStack->addChild(std::move(cardInRoot));
@@ -111,8 +113,10 @@ void testHierarchicalStackNesting() {
     assert(result.markdown.find("*Tags: `#transformers`*") != std::string::npos);
 
     // Verify cards are included under stack
-    assert(result.markdown.find("Deep learning models require balanced datasets.") != std::string::npos);
-    assert(result.markdown.find("Attention mechanisms replace recurrence with self-attention.") != std::string::npos);
+    assert(result.markdown.find("Deep learning models require balanced datasets.") !=
+           std::string::npos);
+    assert(result.markdown.find("Attention mechanisms replace recurrence with self-attention.") !=
+           std::string::npos);
 
     std::cout << "[PASS] testHierarchicalStackNesting\n";
 }
@@ -160,11 +164,12 @@ void testOptionTogglesAndFileExport() {
     WorkspaceModel model("options-project");
     GraphTopology graph;
 
-    auto card = std::make_unique<ExcerptCardNode>(
-        "card-opt", Rectangle{50.0, 50.0, 200.0, 80.0}, "manual.pdf", 5,
-        Rectangle{0.1, 0.1, 0.8, 0.2}, "Safety instructions for lab protocol.");
+    auto card = std::make_unique<ExcerptCardNode>("card-opt", Rectangle{50.0, 50.0, 200.0, 80.0},
+                                                  "manual.pdf", 5, Rectangle{0.1, 0.1, 0.8, 0.2},
+                                                  "Safety instructions for lab protocol.");
     model.insert(std::move(card));
-    model.insert(std::make_unique<TestNoteNode>("note-generic", Rectangle{300.0, 50.0, 150.0, 80.0}));
+    model.insert(
+        std::make_unique<TestNoteNode>("note-generic", Rectangle{300.0, 50.0, 150.0, 80.0}));
 
     WorkspaceExportOptions opts;
     opts.customTitle = "Custom Synthesis Summary 2026";
@@ -175,11 +180,12 @@ void testOptionTogglesAndFileExport() {
     assert(result.success);
     assert(result.markdown.find("# Custom Synthesis Summary 2026") != std::string::npos);
     assert(result.markdown.find("**Project**:") == std::string::npos); // Excluded metadata summary
-    assert(result.markdown.find("```mermaid") == std::string::npos);    // Excluded mermaid graph
+    assert(result.markdown.find("```mermaid") == std::string::npos);   // Excluded mermaid graph
     assert(result.markdown.find("- **[note-generic]**") != std::string::npos); // Free generic note
 
     // Test file export
-    const std::string tmpPath = (std::filesystem::temp_directory_path() / "test_workspace_export.md").string();
+    const std::string tmpPath =
+        (std::filesystem::temp_directory_path() / "test_workspace_export.md").string();
     std::string err;
     bool exported = WorkspaceExportEngine::exportToFile(tmpPath, model, graph, opts, &err);
     assert(exported);
@@ -204,7 +210,8 @@ void testFluidCoreEngineIntegration() {
     assert(res.success);
     assert(res.markdown.find("Integrated engine export validation.") != std::string::npos);
 
-    const std::string tmpPath = (std::filesystem::temp_directory_path() / "engine_export_test.md").string();
+    const std::string tmpPath =
+        (std::filesystem::temp_directory_path() / "engine_export_test.md").string();
     assert(engine.exportWorkspaceMarkdownToFile(tmpPath));
     assert(std::filesystem::exists(tmpPath));
     std::filesystem::remove(tmpPath);

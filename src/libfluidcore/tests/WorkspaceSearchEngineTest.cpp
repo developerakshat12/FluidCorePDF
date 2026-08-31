@@ -1,5 +1,5 @@
-#include "FluidCoreEngine.h"
 #include "search/WorkspaceSearchEngine.h"
+#include "FluidCoreEngine.h"
 #include "workspace/CardStackNode.h"
 #include "workspace/ExcerptCardNode.h"
 #include "workspace/WorkspaceModel.h"
@@ -109,7 +109,8 @@ void testCardStackHierarchicalSearch() {
 
     auto childCard1 = std::make_unique<ExcerptCardNode>(
         "child-1", Rectangle{50.0, 86.0, 300.0, 100.0}, "doc1.pdf", 2,
-        Rectangle{0.1, 0.1, 0.5, 0.2}, "Transformer self-attention mechanisms in biological modeling.");
+        Rectangle{0.1, 0.1, 0.5, 0.2},
+        "Transformer self-attention mechanisms in biological modeling.");
 
     auto childCard2 = std::make_unique<ExcerptCardNode>(
         "child-2", Rectangle{50.0, 122.0, 300.0, 100.0}, "doc2.pdf", 5,

@@ -165,11 +165,8 @@ void PdfExportService::renderStroke(cairo_t* cr, const FluidCore::Stroke& stroke
 }
 
 PdfExportResult PdfExportService::exportAnnotatedPdfCore(
-    const std::string& inputPdfPath,
-    std::vector<FluidCore::Stroke> strokesSnapshot,
-    const std::string& outputPath,
-    const PdfExportOptions& options,
-    std::atomic<bool>* cancelFlag,
+    const std::string& inputPdfPath, std::vector<FluidCore::Stroke> strokesSnapshot,
+    const std::string& outputPath, const PdfExportOptions& options, std::atomic<bool>* cancelFlag,
     ProgressCallback onProgress) {
 
     PdfExportResult result;
@@ -187,7 +184,8 @@ PdfExportResult PdfExportService::exportAnnotatedPdfCore(
     gchar* uri = g_filename_to_uri(inputPdfPath.c_str(), nullptr, &error);
     if (!uri) {
         result.errorMessage = error ? error->message : "Failed to convert input path to URI.";
-        if (error) g_error_free(error);
+        if (error)
+            g_error_free(error);
         return result;
     }
 
@@ -196,7 +194,8 @@ PdfExportResult PdfExportService::exportAnnotatedPdfCore(
     if (!doc) {
         result.errorMessage = error ? ("Failed to open PDF: " + std::string(error->message))
                                     : "Failed to open PDF document.";
-        if (error) g_error_free(error);
+        if (error)
+            g_error_free(error);
         return result;
     }
 
@@ -208,14 +207,17 @@ PdfExportResult PdfExportService::exportAnnotatedPdfCore(
     }
 
     // Index strokes per page
-    std::vector<std::vector<FluidCore::Stroke>> pageStrokes(static_cast<std::size_t>(totalDocPages));
+    std::vector<std::vector<FluidCore::Stroke>> pageStrokes(
+        static_cast<std::size_t>(totalDocPages));
     std::set<std::size_t> annotatedPages;
 
     for (auto&& s : strokesSnapshot) {
         if (s.pageIndex < static_cast<std::size_t>(totalDocPages)) {
             const bool isHigh = (s.tool == "highlighter");
-            if (isHigh && !options.includeHighlighters) continue;
-            if (!isHigh && !options.includeStrokes) continue;
+            if (isHigh && !options.includeHighlighters)
+                continue;
+            if (!isHigh && !options.includeStrokes)
+                continue;
 
             annotatedPages.insert(s.pageIndex);
             pageStrokes[s.pageIndex].push_back(std::move(s));
@@ -350,7 +352,9 @@ PdfExportResult PdfExportService::exportAnnotatedPdfCore(
         if (ec) {
             std::filesystem::remove(tmpOutputPath, ec);
             result.success = false;
-            result.errorMessage = "Failed to atomically rename temporary export file to final target: " + ec.message();
+            result.errorMessage =
+                "Failed to atomically rename temporary export file to final target: " +
+                ec.message();
             return result;
         }
         result.success = true;
@@ -363,19 +367,17 @@ PdfExportResult PdfExportService::exportAnnotatedPdfCore(
     return result;
 }
 
-PdfExportResult PdfExportService::exportAnnotatedPdf(
-    const std::string& inputPdfPath,
-    const FluidCore::AnnotationStore& annotations,
-    const std::string& outputPath,
-    const PdfExportOptions& options) {
+PdfExportResult PdfExportService::exportAnnotatedPdf(const std::string& inputPdfPath,
+                                                     const FluidCore::AnnotationStore& annotations,
+                                                     const std::string& outputPath,
+                                                     const PdfExportOptions& options) {
     return exportAnnotatedPdfCore(inputPdfPath, annotations.strokes(), outputPath, options);
 }
 
-PdfExportResult PdfExportService::exportAnnotatedPdf(
-    PopplerDocument* doc,
-    const FluidCore::AnnotationStore& annotations,
-    const std::string& outputPath,
-    const PdfExportOptions& options) {
+PdfExportResult PdfExportService::exportAnnotatedPdf(PopplerDocument* doc,
+                                                     const FluidCore::AnnotationStore& annotations,
+                                                     const std::string& outputPath,
+                                                     const PdfExportOptions& options) {
     if (!doc) {
         return {false, 0, "Null PopplerDocument handle."};
     }
@@ -387,19 +389,16 @@ PdfExportResult PdfExportService::exportAnnotatedPdf(
 }
 
 std::thread PdfExportService::exportAnnotatedPdfAsync(
-    const std::string& inputPdfPath,
-    std::vector<FluidCore::Stroke> strokesSnapshot,
-    const std::string& outputPath,
-    const PdfExportOptions& options,
-    std::shared_ptr<std::atomic<bool>> cancelFlag,
-    std::weak_ptr<void> lifetimeToken,
-    ProgressCallback onProgress,
-    CompletionCallback onComplete) {
+    const std::string& inputPdfPath, std::vector<FluidCore::Stroke> strokesSnapshot,
+    const std::string& outputPath, const PdfExportOptions& options,
+    std::shared_ptr<std::atomic<bool>> cancelFlag, std::weak_ptr<void> lifetimeToken,
+    ProgressCallback onProgress, CompletionCallback onComplete) {
 
     return std::thread([inputPdfPath, strokes = std::move(strokesSnapshot), outputPath, options,
                         cancelFlag, lifetimeToken, onProgress, onComplete]() {
         auto progressDispatcher = [lifetimeToken, onProgress](std::size_t curr, std::size_t total) {
-            if (!onProgress || lifetimeToken.expired()) return;
+            if (!onProgress || lifetimeToken.expired())
+                return;
             auto* p = new ProgressPayload{lifetimeToken, onProgress, curr, total};
             g_idle_add_full(G_PRIORITY_DEFAULT_IDLE, onProgressIdle, p, freeProgressPayload);
         };

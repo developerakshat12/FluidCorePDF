@@ -80,12 +80,7 @@ struct SearchResult {
 };
 
 // Workspace Canvas Find & Scoped Search value types (TASK-4.3)
-enum class MatchTarget {
-    TextSnippet,
-    Title,
-    Tag,
-    NodeId
-};
+enum class MatchTarget { TextSnippet, Title, Tag, NodeId };
 
 struct WorkspaceMatch {
     std::string nodeId;
@@ -211,8 +206,9 @@ class FluidCoreAPI {
     // Workspace Markdown Outline Export API (TASK-4.4)
     virtual WorkspaceExportResult
     exportWorkspaceMarkdown(const WorkspaceExportOptions& options = {}) const = 0;
-    virtual bool exportWorkspaceMarkdownToFile(const std::string& filePath,
-                                               const WorkspaceExportOptions& options = {}) const = 0;
+    virtual bool
+    exportWorkspaceMarkdownToFile(const std::string& filePath,
+                                  const WorkspaceExportOptions& options = {}) const = 0;
 
     // Persistence & Search API
     // TODO(M5): signature-only by design. The .ltproj schema-locking decision is deferred

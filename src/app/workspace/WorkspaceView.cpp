@@ -151,7 +151,8 @@ void WorkspaceView::zoomAt(double factor, double focalScreenX, double focalScree
 }
 
 void WorkspaceView::setZoom(double zoom) {
-    if (!m_area || !GTK_IS_WIDGET(m_area)) return;
+    if (!m_area || !GTK_IS_WIDGET(m_area))
+        return;
     GtkAllocation alloc;
     gtk_widget_get_allocation(m_area, &alloc);
     const double cx = alloc.width > 0 ? alloc.width / 2.0 : 0.0;
@@ -168,7 +169,8 @@ void WorkspaceView::panBy(double dxScreen, double dyScreen) {
 }
 
 void WorkspaceView::centerOn(double worldX, double worldY) {
-    if (!m_area || !GTK_IS_WIDGET(m_area)) return;
+    if (!m_area || !GTK_IS_WIDGET(m_area))
+        return;
     GtkAllocation alloc;
     gtk_widget_get_allocation(m_area, &alloc);
     const double vw = alloc.width > 0 ? alloc.width / m_state.viewport.zoom : 800.0;
@@ -187,7 +189,8 @@ void WorkspaceView::glideToWorldCoord(double targetWorldX, double targetWorldY) 
         m_state.animation.glideTimerId = 0;
     }
 
-    if (!m_area || !GTK_IS_WIDGET(m_area)) return;
+    if (!m_area || !GTK_IS_WIDGET(m_area))
+        return;
     GtkAllocation alloc;
     gtk_widget_get_allocation(m_area, &alloc);
     const double vw = alloc.width > 0 ? alloc.width / m_state.viewport.zoom : 800.0;
@@ -448,7 +451,8 @@ void WorkspaceView::startInlineStackRename(const std::string& stackId) {
     const double chevronSize = std::min(18.0 * zoom, hdrRect.h * 0.7);
     const double titleStartX = hdrRect.x + 8.0 * zoom + chevronSize + 6.0 * zoom;
     const double badgeSpace = 70.0 * zoom;
-    const double entryW = std::clamp(hdrRect.w - (titleStartX - hdrRect.x) - badgeSpace, 140.0, 360.0);
+    const double entryW =
+        std::clamp(hdrRect.w - (titleStartX - hdrRect.x) - badgeSpace, 140.0, 360.0);
 
     GtkWidget* popover = gtk_popover_new(m_area);
     m_activeRenamePopover = popover;
@@ -489,22 +493,28 @@ void WorkspaceView::startInlineStackRename(const std::string& stackId) {
 
     g_signal_connect(entry, "activate", G_CALLBACK(+[](GtkEntry*, gpointer data) {
                          auto* ws = static_cast<WorkspaceView*>(data);
-                         if (ws) ws->commitInlineStackRename();
-                     }), this);
+                         if (ws)
+                             ws->commitInlineStackRename();
+                     }),
+                     this);
 
-    g_signal_connect(entry, "key-press-event", G_CALLBACK(+[](GtkWidget*, GdkEventKey* event, gpointer data) -> gboolean {
+    g_signal_connect(entry, "key-press-event",
+                     G_CALLBACK(+[](GtkWidget*, GdkEventKey* event, gpointer data) -> gboolean {
                          auto* ws = static_cast<WorkspaceView*>(data);
                          if (ws && event->keyval == GDK_KEY_Escape) {
                              ws->cancelInlineStackRename();
                              return TRUE;
                          }
                          return FALSE;
-                     }), this);
+                     }),
+                     this);
 
     g_signal_connect(popover, "closed", G_CALLBACK(+[](GtkPopover*, gpointer data) {
                          auto* ws = static_cast<WorkspaceView*>(data);
-                         if (ws) ws->commitInlineStackRename();
-                     }), this);
+                         if (ws)
+                             ws->commitInlineStackRename();
+                     }),
+                     this);
 
     gtk_widget_show_all(popover);
     gtk_popover_popup(GTK_POPOVER(popover));
@@ -513,7 +523,8 @@ void WorkspaceView::startInlineStackRename(const std::string& stackId) {
 }
 
 void WorkspaceView::commitInlineStackRename() {
-    if (!m_activeRenamePopover) return;
+    if (!m_activeRenamePopover)
+        return;
 
     GtkWidget* popover = m_activeRenamePopover;
     GtkWidget* entry = m_activeRenameEntry;
@@ -540,7 +551,8 @@ void WorkspaceView::commitInlineStackRename() {
 }
 
 void WorkspaceView::cancelInlineStackRename() {
-    if (!m_activeRenamePopover) return;
+    if (!m_activeRenamePopover)
+        return;
 
     GtkWidget* popover = m_activeRenamePopover;
     m_activeRenamePopover = nullptr;
@@ -845,7 +857,8 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
             }
         }
 
-        // 3. Double-Click: toggle collapse if on chevron; inline rename on title area; otherwise center on point
+        // 3. Double-Click: toggle collapse if on chevron; inline rename on title area; otherwise
+        // center on point
         if (event->type == GDK_2BUTTON_PRESS) {
             for (const auto* node : visibleNodes) {
                 if (const auto* stack = dynamic_cast<const FluidCore::CardStackNode*>(node)) {
@@ -1173,7 +1186,8 @@ gboolean WorkspaceView::onButtonRelease(GdkEventButton* event) {
 }
 
 gboolean WorkspaceView::onMotion(GdkEventMotion* event) {
-    if (!m_area || !GTK_IS_WIDGET(m_area)) return FALSE;
+    if (!m_area || !GTK_IS_WIDGET(m_area))
+        return FALSE;
     GtkAllocation alloc;
     gtk_widget_get_allocation(m_area, &alloc);
 
@@ -1318,7 +1332,8 @@ gboolean WorkspaceView::onMotion(GdkEventMotion* event) {
                 const FluidCore::Point worldBottomRight = screenToWorld(
                     alloc.width > 0 ? alloc.width : 800, alloc.height > 0 ? alloc.height : 600);
                 const FluidCore::Rectangle viewWorldRect{
-                    worldTopLeft.x, worldTopLeft.y, std::max(0.0, worldBottomRight.x - worldTopLeft.x),
+                    worldTopLeft.x, worldTopLeft.y,
+                    std::max(0.0, worldBottomRight.x - worldTopLeft.x),
                     std::max(0.0, worldBottomRight.y - worldTopLeft.y)};
 
                 auto visibleNodes = m_api.queryVisibleNodes(viewWorldRect);
@@ -1359,8 +1374,8 @@ gboolean WorkspaceView::onMotion(GdkEventMotion* event) {
                 gdk_window_set_cursor(win, pointerCursor);
                 if (pointerCursor)
                     g_object_unref(pointerCursor);
-            } else if (WorkspaceInteraction::minimapHitTest(m_state, event->x, event->y, alloc.width,
-                                                            alloc.height)) {
+            } else if (WorkspaceInteraction::minimapHitTest(m_state, event->x, event->y,
+                                                            alloc.width, alloc.height)) {
                 GdkCursor* pointerCursor = gdk_cursor_new_for_display(display, GDK_HAND2);
                 gdk_window_set_cursor(win, pointerCursor);
                 if (pointerCursor)
@@ -1389,7 +1404,8 @@ gboolean WorkspaceView::onMotion(GdkEventMotion* event) {
 }
 
 gboolean WorkspaceView::onKeyPress(GdkEventKey* event) {
-    if (!m_area || !GTK_IS_WIDGET(m_area)) return FALSE;
+    if (!m_area || !GTK_IS_WIDGET(m_area))
+        return FALSE;
     switch (event->keyval) {
     case GDK_KEY_plus:
     case GDK_KEY_equal:

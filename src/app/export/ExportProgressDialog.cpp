@@ -5,20 +5,18 @@
 
 namespace FluidCoreApp {
 
-ExportProgressDialog::ExportProgressDialog(GtkWindow* parent,
-                                           const std::string& inputPdfPath,
+ExportProgressDialog::ExportProgressDialog(GtkWindow* parent, const std::string& inputPdfPath,
                                            std::vector<FluidCore::Stroke> strokesSnapshot,
                                            const std::string& outputPath,
                                            const PdfExportOptions& options,
                                            CompletionCallback onFinished)
     : m_cancelFlag(std::make_shared<std::atomic<bool>>(false)),
-      m_lifetimeToken(std::make_shared<int>(1)),
-      m_onFinished(std::move(onFinished)) {
+      m_lifetimeToken(std::make_shared<int>(1)), m_onFinished(std::move(onFinished)) {
 
     m_dialog = gtk_dialog_new_with_buttons(
         "Exporting Document", parent,
-        static_cast<GtkDialogFlags>(GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT),
-        "_Cancel", GTK_RESPONSE_CANCEL, nullptr);
+        static_cast<GtkDialogFlags>(GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT), "_Cancel",
+        GTK_RESPONSE_CANCEL, nullptr);
 
     gtk_window_set_default_size(GTK_WINDOW(m_dialog), 380, -1);
     gtk_window_set_resizable(GTK_WINDOW(m_dialog), FALSE);
@@ -42,21 +40,21 @@ ExportProgressDialog::ExportProgressDialog(GtkWindow* parent,
     gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(m_progressBar), 0.0);
     gtk_box_pack_start(GTK_BOX(contentArea), m_progressBar, FALSE, FALSE, 0);
 
-    g_signal_connect(m_dialog, "response",
-                     G_CALLBACK(+[](GtkDialog* dialog, gint responseId, gpointer data) {
-                         auto* self = static_cast<ExportProgressDialog*>(data);
-                         if (self && responseId == GTK_RESPONSE_CANCEL && self->m_cancelFlag) {
-                             self->m_cancelFlag->store(true);
-                             gtk_label_set_text(GTK_LABEL(self->m_statusLabel),
-                                                "Cancelling export (cleaning temporary files)...");
-                             GtkWidget* btn = gtk_dialog_get_widget_for_response(dialog, GTK_RESPONSE_CANCEL);
-                             if (btn) {
-                                 gtk_button_set_label(GTK_BUTTON(btn), "Cancelling...");
-                                 gtk_widget_set_sensitive(btn, FALSE);
-                             }
-                         }
-                     }),
-                     this);
+    g_signal_connect(
+        m_dialog, "response", G_CALLBACK(+[](GtkDialog* dialog, gint responseId, gpointer data) {
+            auto* self = static_cast<ExportProgressDialog*>(data);
+            if (self && responseId == GTK_RESPONSE_CANCEL && self->m_cancelFlag) {
+                self->m_cancelFlag->store(true);
+                gtk_label_set_text(GTK_LABEL(self->m_statusLabel),
+                                   "Cancelling export (cleaning temporary files)...");
+                GtkWidget* btn = gtk_dialog_get_widget_for_response(dialog, GTK_RESPONSE_CANCEL);
+                if (btn) {
+                    gtk_button_set_label(GTK_BUTTON(btn), "Cancelling...");
+                    gtk_widget_set_sensitive(btn, FALSE);
+                }
+            }
+        }),
+        this);
 
     gtk_widget_show_all(m_dialog);
 
@@ -65,12 +63,8 @@ ExportProgressDialog::ExportProgressDialog(GtkWindow* parent,
     // Launch worker thread
     m_workerThread = PdfExportService::exportAnnotatedPdfAsync(
         inputPdfPath, std::move(strokesSnapshot), outputPath, options, m_cancelFlag, tokenWeak,
-        [this](std::size_t curr, std::size_t total) {
-            updateProgress(curr, total);
-        },
-        [this](const PdfExportResult& res) {
-            finish(res);
-        });
+        [this](std::size_t curr, std::size_t total) { updateProgress(curr, total); },
+        [this](const PdfExportResult& res) { finish(res); });
 }
 
 ExportProgressDialog::~ExportProgressDialog() {
@@ -95,7 +89,8 @@ void ExportProgressDialog::updateProgress(std::size_t current, std::size_t total
     if (!m_dialog || !m_progressBar || !m_statusLabel || total == 0) {
         return;
     }
-    const double fraction = std::clamp(static_cast<double>(current) / static_cast<double>(total), 0.0, 1.0);
+    const double fraction =
+        std::clamp(static_cast<double>(current) / static_cast<double>(total), 0.0, 1.0);
     gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(m_progressBar), fraction);
 
     const int pct = static_cast<int>(fraction * 100.0);
@@ -105,7 +100,8 @@ void ExportProgressDialog::updateProgress(std::size_t current, std::size_t total
 }
 
 void ExportProgressDialog::finish(const PdfExportResult& result) {
-    if (m_finished) return;
+    if (m_finished)
+        return;
     m_finished = true;
 
     if (m_onFinished) {

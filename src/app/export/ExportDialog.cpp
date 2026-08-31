@@ -23,8 +23,8 @@ std::string getBaseDocumentName(const std::string& path) {
 
 void showMessage(GtkWindow* parent, GtkMessageType type, const std::string& title,
                  const std::string& message) {
-    GtkWidget* dialog = gtk_message_dialog_new(parent, GTK_DIALOG_MODAL, type, GTK_BUTTONS_OK,
-                                              "%s", title.c_str());
+    GtkWidget* dialog =
+        gtk_message_dialog_new(parent, GTK_DIALOG_MODAL, type, GTK_BUTTONS_OK, "%s", title.c_str());
     gtk_message_dialog_format_secondary_text(GTK_MESSAGE_DIALOG(dialog), "%s", message.c_str());
     gtk_dialog_run(GTK_DIALOG(dialog));
     gtk_widget_destroy(dialog);
@@ -37,8 +37,9 @@ static std::atomic<bool> s_isExporting{false};
 void ExportDialog::show(GtkWindow* parent, DocumentPane* pane, WorkspaceView* /*workspace*/,
                         FluidCore::FluidCoreAPI* api) {
     if (s_isExporting.load()) {
-        showMessage(parent, GTK_MESSAGE_WARNING, "Export In Progress",
-                    "An export is already running in the background. Please wait for it to finish.");
+        showMessage(
+            parent, GTK_MESSAGE_WARNING, "Export In Progress",
+            "An export is already running in the background. Please wait for it to finish.");
         return;
     }
 
@@ -91,11 +92,12 @@ void ExportDialog::show(GtkWindow* parent, DocumentPane* pane, WorkspaceView* /*
     gtk_box_pack_start(GTK_BOX(extraBox), formatLabel, FALSE, FALSE, 0);
 
     std::string fullDocLabel = "📄 Flattened Annotated PDF (Full Document";
-    if (totalDocPages > 0) fullDocLabel += " — " + std::to_string(totalDocPages) + " Pages";
+    if (totalDocPages > 0)
+        fullDocLabel += " — " + std::to_string(totalDocPages) + " Pages";
     fullDocLabel += ")";
 
-    std::string compactLabel = "⚡ Annotated Pages Only — Compact Synthesis (" +
-                               std::to_string(numAnnotated) + " Pages)";
+    std::string compactLabel =
+        "⚡ Annotated Pages Only — Compact Synthesis (" + std::to_string(numAnnotated) + " Pages)";
 
     GtkWidget* pdfFullRadio = gtk_radio_button_new_with_label(nullptr, fullDocLabel.c_str());
     GtkWidget* pdfCompactRadio = gtk_radio_button_new_with_label_from_widget(
@@ -142,7 +144,8 @@ void ExportDialog::show(GtkWindow* parent, DocumentPane* pane, WorkspaceView* /*
         GtkWidget* pdfFullRadio;
         GtkWidget* pdfCompactRadio;
     };
-    auto* ctx = new ToggleContext{chooser, baseName, pdfFilter, mdFilter, pdfFullRadio, pdfCompactRadio};
+    auto* ctx =
+        new ToggleContext{chooser, baseName, pdfFilter, mdFilter, pdfFullRadio, pdfCompactRadio};
 
     auto updateProposedName = +[](GtkToggleButton*, gpointer data) {
         auto* c = static_cast<ToggleContext*>(data);
@@ -166,9 +169,10 @@ void ExportDialog::show(GtkWindow* parent, DocumentPane* pane, WorkspaceView* /*
 
     g_signal_connect(pdfFullRadio, "toggled", G_CALLBACK(updateProposedName), ctx);
     g_signal_connect(pdfCompactRadio, "toggled", G_CALLBACK(updateProposedName), ctx);
-    g_signal_connect_data(mdRadio, "toggled", G_CALLBACK(updateProposedName), ctx,
-                          [](gpointer data, GClosure*) { delete static_cast<ToggleContext*>(data); },
-                          static_cast<GConnectFlags>(0));
+    g_signal_connect_data(
+        mdRadio, "toggled", G_CALLBACK(updateProposedName), ctx,
+        [](gpointer data, GClosure*) { delete static_cast<ToggleContext*>(data); },
+        static_cast<GConnectFlags>(0));
 
     const gint response = gtk_dialog_run(GTK_DIALOG(chooser));
     if (response == GTK_RESPONSE_ACCEPT) {
@@ -178,7 +182,8 @@ void ExportDialog::show(GtkWindow* parent, DocumentPane* pane, WorkspaceView* /*
             g_free(rawPath);
 
             const bool isFullPdf = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(pdfFullRadio));
-            const bool isCompactPdf = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(pdfCompactRadio));
+            const bool isCompactPdf =
+                gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(pdfCompactRadio));
             const bool isPdf = (isFullPdf || isCompactPdf);
 
             if (isPdf) {
@@ -208,17 +213,21 @@ void ExportDialog::show(GtkWindow* parent, DocumentPane* pane, WorkspaceView* /*
                         [parent, targetPath, isCompactPdf](const PdfExportResult& res) {
                             s_isExporting.store(false);
                             if (res.success) {
-                                std::string msg = "Annotated PDF with vector strokes was saved to:\n" +
-                                                  targetPath + "\n(" +
-                                                  std::to_string(res.pagesExported) + " pages exported)";
+                                std::string msg =
+                                    "Annotated PDF with vector strokes was saved to:\n" +
+                                    targetPath + "\n(" + std::to_string(res.pagesExported) +
+                                    " pages exported)";
                                 if (isCompactPdf) {
-                                    msg += "\n\nNote: Compact mode exports sequential subset pages. Source citations retain original document pagination.";
+                                    msg +=
+                                        "\n\nNote: Compact mode exports sequential subset pages. "
+                                        "Source citations retain original document pagination.";
                                 }
                                 showMessage(parent, GTK_MESSAGE_INFO, "Export Successful", msg);
                             } else {
                                 showMessage(parent, GTK_MESSAGE_ERROR, "PDF Export Failed",
-                                            res.errorMessage.empty() ? "Export failed or was cancelled."
-                                                                    : res.errorMessage);
+                                            res.errorMessage.empty()
+                                                ? "Export failed or was cancelled."
+                                                : res.errorMessage);
                             }
                         });
                 }

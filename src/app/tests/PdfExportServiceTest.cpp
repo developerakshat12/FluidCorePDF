@@ -2,9 +2,9 @@
 #include "storage/AnnotationStore.h"
 
 #include <atomic>
-#include <cassert>
 #include <cairo-pdf.h>
 #include <cairo.h>
+#include <cassert>
 #include <cmath>
 #include <filesystem>
 #include <iostream>
@@ -145,7 +145,7 @@ void testDeterministicCancellation() {
     };
 
     auto result = PdfExportService::exportAnnotatedPdfCore(inPdfPath, strokes, outPdfPath, {},
-                                                          &cancelFlag, progressHook);
+                                                           &cancelFlag, progressHook);
 
     assert(!result.success);
     assert(result.errorMessage.find("cancelled") != std::string::npos);
@@ -242,8 +242,8 @@ void testFilterIntersection() {
 
 void testPopplerLoadFailureHandling() {
     std::vector<Stroke> strokes;
-    auto result = PdfExportService::exportAnnotatedPdfCore(
-        "nonexistent_file_path_12345.pdf", strokes, "output.pdf");
+    auto result = PdfExportService::exportAnnotatedPdfCore("nonexistent_file_path_12345.pdf",
+                                                           strokes, "output.pdf");
 
     assert(!result.success);
     assert(!result.errorMessage.empty());

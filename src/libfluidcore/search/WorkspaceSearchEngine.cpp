@@ -35,7 +35,7 @@ bool containsCaseInsensitive(const std::string& haystack, const std::string& nee
 }
 
 bool containsCaseSensitive(const std::string& haystack, const std::string& needle,
-                            size_t* matchOffset = nullptr) {
+                           size_t* matchOffset = nullptr) {
     if (needle.empty()) {
         return false;
     }
@@ -59,9 +59,8 @@ std::string trim(const std::string& str) {
 }
 
 void searchNode(const WorkspaceNode* node, const std::string& topLevelId,
-                const WorkspaceModel& model, const std::string& cleanQuery,
-                bool isTagQuery, const WorkspaceSearchOptions& options,
-                std::vector<WorkspaceMatch>& outMatches) {
+                const WorkspaceModel& model, const std::string& cleanQuery, bool isTagQuery,
+                const WorkspaceSearchOptions& options, std::vector<WorkspaceMatch>& outMatches) {
     if (!node) {
         return;
     }
@@ -106,7 +105,8 @@ void searchNode(const WorkspaceNode* node, const std::string& topLevelId,
                     WorkspaceMatch match;
                     match.nodeId = excerpt->id();
                     match.topLevelNodeId = topLevelId;
-                    match.title = "Excerpt (p. " + std::to_string(excerpt->sourcePageNo() + 1) + ")";
+                    match.title =
+                        "Excerpt (p. " + std::to_string(excerpt->sourcePageNo() + 1) + ")";
                     match.snippet = "#" + tag;
                     match.target = MatchTarget::Tag;
                     match.bounds = bounds;
@@ -283,18 +283,18 @@ WorkspaceSearchEngine::toSearchResults(const std::vector<WorkspaceMatch>& matche
         SearchResult res;
         res.entityId = m.nodeId;
         switch (m.target) {
-            case MatchTarget::TextSnippet:
-                res.entityType = "excerpt";
-                break;
-            case MatchTarget::Title:
-                res.entityType = "stack";
-                break;
-            case MatchTarget::Tag:
-                res.entityType = "tag";
-                break;
-            case MatchTarget::NodeId:
-                res.entityType = "node";
-                break;
+        case MatchTarget::TextSnippet:
+            res.entityType = "excerpt";
+            break;
+        case MatchTarget::Title:
+            res.entityType = "stack";
+            break;
+        case MatchTarget::Tag:
+            res.entityType = "tag";
+            break;
+        case MatchTarget::NodeId:
+            res.entityType = "node";
+            break;
         }
         res.pageIndex = -1;
         res.snippet = m.snippet;

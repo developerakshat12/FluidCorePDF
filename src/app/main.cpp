@@ -248,15 +248,14 @@ void onActivate(GtkApplication* app, gpointer userData) {
 
     // Wire Ctrl+E (Export) action
     GSimpleAction* exportAction = g_simple_action_new("export", nullptr);
-    g_signal_connect(exportAction, "activate",
-                     G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
-                         auto* ctx = static_cast<AppViewContext*>(data);
-                         if (ctx) {
-                             FluidCoreApp::ExportDialog::show(ctx->window, ctx->pane,
-                                                              ctx->workspace, ctx->api);
-                         }
-                     }),
-                     viewCtx);
+    g_signal_connect(
+        exportAction, "activate", G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
+            auto* ctx = static_cast<AppViewContext*>(data);
+            if (ctx) {
+                FluidCoreApp::ExportDialog::show(ctx->window, ctx->pane, ctx->workspace, ctx->api);
+            }
+        }),
+        viewCtx);
     g_action_map_add_action(G_ACTION_MAP(window), G_ACTION(exportAction));
 
     const gchar* exportAccels[] = {"<Primary>e", "<Control>e", nullptr};
@@ -374,7 +373,8 @@ void onActivate(GtkApplication* app, gpointer userData) {
     gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.reset_squeeze",
                                           resetSqueezeAccels);
 
-    // Wire Ctrl+F (Search), Ctrl+Shift+S (Search Squeeze), Ctrl+Shift+F (Canvas Find), and Ctrl+Alt+F (All Search)
+    // Wire Ctrl+F (Search), Ctrl+Shift+S (Search Squeeze), Ctrl+Shift+F (Canvas Find), and
+    // Ctrl+Alt+F (All Search)
     GSimpleAction* searchAction = g_simple_action_new("search", nullptr);
     g_signal_connect(searchAction, "activate",
                      G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
@@ -547,7 +547,8 @@ void onActivate(GtkApplication* app, gpointer userData) {
                     pane->save();
                 return TRUE;
             }
-            if (ctrl && !shift && !alt && (event->keyval == GDK_KEY_e || event->keyval == GDK_KEY_E)) {
+            if (ctrl && !shift && !alt &&
+                (event->keyval == GDK_KEY_e || event->keyval == GDK_KEY_E)) {
                 FluidCoreApp::ExportDialog::show(ctx->window, pane, ws, ctx->api);
                 return TRUE;
             }

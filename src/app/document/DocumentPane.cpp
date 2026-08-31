@@ -1,4 +1,5 @@
 #include "document/DocumentPane.h"
+#include "FluidCoreAPI.h"
 #include "document/InkOverlay.h"
 #include "document/SqueezeRenderHelper.h"
 #include "search/AnchorSqueezePlanner.h"
@@ -6,7 +7,6 @@
 #include "undo/AnnotationCommands.h"
 #include "undo/SqueezeCommands.h"
 #include "workspace/WorkspaceView.h"
-#include "FluidCoreAPI.h"
 
 #include <algorithm>
 #include <cmath>
@@ -531,29 +531,29 @@ void DocumentPane::onSearchQueryChanged(const std::string& query, bool enableSqu
 
         const std::size_t wsCount = wsMatches.size();
 
-        m_searchService.searchAsync(
-            m_document, m_pages, query,
-            [this, enableSqueeze, wsCount](std::vector<SearchHit> hits) {
-                m_searchHits = std::move(hits);
-                m_activeSearchHitIndex = 0;
-                const std::size_t total = m_searchHits.size() + wsCount;
+        m_searchService.searchAsync(m_document, m_pages, query,
+                                    [this, enableSqueeze, wsCount](std::vector<SearchHit> hits) {
+                                        m_searchHits = std::move(hits);
+                                        m_activeSearchHitIndex = 0;
+                                        const std::size_t total = m_searchHits.size() + wsCount;
 
-                if (m_searchBar) {
-                    m_searchBar->setScopedMatchStatus(m_activeSearchHitIndex, total,
-                                                     m_searchHits.size(), wsCount);
-                }
+                                        if (m_searchBar) {
+                                            m_searchBar->setScopedMatchStatus(
+                                                m_activeSearchHitIndex, total, m_searchHits.size(),
+                                                wsCount);
+                                        }
 
-                if (enableSqueeze && !m_searchHits.empty()) {
-                    applySearchSqueeze();
-                } else {
-                    m_squeezeEngine.clearSearchSqueeze(m_docId);
-                    updateLayoutDimensions();
-                }
+                                        if (enableSqueeze && !m_searchHits.empty()) {
+                                            applySearchSqueeze();
+                                        } else {
+                                            m_squeezeEngine.clearSearchSqueeze(m_docId);
+                                            updateLayoutDimensions();
+                                        }
 
-                if (!m_searchHits.empty()) {
-                    scrollToSearchHit(0);
-                }
-            });
+                                        if (!m_searchHits.empty()) {
+                                            scrollToSearchHit(0);
+                                        }
+                                    });
     }
 }
 
@@ -600,13 +600,13 @@ void DocumentPane::navigateSearch(int direction) {
     }
 
     if (m_searchHits.empty()) {
-        if (scope == SearchScope::All && m_workspaceView && m_workspaceView->searchMatchCount() > 0) {
+        if (scope == SearchScope::All && m_workspaceView &&
+            m_workspaceView->searchMatchCount() > 0) {
             m_workspaceView->navigateSearch(direction);
             if (m_searchBar) {
-                m_searchBar->setScopedMatchStatus(
-                    m_workspaceView->activeSearchMatchIndex(),
-                    m_workspaceView->searchMatchCount(),
-                    0, m_workspaceView->searchMatchCount());
+                m_searchBar->setScopedMatchStatus(m_workspaceView->activeSearchMatchIndex(),
+                                                  m_workspaceView->searchMatchCount(), 0,
+                                                  m_workspaceView->searchMatchCount());
             }
         }
         return;
@@ -622,8 +622,7 @@ void DocumentPane::navigateSearch(int direction) {
     if (m_searchBar) {
         if (scope == SearchScope::All && m_workspaceView) {
             m_searchBar->setScopedMatchStatus(
-                m_activeSearchHitIndex,
-                m_searchHits.size() + m_workspaceView->searchMatchCount(),
+                m_activeSearchHitIndex, m_searchHits.size() + m_workspaceView->searchMatchCount(),
                 m_searchHits.size(), m_workspaceView->searchMatchCount());
         } else {
             m_searchBar->setMatchStatus(m_activeSearchHitIndex, m_searchHits.size());

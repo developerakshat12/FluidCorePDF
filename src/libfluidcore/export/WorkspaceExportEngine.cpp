@@ -53,9 +53,9 @@ std::string getExcerptTitleOrSnippet(const WorkspaceNode& node) {
 
 } // namespace
 
-WorkspaceExportResult WorkspaceExportEngine::exportToMarkdown(const WorkspaceModel& model,
-                                                              const GraphTopology& graph,
-                                                              const WorkspaceExportOptions& options) {
+WorkspaceExportResult
+WorkspaceExportEngine::exportToMarkdown(const WorkspaceModel& model, const GraphTopology& graph,
+                                        const WorkspaceExportOptions& options) {
     WorkspaceExportResult result;
     std::ostringstream ss;
 
@@ -84,21 +84,21 @@ WorkspaceExportResult WorkspaceExportEngine::exportToMarkdown(const WorkspaceMod
 
     // 1. Header & Metadata Summary
     if (options.includeHeader) {
-        const std::string title = options.customTitle.empty()
-                                      ? "Synthesis: " + model.projectId()
-                                      : options.customTitle;
+        const std::string title =
+            options.customTitle.empty() ? "Synthesis: " + model.projectId() : options.customTitle;
         ss << "# " << title << "\n\n";
 
         if (options.includeMetadataSummary) {
             ss << "> **Project**: `" << model.projectId() << "`  \n";
-            ss << "> **Total Nodes**: " << allNodeIds.size()
-               << " (" << topStacks.size() << " stacks, " << freeNodes.size() << " free cards)  \n";
+            ss << "> **Total Nodes**: " << allNodeIds.size() << " (" << topStacks.size()
+               << " stacks, " << freeNodes.size() << " free cards)  \n";
             ss << "> **Connections**: " << graph.edgeCount() << " relational links  \n";
             if (options.includeTags && !allTags.empty()) {
                 ss << "> **Tags**: ";
                 bool first = true;
                 for (const auto& tag : allTags) {
-                    if (!first) ss << " ";
+                    if (!first)
+                        ss << " ";
                     ss << "`#" << tag << "`";
                     first = false;
                 }
@@ -187,8 +187,8 @@ bool WorkspaceExportEngine::exportToFile(const std::string& filePath, const Work
 }
 
 void WorkspaceExportEngine::formatStack(const CardStackNode& stack, std::size_t depth,
-                                       const WorkspaceExportOptions& options, std::string& out,
-                                       std::size_t& cardCount, std::size_t& stackCount) {
+                                        const WorkspaceExportOptions& options, std::string& out,
+                                        std::size_t& cardCount, std::size_t& stackCount) {
     stackCount++;
     std::size_t headingLevel = std::min<std::size_t>(depth + 1, 6);
     std::string heading(headingLevel, '#');
@@ -199,14 +199,16 @@ void WorkspaceExportEngine::formatStack(const CardStackNode& stack, std::size_t 
     if (options.includeTags && !stack.tags().empty()) {
         out += "*Tags: ";
         for (std::size_t i = 0; i < stack.tags().size(); ++i) {
-            if (i > 0) out += ", ";
+            if (i > 0)
+                out += ", ";
             out += "`#" + stack.tags()[i] + "`";
         }
         out += "*\n\n";
     }
 
     for (const auto& child : stack.children()) {
-        if (!child) continue;
+        if (!child)
+            continue;
         if (const auto* subStack = dynamic_cast<const CardStackNode*>(child.get())) {
             formatStack(*subStack, depth + 1, options, out, cardCount, stackCount);
         } else if (const auto* excerpt = dynamic_cast<const ExcerptCardNode*>(child.get())) {
@@ -223,9 +225,10 @@ void WorkspaceExportEngine::formatStack(const CardStackNode& stack, std::size_t 
     out += "\n";
 }
 
-void WorkspaceExportEngine::formatExcerptCard(const ExcerptCardNode& card, std::size_t /*indentLevel*/,
-                                             const WorkspaceExportOptions& options,
-                                             std::string& out) {
+void WorkspaceExportEngine::formatExcerptCard(const ExcerptCardNode& card,
+                                              std::size_t /*indentLevel*/,
+                                              const WorkspaceExportOptions& options,
+                                              std::string& out) {
     if (card.isImageExcerpt()) {
         const auto& r = card.sourceNormalizedRect();
         std::ostringstream cropInfo;
@@ -241,7 +244,8 @@ void WorkspaceExportEngine::formatExcerptCard(const ExcerptCardNode& card, std::
             if (options.includeTags && !card.tags().empty()) {
                 cropInfo << " · *Tags: ";
                 for (std::size_t i = 0; i < card.tags().size(); ++i) {
-                    if (i > 0) cropInfo << " ";
+                    if (i > 0)
+                        cropInfo << " ";
                     cropInfo << "`#" << card.tags()[i] << "`";
                 }
                 cropInfo << "*";
@@ -266,7 +270,8 @@ void WorkspaceExportEngine::formatExcerptCard(const ExcerptCardNode& card, std::
         if (options.includeTags && !card.tags().empty()) {
             out += " · *Tags: ";
             for (std::size_t i = 0; i < card.tags().size(); ++i) {
-                if (i > 0) out += " ";
+                if (i > 0)
+                    out += " ";
                 out += "`#" + card.tags()[i] + "`";
             }
             out += "*";
@@ -275,9 +280,10 @@ void WorkspaceExportEngine::formatExcerptCard(const ExcerptCardNode& card, std::
     }
 }
 
-void WorkspaceExportEngine::formatGenericNode(const WorkspaceNode& node, std::size_t /*indentLevel*/,
-                                             const WorkspaceExportOptions& /*options*/,
-                                             std::string& out) {
+void WorkspaceExportEngine::formatGenericNode(const WorkspaceNode& node,
+                                              std::size_t /*indentLevel*/,
+                                              const WorkspaceExportOptions& /*options*/,
+                                              std::string& out) {
     const auto b = node.bounds();
     std::ostringstream oss;
     oss << "- **[" << node.id() << "]** *(Canvas pos: " << static_cast<int>(b.x) << ", "
@@ -306,15 +312,16 @@ void WorkspaceExportEngine::appendRelationalGraph(const GraphTopology& graph,
         const auto* srcNode = model.findRecursive(edge.sourceNodeId);
         const auto* dstNode = model.findRecursive(edge.targetNodeId);
 
-        const std::string srcLabel = srcNode ? getExcerptTitleOrSnippet(*srcNode) : edge.sourceNodeId;
-        const std::string dstLabel = dstNode ? getExcerptTitleOrSnippet(*dstNode) : edge.targetNodeId;
+        const std::string srcLabel =
+            srcNode ? getExcerptTitleOrSnippet(*srcNode) : edge.sourceNodeId;
+        const std::string dstLabel =
+            dstNode ? getExcerptTitleOrSnippet(*dstNode) : edge.targetNodeId;
 
-        const std::string arrow = (edge.direction == EdgeDirection::Bidirectional)
-                                      ? " ◀──▶ "
-                                      : " ──▶ ";
+        const std::string arrow =
+            (edge.direction == EdgeDirection::Bidirectional) ? " ◀──▶ " : " ──▶ ";
 
-        out += "* **`" + edge.sourceNodeId + "`** (" + srcLabel + ")" + arrow +
-               "**`" + edge.targetNodeId + "`** (" + dstLabel + ")";
+        out += "* **`" + edge.sourceNodeId + "`** (" + srcLabel + ")" + arrow + "**`" +
+               edge.targetNodeId + "`** (" + dstLabel + ")";
         if (!edge.label.empty()) {
             out += " *[" + edge.label + "]*";
         }
@@ -349,28 +356,32 @@ void WorkspaceExportEngine::appendMermaidGraph(const GraphTopology& graph,
         const std::string dstId = sanitizeMermaidId(edge.targetNodeId);
 
         if (declaredNodes.find(srcId) == declaredNodes.end()) {
-            const std::string label = srcNode ? sanitizeMermaidLabel(getExcerptTitleOrSnippet(*srcNode))
-                                              : sanitizeMermaidLabel(edge.sourceNodeId);
+            const std::string label = srcNode
+                                          ? sanitizeMermaidLabel(getExcerptTitleOrSnippet(*srcNode))
+                                          : sanitizeMermaidLabel(edge.sourceNodeId);
             out += "    " + srcId + "[\"" + label + "\"]\n";
             declaredNodes.insert(srcId);
         }
 
         if (declaredNodes.find(dstId) == declaredNodes.end()) {
-            const std::string label = dstNode ? sanitizeMermaidLabel(getExcerptTitleOrSnippet(*dstNode))
-                                              : sanitizeMermaidLabel(edge.targetNodeId);
+            const std::string label = dstNode
+                                          ? sanitizeMermaidLabel(getExcerptTitleOrSnippet(*dstNode))
+                                          : sanitizeMermaidLabel(edge.targetNodeId);
             out += "    " + dstId + "[\"" + label + "\"]\n";
             declaredNodes.insert(dstId);
         }
 
         if (edge.direction == EdgeDirection::Bidirectional) {
             if (!edge.label.empty()) {
-                out += "    " + srcId + " <-->|\"" + sanitizeMermaidLabel(edge.label) + "\"| " + dstId + "\n";
+                out += "    " + srcId + " <-->|\"" + sanitizeMermaidLabel(edge.label) + "\"| " +
+                       dstId + "\n";
             } else {
                 out += "    " + srcId + " <--> " + dstId + "\n";
             }
         } else {
             if (!edge.label.empty()) {
-                out += "    " + srcId + " -->|\"" + sanitizeMermaidLabel(edge.label) + "\"| " + dstId + "\n";
+                out += "    " + srcId + " -->|\"" + sanitizeMermaidLabel(edge.label) + "\"| " +
+                       dstId + "\n";
             } else {
                 out += "    " + srcId + " --> " + dstId + "\n";
             }

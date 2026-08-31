@@ -16,11 +16,9 @@ namespace FluidCoreApp {
 // Guarantees strict ordered destruction: cancel -> join -> invalidate token -> destroy widget.
 class ExportProgressDialog {
   public:
-    ExportProgressDialog(GtkWindow* parent,
-                         const std::string& inputPdfPath,
+    ExportProgressDialog(GtkWindow* parent, const std::string& inputPdfPath,
                          std::vector<FluidCore::Stroke> strokesSnapshot,
-                         const std::string& outputPath,
-                         const PdfExportOptions& options,
+                         const std::string& outputPath, const PdfExportOptions& options,
                          CompletionCallback onFinished);
 
     ~ExportProgressDialog();

@@ -18,13 +18,13 @@ class WorkspaceExportEngine {
   public:
     // Exports the workspace model and graph topology to a Markdown formatted string.
     static WorkspaceExportResult exportToMarkdown(const WorkspaceModel& model,
-                                                 const GraphTopology& graph,
-                                                 const WorkspaceExportOptions& options = {});
+                                                  const GraphTopology& graph,
+                                                  const WorkspaceExportOptions& options = {});
 
     // Exports the workspace model and graph topology directly to a file on disk.
     static bool exportToFile(const std::string& filePath, const WorkspaceModel& model,
-                            const GraphTopology& graph, const WorkspaceExportOptions& options = {},
-                            std::string* error = nullptr);
+                             const GraphTopology& graph, const WorkspaceExportOptions& options = {},
+                             std::string* error = nullptr);
 
   private:
     static void formatStack(const CardStackNode& stack, std::size_t depth,
@@ -32,10 +32,10 @@ class WorkspaceExportEngine {
                             std::size_t& cardCount, std::size_t& stackCount);
 
     static void formatExcerptCard(const ExcerptCardNode& card, std::size_t indentLevel,
-                                 const WorkspaceExportOptions& options, std::string& out);
+                                  const WorkspaceExportOptions& options, std::string& out);
 
     static void formatGenericNode(const WorkspaceNode& node, std::size_t indentLevel,
-                                 const WorkspaceExportOptions& options, std::string& out);
+                                  const WorkspaceExportOptions& options, std::string& out);
 
     static void appendRelationalGraph(const GraphTopology& graph, const WorkspaceModel& model,
                                       const WorkspaceExportOptions& options, std::string& out,

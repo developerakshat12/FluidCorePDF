@@ -39,38 +39,32 @@ class PdfExportService {
   public:
     // Synchronous core export engine: processes page vectors and burns strokes.
     // Handles snapshot copying, filter intersection, granular cancellation, and atomic temp-swap.
-    static PdfExportResult exportAnnotatedPdfCore(
-        const std::string& inputPdfPath,
-        std::vector<FluidCore::Stroke> strokesSnapshot,
-        const std::string& outputPath,
-        const PdfExportOptions& options = {},
-        std::atomic<bool>* cancelFlag = nullptr,
-        ProgressCallback onProgress = nullptr);
+    static PdfExportResult exportAnnotatedPdfCore(const std::string& inputPdfPath,
+                                                  std::vector<FluidCore::Stroke> strokesSnapshot,
+                                                  const std::string& outputPath,
+                                                  const PdfExportOptions& options = {},
+                                                  std::atomic<bool>* cancelFlag = nullptr,
+                                                  ProgressCallback onProgress = nullptr);
 
     // Synchronous convenience overloads for in-memory or static usage
-    static PdfExportResult exportAnnotatedPdf(
-        const std::string& inputPdfPath,
-        const FluidCore::AnnotationStore& annotations,
-        const std::string& outputPath,
-        const PdfExportOptions& options = {});
+    static PdfExportResult exportAnnotatedPdf(const std::string& inputPdfPath,
+                                              const FluidCore::AnnotationStore& annotations,
+                                              const std::string& outputPath,
+                                              const PdfExportOptions& options = {});
 
-    static PdfExportResult exportAnnotatedPdf(
-        PopplerDocument* doc,
-        const FluidCore::AnnotationStore& annotations,
-        const std::string& outputPath,
-        const PdfExportOptions& options = {});
+    static PdfExportResult exportAnnotatedPdf(PopplerDocument* doc,
+                                              const FluidCore::AnnotationStore& annotations,
+                                              const std::string& outputPath,
+                                              const PdfExportOptions& options = {});
 
     // Asynchronous RAII worker launcher: captures snapshot by value, spawns joinable worker thread,
-    // and marshals progress and completion callbacks safely to the GLib main thread via g_idle_add_full.
+    // and marshals progress and completion callbacks safely to the GLib main thread via
+    // g_idle_add_full.
     static std::thread exportAnnotatedPdfAsync(
-        const std::string& inputPdfPath,
-        std::vector<FluidCore::Stroke> strokesSnapshot,
-        const std::string& outputPath,
-        const PdfExportOptions& options,
-        std::shared_ptr<std::atomic<bool>> cancelFlag,
-        std::weak_ptr<void> lifetimeToken,
-        ProgressCallback onProgress,
-        CompletionCallback onComplete);
+        const std::string& inputPdfPath, std::vector<FluidCore::Stroke> strokesSnapshot,
+        const std::string& outputPath, const PdfExportOptions& options,
+        std::shared_ptr<std::atomic<bool>> cancelFlag, std::weak_ptr<void> lifetimeToken,
+        ProgressCallback onProgress, CompletionCallback onComplete);
 
     // High-fidelity Cairo stroke renderer matching the Centripetal Catmull-Rom pipeline
     static void renderStroke(cairo_t* cr, const FluidCore::Stroke& stroke);
