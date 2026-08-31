@@ -1,7 +1,7 @@
 # Project Roadmap
 ## Open-Source Fluid Document Synthesis Platform (`libfluidcore` + Xournal++)
 
-> Companion documents: [PRD.md](PRD.md) · [TRD.md](TRD.md) · [feature.md](feature.md) · [system architecture.md](system%20architecture.md) · [appflow.md](appflow.md) · [filefunction.md](filefunction.md) · [integration.md](integration.md) · [MVP-SPEC.md](MVP-SPEC.md)
+> Companion documents: [PRD.md](PRD.md) · [TRD.md](TRD.md) · [features.md](../specs/features.md) · [system-architecture.md](../specs/system-architecture.md) · [appflow.md](../specs/appflow.md) · [file-function-map.md](../specs/file-function-map.md) · [integration.md](../specs/integration.md) · [MVP-SPEC.md](MVP-SPEC.md)
 
 ---
 

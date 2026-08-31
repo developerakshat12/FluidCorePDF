@@ -1,6 +1,6 @@
 # References Workspace
 
-Last updated: 2026-08-26
+Last updated: 2026-08-31
 
 ## What this is for
 Background material: the ICM method itself, upstream pointers, research links. Read-only context — nothing actionable lives here.

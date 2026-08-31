@@ -9,7 +9,7 @@ Guide correct implementation inside `libfluidcore/` per TRD.md constraints.
 - Relevant existing engine module being extended
 
 ## Procedure
-1. Confirm target module: workspace/ (R-tree scene graph), squeeze/ (piecewise mapper), graph/ (topology + Bezier), storage/ (SQLite WAL)
+1. Confirm target module: workspace/ (R-tree scene graph, card stacking & physics), squeeze/ (piecewise mapper), graph/ (topology + Bezier), storage/ (SQLite WAL & .xopp), search/ (squeeze planners), text/ (selection & intervals), undo/ (undo stack & commands)
 2. Write the headless unit test FIRST defining expected behavior (e.g., squeeze coordinate mapping invariants)
 3. Implement C++20; no GTK/GDK includes; no I/O outside storage/ module
 4. Engine API surface changes → update FluidCoreAPI.h docs and `specs/file-function-map.md`

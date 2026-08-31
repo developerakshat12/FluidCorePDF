@@ -1,6 +1,6 @@
 # FluidCore Platform
 
-An **open-source, offline-first alternative to LiquidText** for active reading: a fluid, malleable PDF reader fused with an infinite 2D synthesis workspace. Built as a decoupled C++20 engine (`libfluidcore`) with a GTK 3 / Cairo / Poppler desktop frontend extending Xournal++.
+An **open-source, offline-first alternative to LiquidText** for active reading: a fluid, malleable PDF reader fused with an infinite 2D synthesis workspace. Built as a decoupled C++20 engine (`libfluidcore`) with a GTK 3 / Cairo / Poppler desktop frontend.
 
 ## Why
 Standard PDF viewers lock content into rigid pages. This project lets you:
@@ -24,7 +24,7 @@ Start at **[CLAUDE.md](CLAUDE.md)** — it routes every task to the right worksp
 Machine-readable state: [project.yaml](project.yaml) · [planning/roadmap.yaml](planning/roadmap.yaml) · [planning/backlog.yaml](planning/backlog.yaml)
 
 ## Status
-Pre-alpha — documentation phase complete; M0 (repo bootstrap) is next. See [planning/ROADMAP.md](planning/ROADMAP.md).
+Pre-alpha — Milestones M0–M3 complete (Reader core, Squeeze engine, Infinite workspace & excerpts, Bi-directional anchors); M4 (Links, Stacks & Search) in progress. See [planning/ROADMAP.md](planning/ROADMAP.md).
 
 ## License
 GPL-2.0-or-later (inherited from Xournal++); `libfluidcore` relicensing tracked in [GOVERNANCE.md §3](GOVERNANCE.md). Contributions: see [CONTRIBUTING.md](CONTRIBUTING.md).

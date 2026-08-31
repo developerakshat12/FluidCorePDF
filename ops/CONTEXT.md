@@ -1,6 +1,6 @@
 # Ops Workspace
 
-Last updated: 2026-08-26
+Last updated: 2026-08-31
 
 ## What this is for
 Build, CI, benchmarks, packaging, release. Everything that keeps the project shippable and its perf budgets measurable.

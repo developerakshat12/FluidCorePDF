@@ -1,5 +1,5 @@
 # Master Reference Index
-Last updated: 2026-08-26
+Last updated: 2026-08-31
 
 One line per document. Read only what the CLAUDE.md routing table sends you to.
 

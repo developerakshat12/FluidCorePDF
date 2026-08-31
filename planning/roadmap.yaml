@@ -1,7 +1,7 @@
 # Machine-readable milestone state. Update alongside planning/ROADMAP.md.
 # status values: pending | in_progress | demo_gate_pending | complete
 project: fluidcore-platform
-updated: 2026-08-26
+updated: 2026-08-31
 
 milestones:
   - id: M0
@@ -55,7 +55,7 @@ milestones:
   - id: M4
     name: links-stacks-search
     window_weeks: [39, 48]
-    status: pending
+    status: in_progress
     items:
       - ink connectors -> GraphEdge + Bezier routing                    # complete: pure domain GraphEdge & GraphTopology model, bidirectional promotion, straightness classification, Alt+6/F6/A/L connector tool, edge selection & deletion (TASK-4.1)
       - card snapping/stacking (16pt proximity)                         # complete: pure C++20 PhysicsSolver, screen-adaptive 16pt magnetic alignment, >50% overlap stack merge, CardStackNode container, accordion deck & child extraction, bounds sync (TASK-4.2)
