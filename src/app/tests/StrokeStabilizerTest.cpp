@@ -1,4 +1,4 @@
-#include "StrokeStabilizer.h"
+#include "services/StrokeStabilizer.h"
 
 #include <chrono>
 #include <cmath>

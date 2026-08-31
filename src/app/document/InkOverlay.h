@@ -1,7 +1,7 @@
 #pragma once
 
-#include "StrokeStabilizer.h"
-#include "TextSelectionService.h"
+#include "services/StrokeStabilizer.h"
+#include "services/TextSelectionService.h"
 #include "storage/AnnotationStore.h"
 #include "text/TextSelection.h"
 

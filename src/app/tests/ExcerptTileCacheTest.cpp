@@ -1,5 +1,5 @@
-#include "ExcerptTileCache.h"
-#include "PdfDocumentService.h"
+#include "services/ExcerptTileCache.h"
+#include "services/PdfDocumentService.h"
 
 #include <cassert>
 #include <cmath>

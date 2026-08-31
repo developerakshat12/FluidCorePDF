@@ -1,8 +1,8 @@
-#include "DocumentPane.h"
-#include "ExcerptTileCache.h"
+#include "document/DocumentPane.h"
+#include "services/ExcerptTileCache.h"
 #include "FluidCoreEngine.h"
-#include "PdfDocumentService.h"
-#include "WorkspaceView.h"
+#include "services/PdfDocumentService.h"
+#include "workspace/WorkspaceView.h"
 #include "workspace/ExcerptCardNode.h"
 
 #include <gtk/gtk.h>

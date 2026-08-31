@@ -1,5 +1,5 @@
 // ReturnAnchorPillTest.cpp — Headless unit tests for ReturnAnchorPill geometry and state machine
-#include "ReturnAnchorPill.h"
+#include "document/ReturnAnchorPill.h"
 
 #include <cassert>
 #include <cstdlib>

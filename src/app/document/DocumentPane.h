@@ -1,9 +1,9 @@
 #pragma once
 
-#include "DocumentSearchService.h"
-#include "PageTileCache.h"
-#include "ReturnAnchorPill.h"
-#include "SearchBarWidget.h"
+#include "document/ReturnAnchorPill.h"
+#include "document/SearchBarWidget.h"
+#include "services/DocumentSearchService.h"
+#include "services/PageTileCache.h"
 #include "search/AnchorSqueezePlanner.h"
 #include "squeeze/SqueezeEngine.h"
 #include "storage/AnnotationStore.h"

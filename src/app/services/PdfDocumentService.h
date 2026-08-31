@@ -11,7 +11,7 @@
 #include <poppler.h>
 
 #include "FluidCoreAPI.h"
-#include "PageTileCache.h"
+#include "services/PageTileCache.h"
 
 namespace FluidCoreApp {
 

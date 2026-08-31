@@ -1,5 +1,5 @@
 #include "search/SearchSqueezePlanner.h"
-#include "SqueezeRenderHelper.h"
+#include "document/SqueezeRenderHelper.h"
 #include "squeeze/SqueezeEngine.h"
 
 #include <cmath>

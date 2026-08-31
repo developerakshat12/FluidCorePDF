@@ -1,4 +1,4 @@
-#include "SqueezeRenderHelper.h"
+#include "document/SqueezeRenderHelper.h"
 #include "squeeze/SqueezeEngine.h"
 #include "undo/SqueezeCommands.h"
 #include "undo/UndoStack.h"

@@ -1,7 +1,7 @@
-#include "InkOverlay.h"
-#include "DamageRect.h"
-#include "DocumentPane.h"
-#include "SqueezeRenderHelper.h"
+#include "document/InkOverlay.h"
+#include "document/DamageRect.h"
+#include "document/DocumentPane.h"
+#include "document/SqueezeRenderHelper.h"
 #include "undo/AnnotationCommands.h"
 #include "workspace/ExcerptPayload.h"
 

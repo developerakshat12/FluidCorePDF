@@ -1,6 +1,6 @@
 #pragma once
 
-#include "DocumentPane.h"
+#include "document/DocumentPane.h"
 #include "text/TextSelection.h"
 
 #include <poppler.h>

@@ -8,6 +8,7 @@ add_library(fluidcore STATIC
     workspace/PhysicsSolver.cpp
     workspace/CanvasStrokeNode.cpp
     workspace/ExcerptPayload.cpp
+    workspace/CardLayoutEngine.cpp
     graph/GraphTopology.cpp
     storage/ProjectStore.cpp
     storage/XoppDocument.cpp
@@ -98,4 +99,8 @@ if(BUILD_TESTING)
     add_executable(rtree_benchmark_test tests/workspace/RTreeBenchmarkTest.cpp)
     target_link_libraries(rtree_benchmark_test PRIVATE fluidcore)
     add_test(NAME RTreeBenchmarkTest COMMAND rtree_benchmark_test)
+
+    add_executable(card_layout_engine_test tests/workspace/CardLayoutEngineTest.cpp)
+    target_link_libraries(card_layout_engine_test PRIVATE fluidcore)
+    add_test(NAME CardLayoutEngineTest COMMAND card_layout_engine_test)
 endif()

@@ -1,0 +1,117 @@
+#pragma once
+
+#include "FluidCoreAPI.h"
+#include "services/ExcerptTileCache.h"
+#include "workspace/WorkspaceState.h"
+
+#include <functional>
+#include <string>
+
+#include <gtk/gtk.h>
+
+namespace FluidCoreApp {
+
+class WorkspaceView {
+  public:
+    using NavigateToSourceCallback =
+        std::function<void(const std::string& docId, std::size_t pageNo,
+                           const FluidCore::Rectangle& normRect, const std::string& excerptId,
+                           const std::string& snippet, const FluidCore::Point& cardWorldCenter)>;
+    using ExcerptAddedCallback = std::function<void(const FluidCore::ExcerptCardNode&)>;
+
+    explicit WorkspaceView(FluidCore::FluidCoreAPI& api);
+    ~WorkspaceView();
+
+    WorkspaceView(const WorkspaceView&) = delete;
+    WorkspaceView& operator=(const WorkspaceView&) = delete;
+
+    GtkWidget* widget() const { return m_area; }
+
+    void setExcerptTileCache(ExcerptTileCache* cache);
+    ExcerptTileCache* excerptTileCache() const { return m_excerptTileCache; }
+
+    // Coordinate conversions
+    FluidCore::Point screenToWorld(double screenX, double screenY) const {
+        return m_state.viewport.screenToWorld(screenX, screenY);
+    }
+    FluidCore::Point worldToScreen(double worldX, double worldY) const {
+        return m_state.viewport.worldToScreen(worldX, worldY);
+    }
+
+    // Viewport navigation
+    void zoomAt(double factor, double focalScreenX, double focalScreenY);
+    void setZoom(double zoom);
+    void panBy(double dxScreen, double dyScreen);
+    void centerOn(double worldX, double worldY);
+    void glideToWorldCoord(double targetWorldX, double targetWorldY);
+    void flashExcerptCard(const std::string& cardId);
+    void resetView();
+
+    double zoom() const { return m_state.viewport.zoom; }
+    double originX() const { return m_state.viewport.originX; }
+    double originY() const { return m_state.viewport.originY; }
+
+    bool isMinimapVisible() const { return m_state.showMinimap; }
+    void setMinimapVisible(bool visible);
+
+    void setTool(const std::string& tool);
+    const std::string& tool() const { return m_state.inking.currentTool; }
+    void setColor(uint32_t color) { m_state.inking.currentColor = color; }
+    void setStrokeWidth(double width) { m_state.inking.currentWidth = width; }
+
+    void setNavigateToSourceCallback(NavigateToSourceCallback cb) {
+        m_onNavigateToSource = std::move(cb);
+    }
+    void setOnExcerptAddedCallback(ExcerptAddedCallback cb) { m_onExcerptAdded = std::move(cb); }
+
+    void setSpacePressed(bool pressed);
+    bool isSpacePressed() const { return m_state.isSpacePressed; }
+
+    const WorkspaceState& state() const { return m_state; }
+    WorkspaceState& state() { return m_state; }
+
+  private:
+    static void drawCallback(GtkWidget* area, cairo_t* cr, gpointer userData);
+    static gboolean scrollCallback(GtkWidget* widget, GdkEventScroll* event, gpointer userData);
+    static gboolean buttonPressCallback(GtkWidget* widget, GdkEventButton* event,
+                                        gpointer userData);
+    static gboolean buttonReleaseCallback(GtkWidget* widget, GdkEventButton* event,
+                                          gpointer userData);
+    static gboolean motionCallback(GtkWidget* widget, GdkEventMotion* event, gpointer userData);
+    static gboolean keyPressCallback(GtkWidget* widget, GdkEventKey* event, gpointer userData);
+    static gboolean keyReleaseCallback(GtkWidget* widget, GdkEventKey* event, gpointer userData);
+
+    static gboolean zoomSettlingTimeoutCallback(gpointer userData);
+    void onZoomSettled();
+
+    static void dragDataReceivedCallback(GtkWidget* widget, GdkDragContext* context, gint x, gint y,
+                                         GtkSelectionData* data, guint info, guint time,
+                                         gpointer userData);
+    static gboolean dragMotionCallback(GtkWidget* widget, GdkDragContext* context, gint x, gint y,
+                                       guint time, gpointer userData);
+    static void dragLeaveCallback(GtkWidget* widget, GdkDragContext* context, guint time,
+                                  gpointer userData);
+
+    void draw(cairo_t* cr, int width, int height);
+    gboolean onScroll(GdkEventScroll* event);
+    gboolean onButtonPress(GdkEventButton* event);
+    gboolean onButtonRelease(GdkEventButton* event);
+    gboolean onMotion(GdkEventMotion* event);
+    gboolean onKeyPress(GdkEventKey* event);
+    gboolean onKeyRelease(GdkEventKey* event);
+
+    void onDragDataReceived(GdkDragContext* context, gint x, gint y, GtkSelectionData* data,
+                            guint info, guint time);
+    gboolean onDragMotion(GdkDragContext* context, gint x, gint y, guint time);
+    void onDragLeave(GdkDragContext* context, guint time);
+
+    FluidCore::FluidCoreAPI& m_api;
+    GtkWidget* m_area = nullptr;
+    ExcerptTileCache* m_excerptTileCache = nullptr;
+    WorkspaceState m_state;
+
+    NavigateToSourceCallback m_onNavigateToSource;
+    ExcerptAddedCallback m_onExcerptAdded;
+};
+
+} // namespace FluidCoreApp

@@ -1,4 +1,4 @@
-#include "DamageRect.h"
+#include "document/DamageRect.h"
 
 #include <cstdlib>
 #include <iostream>

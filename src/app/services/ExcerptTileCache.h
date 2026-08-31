@@ -1,7 +1,7 @@
 #pragma once
 
-#include "PageTileCache.h"
-#include "PdfDocumentService.h"
+#include "services/PageTileCache.h"
+#include "services/PdfDocumentService.h"
 #include "workspace/ExcerptCardNode.h"
 
 #include <atomic>
