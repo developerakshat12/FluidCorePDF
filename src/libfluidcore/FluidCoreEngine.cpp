@@ -202,6 +202,23 @@ std::vector<std::string> FluidCoreEngine::getStackChildren(const std::string& st
     return ids;
 }
 
+bool FluidCoreEngine::setStackTitle(const std::string& stackId, const std::string& title) {
+    auto* node = m_model.find(stackId);
+    if (auto* stack = dynamic_cast<CardStackNode*>(node)) {
+        stack->setTitle(title);
+        return true;
+    }
+    return false;
+}
+
+std::string FluidCoreEngine::getStackTitle(const std::string& stackId) const {
+    const auto* node = m_model.find(stackId);
+    if (const auto* stack = dynamic_cast<const CardStackNode*>(node)) {
+        return stack->title();
+    }
+    return "";
+}
+
 std::string FluidCoreEngine::createInkLink(const std::string& sourceNodeId,
                                            const std::string& targetNodeId, const Color& color) {
     return m_graph.addEdge(sourceNodeId, targetNodeId, color);

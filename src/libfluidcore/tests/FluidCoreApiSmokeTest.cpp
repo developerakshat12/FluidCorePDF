@@ -64,6 +64,8 @@ class StubApi final : public FluidCoreAPI {
     bool isStackNode(const std::string&) const override { return false; }
     bool isStackCollapsed(const std::string&) const override { return false; }
     std::vector<std::string> getStackChildren(const std::string&) const override { return {}; }
+    bool setStackTitle(const std::string&, const std::string&) override { return false; }
+    std::string getStackTitle(const std::string&) const override { return ""; }
 
     // Signature-only until M5; must remain implementable as a no-op.
     void openProject(const std::string&) override {}

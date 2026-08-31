@@ -740,32 +740,51 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
             gtk_widget_show_all(menu);
             gtk_menu_popup_at_pointer(GTK_MENU(menu), reinterpret_cast<GdkEvent*>(event));
             return TRUE;
-        }
+            const auto* hitNode = hitTestNodeAtWorldPoint(wPt);
+            if (hitNode) {
+                m_selectedNodeId = hitNode->id();
+                m_selectedEdgeId.reset();
+                gtk_widget_queue_draw(m_area);
 
-        const auto* hitNode = hitTestNodeAtWorldPoint(wPt);
-        if (hitNode) {
-            m_selectedNodeId = hitNode->id();
-            m_selectedEdgeId.reset();
-            gtk_widget_queue_draw(m_area);
+                GtkWidget* menu = gtk_menu_new();
+                const bool isStack =
+                    (dynamic_cast<const FluidCore::CardStackNode*>(hitNode) != nullptr);
 
-            GtkWidget* menu = gtk_menu_new();
-            const bool isStack =
-                (dynamic_cast<const FluidCore::CardStackNode*>(hitNode) != nullptr);
-            GtkWidget* deleteItem =
-                gtk_menu_item_new_with_label(isStack ? "Delete Stack" : "Delete Card");
-            g_signal_connect(deleteItem, "activate", G_CALLBACK(+[](GtkMenuItem*, gpointer data) {
-                                 auto* self = static_cast<WorkspaceView*>(data);
-                                 if (self && self->m_selectedNodeId) {
-                                     self->m_api.removeNode(*self->m_selectedNodeId);
-                                     self->m_selectedNodeId.reset();
-                                     gtk_widget_queue_draw(self->m_area);
-                                 }
-                             }),
-                             this);
-            gtk_menu_shell_append(GTK_MENU_SHELL(menu), deleteItem);
-            gtk_widget_show_all(menu);
-            gtk_menu_popup_at_pointer(GTK_MENU(menu), reinterpret_cast<GdkEvent*>(event));
-            return TRUE;
+                if (isStack) {
+                    GtkWidget* renameItem = gtk_menu_item_new_with_label("Rename Stack…");
+                    g_signal_connect(renameItem, "activate",
+                                     G_CALLBACK(+[](GtkMenuItem*, gpointer data) {
+                                         auto* self = static_cast<WorkspaceView*>(data);
+                                         if (self && self->m_selectedNodeId) {
+                                             self->promptRenameStack(*self->m_selectedNodeId);
+                                         }
+                                     }),
+                                     this);
+                    gtk_menu_shell_append(GTK_MENU_SHELL(menu), renameItem);
+
+                    GtkWidget* sep = gtk_separator_menu_item_new();
+                    gtk_menu_shell_append(GTK_MENU_SHELL(menu), sep);
+                }
+
+                GtkWidget* deleteItem =
+                    gtk_menu_item_new_with_label(isStack ? "Delete Stack" : "Delete Card");
+                g_signal_connect(deleteItem, "activate",
+                                 G_CALLBACK(+[](GtkMenuItem*, gpointer data) {
+                                     auto* self = static_cast<WorkspaceView*>(data);
+                                     if (self && self->m_selectedNodeId) {
+                                         self->m_api.removeNode(*self->m_selectedNodeId);
+                                         self->m_selectedNodeId.reset();
+                                         if (self->m_area && GTK_IS_WIDGET(self->m_area)) {
+                                             gtk_widget_queue_draw(self->m_area);
+                                         }
+                                     }
+                                 }),
+                                 this);
+                gtk_menu_shell_append(GTK_MENU_SHELL(menu), deleteItem);
+                gtk_widget_show_all(menu);
+                gtk_menu_popup_at_pointer(GTK_MENU(menu), reinterpret_cast<GdkEvent*>(event));
+                return TRUE;
+            }
         }
     }
 
@@ -2023,13 +2042,6 @@ void WorkspaceView::drawCardStack(cairo_t* cr, const FluidCore::WorkspaceNode* n
     }
 
     if (m_zoom >= 0.2) {
-        // Stack Title
-        cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
-        cairo_set_font_size(cr, 11.0 * m_zoom);
-        cairo_set_source_rgb(cr, 0.95, 0.97, 1.0);
-        cairo_move_to(cr, chevronX + chevronSize + 8.0 * m_zoom, sy + headerH * 0.65);
-        cairo_show_text(cr, stack->title().c_str());
-
         // Count Pill Badge on header right
         std::string countStr = std::to_string(stack->childCount()) + " cards";
         cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
@@ -2042,7 +2054,33 @@ void WorkspaceView::drawCardStack(cairo_t* cr, const FluidCore::WorkspaceNode* n
         const double badgeX = sx + sw - badgeW - 8.0 * m_zoom;
         const double badgeY = sy + (headerH - badgeH) / 2.0;
 
-        if (badgeW > 10.0 && badgeX > chevronX + chevronSize + 40.0 * m_zoom) {
+        const double titleStartX = chevronX + chevronSize + 8.0 * m_zoom;
+        double maxTitleW = (badgeX > titleStartX + 40.0 * m_zoom)
+                               ? (badgeX - titleStartX - 10.0 * m_zoom)
+                               : (sx + sw - titleStartX - 10.0 * m_zoom);
+
+        // Stack Title
+        cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
+        cairo_set_font_size(cr, 11.0 * m_zoom);
+        cairo_set_source_rgb(cr, 0.95, 0.97, 1.0);
+
+        std::string displayTitle = stack->title();
+        cairo_text_extents_t titleExt;
+        cairo_text_extents(cr, displayTitle.c_str(), &titleExt);
+
+        if (titleExt.width > maxTitleW && maxTitleW > 20.0 * m_zoom) {
+            while (!displayTitle.empty() && titleExt.width > maxTitleW) {
+                displayTitle.pop_back();
+                std::string candidate = displayTitle + "...";
+                cairo_text_extents(cr, candidate.c_str(), &titleExt);
+            }
+            displayTitle += "...";
+        }
+
+        cairo_move_to(cr, titleStartX, sy + headerH * 0.65);
+        cairo_show_text(cr, displayTitle.c_str());
+
+        if (badgeW > 10.0 && badgeX > titleStartX + 40.0 * m_zoom) {
             drawRoundedRect(cr, badgeX, badgeY, badgeW, badgeH, badgeH / 2.0);
             cairo_set_source_rgba(cr, 0.05, 0.55, 0.95, 0.28);
             cairo_fill_preserve(cr);
@@ -2473,6 +2511,49 @@ void WorkspaceView::draw(cairo_t* cr, int width, int height) {
 
     // Render floating minimap HUD
     drawMinimap(cr, width, height);
+}
+
+void WorkspaceView::promptRenameStack(const std::string& stackId) {
+    GtkWidget* toplevel = gtk_widget_get_toplevel(m_area);
+    GtkWindow* parentWin = (toplevel && GTK_IS_WINDOW(toplevel)) ? GTK_WINDOW(toplevel) : nullptr;
+
+    GtkWidget* dialog = gtk_dialog_new_with_buttons(
+        "Rename Stack", parentWin,
+        static_cast<GtkDialogFlags>(GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT), "_Cancel",
+        GTK_RESPONSE_CANCEL, "_Rename", GTK_RESPONSE_ACCEPT, nullptr);
+
+    gtk_dialog_set_default_response(GTK_DIALOG(dialog), GTK_RESPONSE_ACCEPT);
+    gtk_window_set_default_size(GTK_WINDOW(dialog), 360, -1);
+    gtk_window_set_resizable(GTK_WINDOW(dialog), FALSE);
+
+    GtkWidget* contentArea = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
+    gtk_container_set_border_width(GTK_CONTAINER(contentArea), 14);
+    gtk_box_set_spacing(GTK_BOX(contentArea), 8);
+
+    GtkWidget* label = gtk_label_new("Enter a new name for this card stack:");
+    gtk_label_set_xalign(GTK_LABEL(label), 0.0);
+    gtk_box_pack_start(GTK_BOX(contentArea), label, FALSE, FALSE, 0);
+
+    GtkWidget* entry = gtk_entry_new();
+    const std::string currentTitle = m_api.getStackTitle(stackId);
+    gtk_entry_set_text(GTK_ENTRY(entry), currentTitle.c_str());
+    gtk_entry_set_activates_default(GTK_ENTRY(entry), TRUE);
+    gtk_box_pack_start(GTK_BOX(contentArea), entry, FALSE, FALSE, 0);
+
+    gtk_widget_show_all(dialog);
+
+    const gint response = gtk_dialog_run(GTK_DIALOG(dialog));
+    if (response == GTK_RESPONSE_ACCEPT) {
+        const gchar* newText = gtk_entry_get_text(GTK_ENTRY(entry));
+        if (newText && newText[0] != '\0') {
+            m_api.setStackTitle(stackId, std::string(newText));
+        }
+    }
+
+    gtk_widget_destroy(dialog);
+    if (m_area && GTK_IS_WIDGET(m_area)) {
+        gtk_widget_queue_draw(m_area);
+    }
 }
 
 } // namespace FluidCoreApp

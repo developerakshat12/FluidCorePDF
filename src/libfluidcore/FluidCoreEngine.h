@@ -63,6 +63,8 @@ class FluidCoreEngine final : public FluidCoreAPI {
     bool isStackNode(const std::string& nodeId) const override;
     bool isStackCollapsed(const std::string& stackId) const override;
     std::vector<std::string> getStackChildren(const std::string& stackId) const override;
+    bool setStackTitle(const std::string& stackId, const std::string& title) override;
+    std::string getStackTitle(const std::string& stackId) const override;
 
     // Relational graph & ink links — backed by GraphTopology.
     std::string createInkLink(const std::string& sourceNodeId, const std::string& targetNodeId,

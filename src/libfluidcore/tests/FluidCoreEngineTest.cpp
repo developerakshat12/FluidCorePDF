@@ -123,7 +123,20 @@ int main() {
     failures += check(api.getAllEdges().empty(), "removeNode cascades deletion to connected edges");
     failures +=
         check(api.getConnectedEdges(nodeB).empty(), "nodeB has no remaining connected edges");
-    api.removeNode(nodeB);
+    // Stack Title & Custom Title testing
+    const std::string s1 = api.insertNode(
+        std::make_unique<RectNode>("stack-item-1", Rectangle{10.0, 10.0, 50.0, 50.0}));
+    const std::string s2 = api.insertNode(
+        std::make_unique<RectNode>("stack-item-2", Rectangle{15.0, 15.0, 50.0, 50.0}));
+    const std::string stackId = api.mergeNodesIntoStack(s1, s2);
+    failures += check(!stackId.empty() && api.isStackNode(stackId), "stack created via merge");
+    failures += check(api.getStackTitle(stackId).find("Topic Stack") != std::string::npos,
+                      "initial auto title generated");
+    failures += check(api.setStackTitle(stackId, "Synthesized Literature Findings"),
+                      "setStackTitle succeeded");
+    failures += check(api.getStackTitle(stackId) == "Synthesized Literature Findings",
+                      "getStackTitle returns updated custom title");
+    api.removeNode(stackId);
 
     api.openProject("/tmp/nonexistent.ltproj");
     api.saveProject();

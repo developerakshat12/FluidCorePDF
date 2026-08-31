@@ -157,6 +157,8 @@ class FluidCoreAPI {
     virtual bool isStackNode(const std::string& nodeId) const = 0;
     virtual bool isStackCollapsed(const std::string& stackId) const = 0;
     virtual std::vector<std::string> getStackChildren(const std::string& stackId) const = 0;
+    virtual bool setStackTitle(const std::string& stackId, const std::string& title) = 0;
+    virtual std::string getStackTitle(const std::string& stackId) const = 0;
 
     // Bi-Directional Relational Graph & Live Ink Link API
     virtual std::string createInkLink(const std::string& sourceNodeId,

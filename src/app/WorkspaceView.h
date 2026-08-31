@@ -80,6 +80,7 @@ class WorkspaceView {
     FluidCore::Rectangle getExcerptAnchorPillRect(const FluidCore::WorkspaceNode* node) const;
     FluidCore::Rectangle getStackHeaderRect(const FluidCore::WorkspaceNode* node) const;
     FluidCore::Rectangle getStackChevronRect(const FluidCore::WorkspaceNode* node) const;
+    void promptRenameStack(const std::string& stackId);
 
   private:
     struct TextLayoutCacheEntry {
