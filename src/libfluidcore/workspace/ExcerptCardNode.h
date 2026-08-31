@@ -25,7 +25,7 @@ class ExcerptCardNode final : public WorkspaceNode {
     std::unique_ptr<WorkspaceNode> clone() const override;
 
     void setBounds(const Rectangle& bounds) { m_bounds = bounds; }
-    void setPosition(double x, double y) {
+    void setPosition(double x, double y) override {
         m_bounds.x = x;
         m_bounds.y = y;
     }

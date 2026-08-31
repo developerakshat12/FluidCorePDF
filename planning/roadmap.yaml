@@ -57,8 +57,8 @@ milestones:
     window_weeks: [39, 48]
     status: pending
     items:
-      - ink connectors -> GraphEdge + Bezier routing
-      - card snapping/stacking (16pt proximity)
+      - ink connectors -> GraphEdge + Bezier routing                    # complete: pure domain GraphEdge & GraphTopology model, bidirectional promotion, straightness classification, Alt+6/F6/A/L connector tool, edge selection & deletion (TASK-4.1)
+      - card snapping/stacking (16pt proximity)                         # complete: pure C++20 PhysicsSolver, screen-adaptive 16pt magnetic alignment, >50% overlap stack merge, CardStackNode container, accordion deck & child extraction, bounds sync (TASK-4.2)
       - project-wide FTS5 search (async ingestion)
       - export flattened annotated PDF + Markdown outline
 

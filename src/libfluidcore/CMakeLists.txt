@@ -4,6 +4,8 @@ add_library(fluidcore STATIC
     workspace/RTreeIndex.cpp
     workspace/WorkspaceModel.cpp
     workspace/ExcerptCardNode.cpp
+    workspace/CardStackNode.cpp
+    workspace/PhysicsSolver.cpp
     workspace/CanvasStrokeNode.cpp
     workspace/ExcerptPayload.cpp
     graph/GraphTopology.cpp
@@ -56,6 +58,14 @@ if(BUILD_TESTING)
     add_executable(excerpt_card_node_test tests/workspace/ExcerptCardNodeTest.cpp)
     target_link_libraries(excerpt_card_node_test PRIVATE fluidcore)
     add_test(NAME ExcerptCardNodeTest COMMAND excerpt_card_node_test)
+
+    add_executable(physics_solver_test tests/workspace/PhysicsSolverTest.cpp)
+    target_link_libraries(physics_solver_test PRIVATE fluidcore)
+    add_test(NAME PhysicsSolverTest COMMAND physics_solver_test)
+
+    add_executable(card_stack_node_test tests/workspace/CardStackNodeTest.cpp)
+    target_link_libraries(card_stack_node_test PRIVATE fluidcore)
+    add_test(NAME CardStackNodeTest COMMAND card_stack_node_test)
 
     add_executable(xopp_document_test tests/storage/XoppDocumentTest.cpp)
     target_link_libraries(xopp_document_test PRIVATE fluidcore)

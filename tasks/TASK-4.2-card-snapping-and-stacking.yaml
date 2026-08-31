@@ -1,0 +1,39 @@
+id: TASK-4.2-card-snapping-and-stacking
+title: Card Snapping & Stacking (PhysicsSolver, CardStackNode, Accordion/Spread Interaction, and Snap Guides)
+milestone: M4
+status: complete
+workspace: D:\Reference Repos\fluidcore-platform
+specs:
+  - specs/integration.md (section 1 & 2 — workspace node hierarchy & snapping physics)
+  - specs/new-features-backlog.md (section 3 — magnetic snapping and collapsible card stacks)
+  - specs/features.md (section 4.2 — card snapping & stacking, PhysicsSolver, accordion deck)
+  - planning/ROADMAP.md (Milestone 4, Step 2)
+  - skills/cpp-core-dev/SKILL.md
+  - skills/gtk-frontend/SKILL.md
+dependencies:
+  - TASK-4.1-ink-connectors-and-reactive-routing
+deliverables:
+  - src/libfluidcore/workspace/PhysicsSolver.{h,cpp} — pure C++20 geometric proximity solver supporting 16pt magnetic proximity thresholds (scaled to world coordinates), 5-way horizontal/vertical edge alignment guidelines, and >50% symmetric intersection overlap ratio triggering SnapType::StackMerge.
+  - src/libfluidcore/workspace/CardStackNode.{h,cpp} — hierarchical domain container managing an ordered collection of child WorkspaceNodes, compound translation, 5-level nesting depth limits with fallback flattening, and dynamic expanded cascade deck vs collapsed summary card layouts.
+  - src/libfluidcore/workspace/WorkspaceModel.{h,cpp} — recursive node lookup, stack containment tracking, stack-aware dynamic bounds resolution for connector routing, and auto-dissolve behavior when stack child count drops to <= 1.
+  - src/libfluidcore/undo/WorkspaceCommands.{h,cpp} — StackMergeCommand, ExtractChildCommand, and ToggleStackCollapseCommand providing symmetric undo/redo history.
+  - src/libfluidcore/FluidCoreAPI.h, FluidCoreEngine.{h,cpp} — public snapshot and command APIs for solveSnap, mergeNodesIntoStack, extractChildFromStack, and stack collapse inspection/mutation.
+  - src/libfluidcore/tests/workspace/PhysicsSolverTest.cpp — comprehensive unit test suite covering symmetric overlap ratios, precedence rules, 5-way alignment, and zoom-adaptive thresholding.
+  - src/libfluidcore/tests/workspace/CardStackNodeTest.cpp — comprehensive unit test suite validating child addition, compound translation, depth bounding, auto-dissolution, bounds propagation, and undo/redo operations.
+  - src/app/WorkspaceView.{h,cpp} — interactive 6px drag initiation disambiguation, real-time magnetic guideline and docking aura visualization, chevron / double-click accordion collapse toggles, child extraction on drag, and Delete key node removal.
+acceptance_checks:
+  - "clang-format --dry-run --Werror clean on all touched files"
+  - "python ops/scripts/check_invariants.py passes (0 GUI includes in libfluidcore)"
+  - "all registered CTest targets pass (100% - 23/23 test suites)"
+  - "Dragging cards within 16pt threshold displays magnetic alignment guidelines and snaps cleanly"
+  - "Dragging cards with >50% overlap displays glowing docking aura and combines into CardStackNode"
+  - "Collapsing/expanding stacks animates cleanly with layered 3D deck drop shadows and badge counts"
+  - "Dragging child cards past 6px drag threshold cleanly extracts them from the deck"
+  - "GraphEdge relational connectors dynamically re-route to composite bounds when stacks collapse"
+constraints:
+  - Do not add GUI/Cairo/GTK headers to src/libfluidcore/ (ADR-0001 clean separation)
+  - Coordinate space for 16pt snap threshold is screen-adaptive: snapThresholdWorld = 16.0 / zoom
+  - Nesting depth must not exceed 5 levels; deeper merges flatten into parent stack
+  - Stacks containing <= 1 child must auto-dissolve and promote child to top-level node
+  - Double-click and chevron clicks must be protected by a >= 6px drag threshold
+  - Commit means commit AND push; every commit carries -s (DCO)

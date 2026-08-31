@@ -80,7 +80,7 @@ gantt
 
 ### M4 — Links, Stacks & Search (Weeks 39–48) — IN PROGRESS 🟡
 - [x] Ink connectors → `GraphEdge` registration w/ cubic Bezier routing *(complete via TASK-4.1: pure domain `GraphEdge` & `GraphTopology` simple graph model with single-edge invariant, forward/reverse bi-state bidirectional promotion `A ◀──▶ B`, safe straightness gesture classification with non-destructive ink preservation, dedicated `<Alt>6`/`F6`/`A`/`L` connector tool mode with text-entry focus guards, edge selection with glowing halo, multi-channel edge deletion via Delete/Backspace, right-click context menu, and Eraser tool, degenerate distance/overlap fallback guard, and 21/21 passing CTest suites)*
-- [ ] Card snapping/stacking (`PhysicsSolver`, proximity threshold 16 pt)
+- [x] Card snapping/stacking (`PhysicsSolver`, proximity threshold 16 pt) *(complete via TASK-4.2: pure C++20 `PhysicsSolver` proximity/overlap engine, screen-adaptive 16pt magnetic alignment, >50% symmetric overlap stack-merge precedence, hierarchical `CardStackNode` with compound translation and <=5 depth bounding, auto-dissolution on single child, accordion cascade deck layout and collapse toggles, drag extraction with 6px threshold, dynamic composite bounds routing, tool-agnostic card movement, and 23/23 passing CTest suites)*
 - [ ] SQLite FTS5 project-wide search with async ingestion worker
 - [ ] Export: annotated PDF flattening + workspace outline to Markdown
 - **Demo gate**: full Dr. Aris journey (45-paper synthesis) completes without data loss across 3 sessions.

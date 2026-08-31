@@ -1,5 +1,7 @@
 #include "FluidCoreEngine.h"
 
+#include "workspace/ExcerptCardNode.h"
+
 #include <utility>
 
 namespace FluidCore {
@@ -75,6 +77,129 @@ Point FluidCoreEngine::getNodePosition(const std::string& nodeId) const {
 
 Rectangle FluidCoreEngine::getWorkspaceBounds() const {
     return m_model.globalBounds();
+}
+
+SnapResult FluidCoreEngine::solveSnap(const Rectangle& dragBounds, double snapThreshold,
+                                      const std::string& ignoreId) const {
+    std::vector<CandidateTarget> candidates;
+    for (const auto& id : m_model.allNodeIds()) {
+        if (!ignoreId.empty() && id == ignoreId) {
+            continue;
+        }
+        auto* node = m_model.find(id);
+        if (!node)
+            continue;
+        const bool isStack = (dynamic_cast<const CardStackNode*>(node) != nullptr);
+        candidates.push_back(CandidateTarget{id, node->bounds(), isStack});
+    }
+
+    return PhysicsSolver::solveSnap(dragBounds, candidates, snapThreshold,
+                                    PhysicsSolver::kDefaultStackOverlapThreshold, ignoreId);
+}
+
+std::string FluidCoreEngine::mergeNodesIntoStack(const std::string& sourceNodeId,
+                                                 const std::string& targetNodeId) {
+    auto* srcNode = m_model.find(sourceNodeId);
+    auto* dstNode = m_model.find(targetNodeId);
+    if (!srcNode || !dstNode) {
+        return {};
+    }
+
+    auto clonedSrc = srcNode->clone();
+    auto clonedDst = dstNode->clone();
+
+    if (auto* dstStack = dynamic_cast<CardStackNode*>(dstNode)) {
+        m_model.remove(sourceNodeId);
+        dstStack->addChild(std::move(clonedSrc));
+        m_model.updateBounds(targetNodeId);
+        return targetNodeId;
+    } else {
+        static std::size_t s_stackCounter = 1;
+        std::string stackId = "stack-" + std::to_string(s_stackCounter++);
+
+        auto newStack = std::make_unique<CardStackNode>(stackId, dstNode->bounds());
+        newStack->addChild(std::move(clonedDst));
+        newStack->addChild(std::move(clonedSrc));
+
+        m_model.remove(sourceNodeId);
+        m_model.remove(targetNodeId);
+        m_model.insert(std::move(newStack));
+        return stackId;
+    }
+}
+
+std::string FluidCoreEngine::extractChildFromStack(const std::string& stackId,
+                                                   const std::string& childId,
+                                                   const Point& dropPos) {
+    auto* node = m_model.find(stackId);
+    auto* stack = dynamic_cast<CardStackNode*>(node);
+    if (!stack) {
+        return {};
+    }
+
+    auto child = stack->removeChild(childId);
+    if (!child) {
+        return {};
+    }
+
+    if (auto* excerpt = dynamic_cast<ExcerptCardNode*>(child.get())) {
+        excerpt->setPosition(dropPos.x, dropPos.y);
+    } else if (auto* childStack = dynamic_cast<CardStackNode*>(child.get())) {
+        childStack->setPosition(dropPos.x, dropPos.y);
+    }
+
+    const std::string extractedId = child->id();
+    m_model.insert(std::move(child));
+
+    std::string dissolvedRemainingId;
+    if (!m_model.dissolveStackIfSingleChild(stackId, &dissolvedRemainingId)) {
+        m_model.updateBounds(stackId);
+    }
+    return extractedId;
+}
+
+bool FluidCoreEngine::setStackCollapsed(const std::string& stackId, bool collapsed) {
+    auto* stack = dynamic_cast<CardStackNode*>(m_model.find(stackId));
+    if (!stack) {
+        return false;
+    }
+    stack->setCollapsed(collapsed);
+    m_model.updateBounds(stackId);
+    return true;
+}
+
+bool FluidCoreEngine::toggleStackCollapsed(const std::string& stackId) {
+    auto* stack = dynamic_cast<CardStackNode*>(m_model.find(stackId));
+    if (!stack) {
+        return false;
+    }
+    stack->toggleCollapsed();
+    m_model.updateBounds(stackId);
+    return true;
+}
+
+bool FluidCoreEngine::isStackNode(const std::string& nodeId) const {
+    return dynamic_cast<const CardStackNode*>(m_model.find(nodeId)) != nullptr;
+}
+
+bool FluidCoreEngine::isStackCollapsed(const std::string& stackId) const {
+    const auto* stack = dynamic_cast<const CardStackNode*>(m_model.find(stackId));
+    return stack ? stack->isCollapsed() : false;
+}
+
+std::vector<std::string> FluidCoreEngine::getStackChildren(const std::string& stackId) const {
+    const auto* stack = dynamic_cast<const CardStackNode*>(m_model.find(stackId));
+    if (!stack) {
+        return {};
+    }
+    std::vector<std::string> ids;
+    ids.reserve(stack->childCount());
+    for (const auto& child : stack->children()) {
+        if (child) {
+            ids.push_back(child->id());
+        }
+    }
+    return ids;
 }
 
 std::string FluidCoreEngine::createInkLink(const std::string& sourceNodeId,

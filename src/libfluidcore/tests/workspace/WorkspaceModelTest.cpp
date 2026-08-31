@@ -17,6 +17,10 @@ class RectNode final : public WorkspaceNode {
     RectNode(std::string id, Rectangle bounds) : m_id(std::move(id)), m_bounds(bounds) {}
     const std::string& id() const override { return m_id; }
     Rectangle bounds() const override { return m_bounds; }
+    void setPosition(double x, double y) override {
+        m_bounds.x = x;
+        m_bounds.y = y;
+    }
 
   private:
     std::string m_id;

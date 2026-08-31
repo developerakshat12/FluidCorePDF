@@ -1,6 +1,7 @@
 #pragma once
 
 #include "undo/Command.h"
+#include "workspace/CardStackNode.h"
 #include "workspace/WorkspaceModel.h"
 
 #include <memory>
@@ -69,6 +70,73 @@ class RemoveNodeCommand : public Command {
     WorkspaceModel& m_model;
     std::string m_nodeId;
     std::unique_ptr<WorkspaceNode> m_savedNode;
+};
+
+// Command representing merging two nodes into a CardStackNode.
+class StackMergeCommand : public Command {
+  public:
+    StackMergeCommand(WorkspaceModel& model, std::string sourceNodeId, std::string targetNodeId,
+                      std::string stackId = "");
+
+    bool execute() override;
+    bool undo() override;
+    bool redo() override;
+
+    std::string description() const override { return "Merge Stack"; }
+    std::size_t estimatedSizeBytes() const override;
+
+    const std::string& stackId() const { return m_stackId; }
+
+  private:
+    WorkspaceModel& m_model;
+    std::string m_sourceId;
+    std::string m_targetId;
+    std::string m_stackId;
+    bool m_targetWasStack = false;
+    std::unique_ptr<WorkspaceNode> m_savedSourceNode;
+    std::unique_ptr<WorkspaceNode> m_savedTargetNode;
+};
+
+// Command representing extracting a child card from a CardStackNode.
+class ExtractChildCommand : public Command {
+  public:
+    ExtractChildCommand(WorkspaceModel& model, std::string stackId, std::string childId,
+                        Point dropPos);
+
+    bool execute() override;
+    bool undo() override;
+    bool redo() override;
+
+    std::string description() const override { return "Extract Child Card"; }
+    std::size_t estimatedSizeBytes() const override;
+
+  private:
+    WorkspaceModel& m_model;
+    std::string m_stackId;
+    std::string m_childId;
+    Point m_dropPos;
+    bool m_stackWasDissolved = false;
+    std::unique_ptr<WorkspaceNode> m_savedStack;
+    std::unique_ptr<WorkspaceNode> m_savedChild;
+};
+
+// Command representing toggling or setting collapsed state of a CardStackNode.
+class ToggleStackCollapseCommand : public Command {
+  public:
+    ToggleStackCollapseCommand(WorkspaceModel& model, std::string stackId, bool collapsed);
+
+    bool execute() override;
+    bool undo() override;
+    bool redo() override;
+
+    std::string description() const override { return "Toggle Stack Collapse"; }
+    std::size_t estimatedSizeBytes() const override;
+
+  private:
+    WorkspaceModel& m_model;
+    std::string m_stackId;
+    bool m_newCollapsed = false;
+    bool m_oldCollapsed = false;
 };
 
 } // namespace FluidCore

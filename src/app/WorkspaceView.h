@@ -4,7 +4,9 @@
 #include "FluidCoreAPI.h"
 #include "StrokeStabilizer.h"
 #include "storage/AnnotationStore.h"
+#include "workspace/CardStackNode.h"
 #include "workspace/ExcerptCardNode.h"
+#include "workspace/PhysicsSolver.h"
 
 #include <functional>
 #include <optional>
@@ -20,8 +22,8 @@ namespace FluidCoreApp {
 // An infinite 2D viewport (WorkspaceView) rendered via Cairo with 2D affine
 // transformation matrix M_view, smooth focal pan/zoom gestures, zoom-adaptive
 // infinite dot/grid background, floating overview minimap HUD, drag-and-drop
-// excerpt destination, high-DPI visual diagram crop rendering, and O(log N) spatial index viewport
-// culling.
+// excerpt destination, high-DPI visual diagram crop rendering, 16pt magnetic snapping,
+// collapsible accordion card stacks, and O(log N) spatial index viewport culling.
 class WorkspaceView {
   public:
     using NavigateToSourceCallback =
@@ -76,6 +78,8 @@ class WorkspaceView {
     bool isSpacePressed() const { return m_isSpacePressed; }
 
     FluidCore::Rectangle getExcerptAnchorPillRect(const FluidCore::WorkspaceNode* node) const;
+    FluidCore::Rectangle getStackHeaderRect(const FluidCore::WorkspaceNode* node) const;
+    FluidCore::Rectangle getStackChevronRect(const FluidCore::WorkspaceNode* node) const;
 
   private:
     struct TextLayoutCacheEntry {
@@ -115,10 +119,17 @@ class WorkspaceView {
                        uint32_t color);
     void drawExcerptCard(cairo_t* cr, const FluidCore::WorkspaceNode* node, double sx, double sy,
                          double sw, double sh);
+    void drawCardStack(cairo_t* cr, const FluidCore::WorkspaceNode* node, double sx, double sy,
+                       double sw, double sh);
     void drawGenericNode(cairo_t* cr, const FluidCore::WorkspaceNode* node, double sx, double sy,
                          double sw, double sh);
+    void drawMagneticSnapGuides(cairo_t* cr);
+    void drawStackMergeGhost(cairo_t* cr);
 
     const FluidCore::WorkspaceNode* hitTestNodeAtWorldPoint(const FluidCore::Point& worldPt) const;
+    const FluidCore::WorkspaceNode*
+    hitTestChildNodeAtWorldPoint(const FluidCore::Point& worldPt,
+                                 std::string* outParentStackId = nullptr) const;
     std::string hitTestEdgeAtWorldPoint(const FluidCore::Point& worldPt,
                                         double tolerance = 8.0) const;
 
@@ -154,8 +165,25 @@ class WorkspaceView {
     double m_lastMouseX = 0.0;
     double m_lastMouseY = 0.0;
 
-    // Selected edge state for selection & deletion
+    // Card & Stack Dragging and Snapping Interaction (TASK-4.2)
+    bool m_dragPending = false;
+    double m_dragStartScreenX = 0.0;
+    double m_dragStartScreenY = 0.0;
+    std::string m_dragCandidateNodeId;
+    bool m_dragCandidateIsChild = false;
+    std::string m_dragCandidateParentStackId;
+    FluidCore::Point m_dragInitialWorldPos{0.0, 0.0};
+    FluidCore::Point m_dragOffsetWorld{0.0, 0.0};
+
+    bool m_isDraggingCard = false;
+    FluidCore::SnapType m_activeSnapType = FluidCore::SnapType::None;
+    std::string m_activeMergeTargetId;
+    std::vector<FluidCore::SnapGuideLine> m_activeSnapGuideLines;
+    FluidCore::Rectangle m_draggedGhostBounds{0.0, 0.0, 0.0, 0.0};
+
+    // Selected edge and node state
     std::optional<std::string> m_selectedEdgeId;
+    std::optional<std::string> m_selectedNodeId;
 
     // Drag-and-drop drop hover feedback
     bool m_isDropHovering = false;

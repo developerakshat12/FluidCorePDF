@@ -286,6 +286,18 @@ void WorkspaceView::flashExcerptCard(const std::string& cardId) {
         m_flashTimerId = 0;
     }
 
+    // Auto-expand stack if target card is nested inside a collapsed stack
+    const FluidCore::Rectangle wsBounds = m_api.getWorkspaceBounds();
+    const auto allNodes = m_api.queryVisibleNodes(wsBounds);
+    for (const auto* node : allNodes) {
+        if (const auto* stack = dynamic_cast<const FluidCore::CardStackNode*>(node)) {
+            if (stack->isCollapsed() && stack->containsChild(cardId)) {
+                m_api.setStackCollapsed(stack->id(), false);
+                break;
+            }
+        }
+    }
+
     m_flashCardId = cardId;
     m_flashAlpha = 1.0;
     m_flashStartTimeUs = g_get_real_time();
@@ -362,6 +374,31 @@ WorkspaceView::getExcerptAnchorPillRect(const FluidCore::WorkspaceNode* node) co
     const double pillX = sp.x + sw - pillW - 8.0 * m_zoom;
     const double pillY = sp.y + (headerH - pillH) / 2.0;
     return {pillX, pillY, pillW, pillH};
+}
+
+FluidCore::Rectangle WorkspaceView::getStackHeaderRect(const FluidCore::WorkspaceNode* node) const {
+    if (!node) {
+        return {0.0, 0.0, 0.0, 0.0};
+    }
+    const auto b = node->bounds();
+    const FluidCore::Point sp = worldToScreen(b.x, b.y);
+    const double sw = b.w * m_zoom;
+    const double headerH = FluidCore::CardStackNode::kHeaderHeight * m_zoom;
+    return {sp.x, sp.y, sw, headerH};
+}
+
+FluidCore::Rectangle
+WorkspaceView::getStackChevronRect(const FluidCore::WorkspaceNode* node) const {
+    if (!node) {
+        return {0.0, 0.0, 0.0, 0.0};
+    }
+    const auto b = node->bounds();
+    const FluidCore::Point sp = worldToScreen(b.x, b.y);
+    const double headerH = FluidCore::CardStackNode::kHeaderHeight * m_zoom;
+    const double btnSize = std::min(24.0 * m_zoom, headerH);
+    const double btnX = sp.x + 6.0 * m_zoom;
+    const double btnY = sp.y + (headerH - btnSize) / 2.0;
+    return {btnX, btnY, btnSize, btnSize};
 }
 
 void WorkspaceView::resetView() {
@@ -680,11 +717,12 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
     }
 
     if (event->button == GDK_BUTTON_SECONDARY) {
-        // Right-click: hit-test edge for deletion context menu
+        // Right-click: hit-test edge or node for deletion context menu
         FluidCore::Point wPt = screenToWorld(event->x, event->y);
         std::string hitEdge = hitTestEdgeAtWorldPoint(wPt, 10.0);
         if (!hitEdge.empty()) {
             m_selectedEdgeId = hitEdge;
+            m_selectedNodeId.reset();
             gtk_widget_queue_draw(m_area);
 
             GtkWidget* menu = gtk_menu_new();
@@ -703,55 +741,177 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
             gtk_menu_popup_at_pointer(GTK_MENU(menu), reinterpret_cast<GdkEvent*>(event));
             return TRUE;
         }
+
+        const auto* hitNode = hitTestNodeAtWorldPoint(wPt);
+        if (hitNode) {
+            m_selectedNodeId = hitNode->id();
+            m_selectedEdgeId.reset();
+            gtk_widget_queue_draw(m_area);
+
+            GtkWidget* menu = gtk_menu_new();
+            const bool isStack =
+                (dynamic_cast<const FluidCore::CardStackNode*>(hitNode) != nullptr);
+            GtkWidget* deleteItem =
+                gtk_menu_item_new_with_label(isStack ? "Delete Stack" : "Delete Card");
+            g_signal_connect(deleteItem, "activate", G_CALLBACK(+[](GtkMenuItem*, gpointer data) {
+                                 auto* self = static_cast<WorkspaceView*>(data);
+                                 if (self && self->m_selectedNodeId) {
+                                     self->m_api.removeNode(*self->m_selectedNodeId);
+                                     self->m_selectedNodeId.reset();
+                                     gtk_widget_queue_draw(self->m_area);
+                                 }
+                             }),
+                             this);
+            gtk_menu_shell_append(GTK_MENU_SHELL(menu), deleteItem);
+            gtk_widget_show_all(menu);
+            gtk_menu_popup_at_pointer(GTK_MENU(menu), reinterpret_cast<GdkEvent*>(event));
+            return TRUE;
+        }
     }
 
     if (event->button == GDK_BUTTON_PRIMARY) {
-        // 1. Check if click hits any visible ExcerptCardNode's [ ↗ Anchor ] pill button
-        if (m_zoom >= 0.2) {
-            const FluidCore::Point worldTopLeft = screenToWorld(0, 0);
-            const FluidCore::Point worldBottomRight = screenToWorld(
-                alloc.width > 0 ? alloc.width : 800, alloc.height > 0 ? alloc.height : 600);
-            const FluidCore::Rectangle viewWorldRect{
-                worldTopLeft.x, worldTopLeft.y, std::max(0.0, worldBottomRight.x - worldTopLeft.x),
-                std::max(0.0, worldBottomRight.y - worldTopLeft.y)};
+        const FluidCore::Point worldTopLeft = screenToWorld(0, 0);
+        const FluidCore::Point worldBottomRight = screenToWorld(
+            alloc.width > 0 ? alloc.width : 800, alloc.height > 0 ? alloc.height : 600);
+        const FluidCore::Rectangle viewWorldRect{
+            worldTopLeft.x, worldTopLeft.y, std::max(0.0, worldBottomRight.x - worldTopLeft.x),
+            std::max(0.0, worldBottomRight.y - worldTopLeft.y)};
 
-            auto visibleNodes = m_api.queryVisibleNodes(viewWorldRect);
-            for (const auto* node : visibleNodes) {
-                const auto* excerpt = dynamic_cast<const FluidCore::ExcerptCardNode*>(node);
-                if (!excerpt) {
-                    continue;
-                }
-                const auto pillRect = getExcerptAnchorPillRect(node);
-                if (event->x >= pillRect.x && event->x <= pillRect.x + pillRect.w &&
-                    event->y >= pillRect.y && event->y <= pillRect.y + pillRect.h) {
-                    const auto b = excerpt->bounds();
-                    const FluidCore::Point centerWorldPt{b.x + b.w / 2.0, b.y + b.h / 2.0};
-                    if (m_onNavigateToSource) {
-                        m_onNavigateToSource(excerpt->sourceDocId(), excerpt->sourcePageNo(),
-                                             excerpt->sourceNormalizedRect(), excerpt->id(),
-                                             excerpt->textSnippet(), centerWorldPt);
-                    }
+        auto visibleNodes = m_api.queryVisibleNodes(viewWorldRect);
+
+        // 1. Check if click hits Stack Chevron button [▼]/[▶] -> Toggle Collapse
+        for (const auto* node : visibleNodes) {
+            if (const auto* stack = dynamic_cast<const FluidCore::CardStackNode*>(node)) {
+                const auto chevRect = getStackChevronRect(stack);
+                if (event->x >= chevRect.x && event->x <= chevRect.x + chevRect.w &&
+                    event->y >= chevRect.y && event->y <= chevRect.y + chevRect.h) {
+                    m_api.toggleStackCollapsed(stack->id());
+                    gtk_widget_queue_draw(m_area);
                     return TRUE;
                 }
             }
         }
 
+        // 2. Check if click hits any visible ExcerptCardNode's [ ↗ Anchor ] pill button (top-level
+        // or inside stack)
+        if (m_zoom >= 0.2) {
+            for (const auto* node : visibleNodes) {
+                if (const auto* excerpt = dynamic_cast<const FluidCore::ExcerptCardNode*>(node)) {
+                    const auto pillRect = getExcerptAnchorPillRect(node);
+                    if (event->x >= pillRect.x && event->x <= pillRect.x + pillRect.w &&
+                        event->y >= pillRect.y && event->y <= pillRect.y + pillRect.h) {
+                        const auto b = excerpt->bounds();
+                        const FluidCore::Point centerWorldPt{b.x + b.w / 2.0, b.y + b.h / 2.0};
+                        if (m_onNavigateToSource) {
+                            m_onNavigateToSource(excerpt->sourceDocId(), excerpt->sourcePageNo(),
+                                                 excerpt->sourceNormalizedRect(), excerpt->id(),
+                                                 excerpt->textSnippet(), centerWorldPt);
+                        }
+                        return TRUE;
+                    }
+                } else if (const auto* stack =
+                               dynamic_cast<const FluidCore::CardStackNode*>(node)) {
+                    if (!stack->isCollapsed()) {
+                        for (const auto& child : stack->children()) {
+                            if (const auto* cExcerpt =
+                                    dynamic_cast<const FluidCore::ExcerptCardNode*>(child.get())) {
+                                const auto pillRect = getExcerptAnchorPillRect(cExcerpt);
+                                if (event->x >= pillRect.x && event->x <= pillRect.x + pillRect.w &&
+                                    event->y >= pillRect.y && event->y <= pillRect.y + pillRect.h) {
+                                    const auto b = cExcerpt->bounds();
+                                    const FluidCore::Point centerWorldPt{b.x + b.w / 2.0,
+                                                                         b.y + b.h / 2.0};
+                                    if (m_onNavigateToSource) {
+                                        m_onNavigateToSource(
+                                            cExcerpt->sourceDocId(), cExcerpt->sourcePageNo(),
+                                            cExcerpt->sourceNormalizedRect(), cExcerpt->id(),
+                                            cExcerpt->textSnippet(), centerWorldPt);
+                                    }
+                                    return TRUE;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. Double-Click: If on stack header -> toggle collapse; otherwise center on point
         if (event->type == GDK_2BUTTON_PRESS) {
+            for (const auto* node : visibleNodes) {
+                if (const auto* stack = dynamic_cast<const FluidCore::CardStackNode*>(node)) {
+                    const auto hdrRect = getStackHeaderRect(stack);
+                    if (event->x >= hdrRect.x && event->x <= hdrRect.x + hdrRect.w &&
+                        event->y >= hdrRect.y && event->y <= hdrRect.y + hdrRect.h) {
+                        m_api.toggleStackCollapsed(stack->id());
+                        gtk_widget_queue_draw(m_area);
+                        return TRUE;
+                    }
+                }
+            }
+
             FluidCore::Point worldPt = screenToWorld(event->x, event->y);
             centerOn(worldPt.x, worldPt.y);
             return TRUE;
         }
 
-        if (m_currentTool == "select") {
+        const bool isDrawingOrConnecting =
+            (m_currentTool == "pen" || m_currentTool == "highlighter" ||
+             m_currentTool == "eraser" || m_currentTool == "connector");
+
+        if (!isDrawingOrConnecting) {
             FluidCore::Point wPt = screenToWorld(event->x, event->y);
-            std::string hitEdge = hitTestEdgeAtWorldPoint(wPt, 8.0);
-            if (!hitEdge.empty()) {
-                m_selectedEdgeId = hitEdge;
+            if (m_currentTool == "select") {
+                std::string hitEdge = hitTestEdgeAtWorldPoint(wPt, 8.0);
+                if (!hitEdge.empty()) {
+                    m_selectedEdgeId = hitEdge;
+                    m_selectedNodeId.reset();
+                    gtk_widget_queue_draw(m_area);
+                    return TRUE;
+                } else {
+                    if (m_selectedEdgeId.has_value()) {
+                        m_selectedEdgeId.reset();
+                        gtk_widget_queue_draw(m_area);
+                    }
+                }
+            }
+
+            // Hit test child node inside expanded stack first (for extraction)
+            std::string parentStackId;
+            const auto* hitChild = hitTestChildNodeAtWorldPoint(wPt, &parentStackId);
+            if (hitChild && !parentStackId.empty()) {
+                m_dragPending = true;
+                m_dragStartScreenX = event->x;
+                m_dragStartScreenY = event->y;
+                m_dragCandidateNodeId = hitChild->id();
+                m_dragCandidateIsChild = true;
+                m_dragCandidateParentStackId = parentStackId;
+                const auto b = hitChild->bounds();
+                m_dragInitialWorldPos = {b.x, b.y};
+                m_dragOffsetWorld = {wPt.x - b.x, wPt.y - b.y};
+                m_selectedNodeId = hitChild->id();
+                gtk_widget_queue_draw(m_area);
+                return TRUE;
+            }
+
+            // Hit test top-level node
+            const auto* hitNode = hitTestNodeAtWorldPoint(wPt);
+            if (hitNode) {
+                m_dragPending = true;
+                m_dragStartScreenX = event->x;
+                m_dragStartScreenY = event->y;
+                m_dragCandidateNodeId = hitNode->id();
+                m_dragCandidateIsChild = false;
+                m_dragCandidateParentStackId.clear();
+                m_dragInitialWorldPos = m_api.getNodePosition(hitNode->id());
+                m_dragOffsetWorld = {wPt.x - m_dragInitialWorldPos.x,
+                                     wPt.y - m_dragInitialWorldPos.y};
+                m_selectedNodeId = hitNode->id();
                 gtk_widget_queue_draw(m_area);
                 return TRUE;
             } else {
-                if (m_selectedEdgeId.has_value()) {
-                    m_selectedEdgeId.reset();
+                if (m_selectedNodeId.has_value()) {
+                    m_selectedNodeId.reset();
                     gtk_widget_queue_draw(m_area);
                 }
             }
@@ -852,6 +1012,29 @@ gboolean WorkspaceView::onButtonRelease(GdkEventButton* event) {
         }
         return TRUE;
     }
+
+    if (m_isDraggingCard) {
+        if (m_activeSnapType == FluidCore::SnapType::StackMerge && !m_activeMergeTargetId.empty()) {
+            m_api.mergeNodesIntoStack(m_dragCandidateNodeId, m_activeMergeTargetId);
+        }
+
+        m_isDraggingCard = false;
+        m_dragPending = false;
+        m_dragCandidateNodeId.clear();
+        m_activeMergeTargetId.clear();
+        m_activeSnapGuideLines.clear();
+        m_activeSnapType = FluidCore::SnapType::None;
+
+        GdkWindow* win = gtk_widget_get_window(m_area);
+        if (win) {
+            gdk_window_set_cursor(win, nullptr);
+        }
+
+        gtk_widget_queue_draw(m_area);
+        return TRUE;
+    }
+
+    m_dragPending = false;
 
     if (m_isConnecting) {
         m_isConnecting = false;
@@ -963,6 +1146,67 @@ gboolean WorkspaceView::onMotion(GdkEventMotion* event) {
         return TRUE;
     }
 
+    // Handle Drag initiation threshold (6.0 screen px)
+    if (m_dragPending && !m_isDraggingCard) {
+        const double dragDist =
+            std::hypot(event->x - m_dragStartScreenX, event->y - m_dragStartScreenY);
+        if (dragDist >= 6.0) {
+            m_isDraggingCard = true;
+            if (m_dragCandidateIsChild && !m_dragCandidateParentStackId.empty()) {
+                m_api.extractChildFromStack(m_dragCandidateParentStackId, m_dragCandidateNodeId,
+                                            m_dragInitialWorldPos);
+                m_dragCandidateIsChild = false;
+                m_dragCandidateParentStackId.clear();
+            }
+        }
+    }
+
+    // Active Card & Stack Dragging with 16pt Magnetic Snapping & Stack Merge
+    if (m_isDraggingCard && !m_dragCandidateNodeId.empty()) {
+        const FluidCore::Point currentWorld = screenToWorld(event->x, event->y);
+        const FluidCore::Rectangle nodeBounds = m_api.getNodeBounds(m_dragCandidateNodeId);
+        const FluidCore::Rectangle proposedBounds{currentWorld.x - m_dragOffsetWorld.x,
+                                                  currentWorld.y - m_dragOffsetWorld.y,
+                                                  nodeBounds.w, nodeBounds.h};
+
+        const double snapThresholdWorld = 16.0 / m_zoom;
+        const FluidCore::SnapResult snapRes =
+            m_api.solveSnap(proposedBounds, snapThresholdWorld, m_dragCandidateNodeId);
+
+        if (snapRes.type == FluidCore::SnapType::StackMerge) {
+            m_activeSnapType = FluidCore::SnapType::StackMerge;
+            m_activeMergeTargetId = snapRes.targetNodeId;
+            m_activeSnapGuideLines.clear();
+            m_draggedGhostBounds = proposedBounds;
+            m_api.updateNodePosition(m_dragCandidateNodeId, proposedBounds.x, proposedBounds.y);
+        } else if (snapRes.type == FluidCore::SnapType::MagneticSnap) {
+            m_activeSnapType = FluidCore::SnapType::MagneticSnap;
+            m_activeMergeTargetId.clear();
+            m_activeSnapGuideLines = snapRes.guideLines;
+            m_draggedGhostBounds = snapRes.snappedBounds;
+            m_api.updateNodePosition(m_dragCandidateNodeId, snapRes.snappedBounds.x,
+                                     snapRes.snappedBounds.y);
+        } else {
+            m_activeSnapType = FluidCore::SnapType::None;
+            m_activeMergeTargetId.clear();
+            m_activeSnapGuideLines.clear();
+            m_draggedGhostBounds = proposedBounds;
+            m_api.updateNodePosition(m_dragCandidateNodeId, proposedBounds.x, proposedBounds.y);
+        }
+
+        GdkWindow* win = gtk_widget_get_window(m_area);
+        if (win) {
+            GdkDisplay* display = gdk_window_get_display(win);
+            GdkCursor* grabCursor = gdk_cursor_new_for_display(display, GDK_FLEUR);
+            gdk_window_set_cursor(win, grabCursor);
+            if (grabCursor)
+                g_object_unref(grabCursor);
+        }
+
+        gtk_widget_queue_draw(m_area);
+        return TRUE;
+    }
+
     if (m_isConnecting) {
         m_connectorCurrentWorld = screenToWorld(event->x, event->y);
         const auto* targetNode = hitTestNodeAtWorldPoint(m_connectorCurrentWorld);
@@ -1009,8 +1253,9 @@ gboolean WorkspaceView::onMotion(GdkEventMotion* event) {
     if (win) {
         GdkDisplay* display = gdk_window_get_display(win);
 
-        // Check if mouse is hovering over an anchor pill
+        // Check if mouse is hovering over an anchor pill or stack chevron
         std::string newHoveredId;
+        bool isHoveringChevron = false;
         if (m_zoom >= 0.2) {
             const FluidCore::Point worldTopLeft = screenToWorld(0, 0);
             const FluidCore::Point worldBottomRight = screenToWorld(
@@ -1021,14 +1266,22 @@ gboolean WorkspaceView::onMotion(GdkEventMotion* event) {
 
             auto visibleNodes = m_api.queryVisibleNodes(viewWorldRect);
             for (const auto* node : visibleNodes) {
-                if (!dynamic_cast<const FluidCore::ExcerptCardNode*>(node)) {
-                    continue;
+                if (const auto* stack = dynamic_cast<const FluidCore::CardStackNode*>(node)) {
+                    const auto chevRect = getStackChevronRect(stack);
+                    if (event->x >= chevRect.x && event->x <= chevRect.x + chevRect.w &&
+                        event->y >= chevRect.y && event->y <= chevRect.y + chevRect.h) {
+                        isHoveringChevron = true;
+                        break;
+                    }
                 }
-                const auto pillRect = getExcerptAnchorPillRect(node);
-                if (event->x >= pillRect.x && event->x <= pillRect.x + pillRect.w &&
-                    event->y >= pillRect.y && event->y <= pillRect.y + pillRect.h) {
-                    newHoveredId = node->id();
-                    break;
+
+                if (dynamic_cast<const FluidCore::ExcerptCardNode*>(node)) {
+                    const auto pillRect = getExcerptAnchorPillRect(node);
+                    if (event->x >= pillRect.x && event->x <= pillRect.x + pillRect.w &&
+                        event->y >= pillRect.y && event->y <= pillRect.y + pillRect.h) {
+                        newHoveredId = node->id();
+                        break;
+                    }
                 }
             }
         }
@@ -1038,7 +1291,7 @@ gboolean WorkspaceView::onMotion(GdkEventMotion* event) {
             gtk_widget_queue_draw(m_area);
         }
 
-        if (!m_hoveredAnchorCardId.empty()) {
+        if (!m_hoveredAnchorCardId.empty() || isHoveringChevron) {
             GdkCursor* pointerCursor = gdk_cursor_new_for_display(display, GDK_HAND2);
             gdk_window_set_cursor(win, pointerCursor);
             if (pointerCursor)
@@ -1048,6 +1301,18 @@ gboolean WorkspaceView::onMotion(GdkEventMotion* event) {
             gdk_window_set_cursor(win, pointerCursor);
             if (pointerCursor)
                 g_object_unref(pointerCursor);
+        } else if (m_currentTool != "pen" && m_currentTool != "highlighter" &&
+                   m_currentTool != "eraser" && m_currentTool != "connector") {
+            const FluidCore::Point wPt = screenToWorld(event->x, event->y);
+            const auto* hitNode = hitTestNodeAtWorldPoint(wPt);
+            if (hitNode) {
+                GdkCursor* moveCursor = gdk_cursor_new_for_display(display, GDK_HAND1);
+                gdk_window_set_cursor(win, moveCursor);
+                if (moveCursor)
+                    g_object_unref(moveCursor);
+            } else {
+                gdk_window_set_cursor(win, nullptr);
+            }
         } else {
             gdk_window_set_cursor(win, nullptr);
         }
@@ -1108,18 +1373,25 @@ gboolean WorkspaceView::onKeyPress(GdkEventKey* event) {
     case GDK_KEY_Delete:
     case GDK_KEY_KP_Delete:
     case GDK_KEY_BackSpace: {
-        if (m_selectedEdgeId.has_value()) {
-            GdkWindow* win = gtk_widget_get_window(m_area);
-            if (win) {
-                GtkWidget* focusWidget =
-                    gtk_window_get_focus(GTK_WINDOW(gtk_widget_get_toplevel(m_area)));
-                if (focusWidget && GTK_IS_ENTRY(focusWidget)) {
-                    // Do not delete edge if typing in a text entry
-                    return FALSE;
-                }
+        GdkWindow* win = gtk_widget_get_window(m_area);
+        if (win) {
+            GtkWidget* focusWidget =
+                gtk_window_get_focus(GTK_WINDOW(gtk_widget_get_toplevel(m_area)));
+            if (focusWidget && GTK_IS_ENTRY(focusWidget)) {
+                return FALSE;
             }
+        }
+
+        if (m_selectedEdgeId.has_value()) {
             m_api.removeEdge(*m_selectedEdgeId);
             m_selectedEdgeId.reset();
+            gtk_widget_queue_draw(m_area);
+            return TRUE;
+        }
+
+        if (m_selectedNodeId.has_value()) {
+            m_api.removeNode(*m_selectedNodeId);
+            m_selectedNodeId.reset();
             gtk_widget_queue_draw(m_area);
             return TRUE;
         }
@@ -1617,12 +1889,296 @@ void WorkspaceView::drawGenericNode(cairo_t* cr, const FluidCore::WorkspaceNode*
     cairo_restore(cr);
 }
 
+void WorkspaceView::drawCardStack(cairo_t* cr, const FluidCore::WorkspaceNode* node, double sx,
+                                  double sy, double sw, double sh) {
+    const auto* stack = dynamic_cast<const FluidCore::CardStackNode*>(node);
+    if (!stack) {
+        return;
+    }
+
+    const double radius = 8.0 * m_zoom;
+    const double headerH = FluidCore::CardStackNode::kHeaderHeight * m_zoom;
+    const bool isCollapsed = stack->isCollapsed();
+    const bool isSelected = (m_selectedNodeId && *m_selectedNodeId == stack->id());
+
+    // 1. Layered Deck Drop Shadows
+    if (isCollapsed) {
+        // Multi-card silhouette tabs peeking from behind
+        for (int i = 2; i >= 1; --i) {
+            const double offset = static_cast<double>(i) * 3.5 * m_zoom;
+            cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.04);
+            drawRoundedRect(cr, sx + offset, sy + offset, sw - offset * 2.0, sh, radius);
+            cairo_fill(cr);
+
+            drawRoundedRect(cr, sx + offset * 0.5, sy + offset, sw - offset, sh, radius);
+            cairo_set_source_rgb(cr, 0.93 - i * 0.03, 0.94 - i * 0.03, 0.96 - i * 0.03);
+            cairo_fill_preserve(cr);
+            cairo_set_source_rgba(cr, 0.80, 0.84, 0.90, 0.7);
+            cairo_set_line_width(cr, 1.0);
+            cairo_stroke(cr);
+        }
+    }
+
+    // Main Stack Container Shadow
+    cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.06);
+    drawRoundedRect(cr, sx, sy + 4.0 * m_zoom, sw, sh, radius);
+    cairo_fill(cr);
+    cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.08);
+    drawRoundedRect(cr, sx, sy + 1.5 * m_zoom, sw, sh, radius);
+    cairo_fill(cr);
+
+    // Selection Halo
+    if (isSelected) {
+        cairo_save(cr);
+        drawRoundedRect(cr, sx - 3.0, sy - 3.0, sw + 6.0, sh + 6.0, radius + 2.0);
+        cairo_set_source_rgba(cr, 0.05, 0.65, 1.0, 0.35);
+        cairo_set_line_width(cr, 2.5);
+        cairo_stroke(cr);
+        cairo_restore(cr);
+    }
+
+    // Main Container Background
+    drawRoundedRect(cr, sx, sy, sw, sh, radius);
+    cairo_set_source_rgb(cr, 0.985, 0.988, 0.995);
+    cairo_fill_preserve(cr);
+    cairo_set_source_rgba(cr, 0.76, 0.82, 0.90, 0.95);
+    cairo_set_line_width(cr, std::max(1.0, 1.2 * m_zoom));
+    cairo_stroke(cr);
+
+    // 2. Render Children (when expanded)
+    if (!isCollapsed) {
+        for (const auto& child : stack->children()) {
+            if (!child)
+                continue;
+            const auto cb = child->bounds();
+            const double csx = (cb.x - m_originX) * m_zoom;
+            const double csy = (cb.y - m_originY) * m_zoom;
+            const double csw = cb.w * m_zoom;
+            const double csh = cb.h * m_zoom;
+
+            if (dynamic_cast<const FluidCore::ExcerptCardNode*>(child.get())) {
+                drawExcerptCard(cr, child.get(), csx, csy, csw, csh);
+            } else if (dynamic_cast<const FluidCore::CardStackNode*>(child.get())) {
+                drawCardStack(cr, child.get(), csx, csy, csw, csh);
+            } else {
+                drawGenericNode(cr, child.get(), csx, csy, csw, csh);
+            }
+        }
+    }
+
+    // 3. Stack Header Bar
+    cairo_save(cr);
+    drawRoundedRect(cr, sx, sy, sw, headerH, radius);
+    cairo_clip(cr);
+
+    // Header gradient (slate-800 to slate-900)
+    cairo_pattern_t* grad = cairo_pattern_create_linear(sx, sy, sx, sy + headerH);
+    cairo_pattern_add_color_stop_rgb(grad, 0.0, 0.16, 0.20, 0.28);
+    cairo_pattern_add_color_stop_rgb(grad, 1.0, 0.11, 0.14, 0.20);
+    cairo_set_source(cr, grad);
+    cairo_rectangle(cr, sx, sy, sw, headerH);
+    cairo_fill(cr);
+    cairo_pattern_destroy(grad);
+
+    // Header bottom divider line
+    cairo_move_to(cr, sx, sy + headerH);
+    cairo_line_to(cr, sx + sw, sy + headerH);
+    cairo_set_source_rgba(cr, 0.28, 0.35, 0.48, 0.8);
+    cairo_set_line_width(cr, 1.0);
+    cairo_stroke(cr);
+
+    // Chevron Button ([▼] or [▶])
+    const double chevronSize = std::min(18.0 * m_zoom, headerH * 0.7);
+    const double chevronX = sx + 8.0 * m_zoom;
+    const double chevronY = sy + (headerH - chevronSize) / 2.0;
+
+    drawRoundedRect(cr, chevronX, chevronY, chevronSize, chevronSize, chevronSize / 2.0);
+    cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.12);
+    cairo_fill_preserve(cr);
+    cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.25);
+    cairo_set_line_width(cr, 0.8);
+    cairo_stroke(cr);
+
+    cairo_set_source_rgb(cr, 0.90, 0.94, 1.0);
+    if (!isCollapsed) {
+        // Downward triangle
+        const double cx = chevronX + chevronSize / 2.0;
+        const double cy = chevronY + chevronSize / 2.0;
+        const double triR = chevronSize * 0.25;
+        cairo_move_to(cr, cx - triR, cy - triR * 0.6);
+        cairo_line_to(cr, cx + triR, cy - triR * 0.6);
+        cairo_line_to(cr, cx, cy + triR * 0.8);
+        cairo_close_path(cr);
+        cairo_fill(cr);
+    } else {
+        // Rightward triangle
+        const double cx = chevronX + chevronSize / 2.0;
+        const double cy = chevronY + chevronSize / 2.0;
+        const double triR = chevronSize * 0.25;
+        cairo_move_to(cr, cx - triR * 0.6, cy - triR);
+        cairo_line_to(cr, cx + triR * 0.8, cy);
+        cairo_line_to(cr, cx - triR * 0.6, cy + triR);
+        cairo_close_path(cr);
+        cairo_fill(cr);
+    }
+
+    if (m_zoom >= 0.2) {
+        // Stack Title
+        cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
+        cairo_set_font_size(cr, 11.0 * m_zoom);
+        cairo_set_source_rgb(cr, 0.95, 0.97, 1.0);
+        cairo_move_to(cr, chevronX + chevronSize + 8.0 * m_zoom, sy + headerH * 0.65);
+        cairo_show_text(cr, stack->title().c_str());
+
+        // Count Pill Badge on header right
+        std::string countStr = std::to_string(stack->childCount()) + " cards";
+        cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
+        cairo_set_font_size(cr, 9.0 * m_zoom);
+        cairo_text_extents_t cntExt;
+        cairo_text_extents(cr, countStr.c_str(), &cntExt);
+
+        const double badgeW = cntExt.width + 12.0 * m_zoom;
+        const double badgeH = 18.0 * m_zoom;
+        const double badgeX = sx + sw - badgeW - 8.0 * m_zoom;
+        const double badgeY = sy + (headerH - badgeH) / 2.0;
+
+        if (badgeW > 10.0 && badgeX > chevronX + chevronSize + 40.0 * m_zoom) {
+            drawRoundedRect(cr, badgeX, badgeY, badgeW, badgeH, badgeH / 2.0);
+            cairo_set_source_rgba(cr, 0.05, 0.55, 0.95, 0.28);
+            cairo_fill_preserve(cr);
+            cairo_set_source_rgba(cr, 0.20, 0.70, 1.0, 0.60);
+            cairo_set_line_width(cr, 0.8 * m_zoom);
+            cairo_stroke(cr);
+
+            cairo_set_source_rgb(cr, 0.75, 0.90, 1.0);
+            cairo_move_to(cr, badgeX + (badgeW - cntExt.width) / 2.0,
+                          badgeY + (badgeH + cntExt.height) / 2.0 - 0.5 * m_zoom);
+            cairo_show_text(cr, countStr.c_str());
+        }
+    }
+
+    cairo_restore(cr);
+}
+
+void WorkspaceView::drawMagneticSnapGuides(cairo_t* cr) {
+    if (m_activeSnapGuideLines.empty()) {
+        return;
+    }
+
+    cairo_save(cr);
+    for (const auto& g : m_activeSnapGuideLines) {
+        const FluidCore::Point s1 = worldToScreen(g.start.x, g.start.y);
+        const FluidCore::Point s2 = worldToScreen(g.end.x, g.end.y);
+
+        // Ambient glow pass
+        cairo_set_source_rgba(cr, 0.0, 0.82, 1.0, 0.30);
+        cairo_set_line_width(cr, 4.0);
+        cairo_move_to(cr, s1.x, s1.y);
+        cairo_line_to(cr, s2.x, s2.y);
+        cairo_stroke(cr);
+
+        // Core dashed snap guideline
+        cairo_set_source_rgba(cr, 0.0, 0.85, 1.0, 0.95);
+        double dashes[] = {5.0, 4.0};
+        cairo_set_dash(cr, dashes, 2, 0.0);
+        cairo_set_line_width(cr, 1.6);
+        cairo_move_to(cr, s1.x, s1.y);
+        cairo_line_to(cr, s2.x, s2.y);
+        cairo_stroke(cr);
+        cairo_set_dash(cr, nullptr, 0, 0.0);
+    }
+    cairo_restore(cr);
+}
+
+void WorkspaceView::drawStackMergeGhost(cairo_t* cr) {
+    if (m_activeSnapType != FluidCore::SnapType::StackMerge || m_activeMergeTargetId.empty()) {
+        return;
+    }
+
+    FluidCore::Rectangle targetBounds = m_api.getNodeBounds(m_activeMergeTargetId);
+    if (targetBounds.w <= 0.0 || targetBounds.h <= 0.0) {
+        return;
+    }
+
+    const FluidCore::Point sp = worldToScreen(targetBounds.x, targetBounds.y);
+    const double sw = targetBounds.w * m_zoom;
+    const double sh = targetBounds.h * m_zoom;
+    const double radius = 10.0 * m_zoom;
+
+    cairo_save(cr);
+
+    // Glowing docking aura
+    drawRoundedRect(cr, sp.x - 4.0, sp.y - 4.0, sw + 8.0, sh + 8.0, radius);
+    cairo_set_source_rgba(cr, 0.05, 0.65, 1.0, 0.18);
+    cairo_fill_preserve(cr);
+    cairo_set_source_rgba(cr, 0.05, 0.70, 1.0, 0.90);
+    double dashes[] = {6.0, 4.0};
+    cairo_set_dash(cr, dashes, 2, 0.0);
+    cairo_set_line_width(cr, 2.5);
+    cairo_stroke(cr);
+    cairo_set_dash(cr, nullptr, 0, 0.0);
+
+    // Central "+ Drop to Stack" badge
+    const double badgeW = std::min(130.0 * m_zoom, sw * 0.8);
+    const double badgeH = 28.0 * m_zoom;
+    const double badgeX = sp.x + (sw - badgeW) / 2.0;
+    const double badgeY = sp.y + (sh - badgeH) / 2.0;
+
+    drawRoundedRect(cr, badgeX, badgeY, badgeW, badgeH, badgeH / 2.0);
+    cairo_set_source_rgba(cr, 0.05, 0.50, 0.95, 0.90);
+    cairo_fill_preserve(cr);
+    cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.70);
+    cairo_set_line_width(cr, 1.0);
+    cairo_stroke(cr);
+
+    if (badgeW > 40.0) {
+        cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
+        cairo_set_font_size(cr, 11.0 * m_zoom);
+        cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+        cairo_text_extents_t ext;
+        cairo_text_extents(cr, "+ Drop to Stack", &ext);
+        cairo_move_to(cr, badgeX + (badgeW - ext.width) / 2.0,
+                      badgeY + (badgeH + ext.height) / 2.0 - 0.5 * m_zoom);
+        cairo_show_text(cr, "+ Drop to Stack");
+    }
+
+    cairo_restore(cr);
+}
+
+const FluidCore::WorkspaceNode*
+WorkspaceView::hitTestChildNodeAtWorldPoint(const FluidCore::Point& worldPt,
+                                            std::string* outParentStackId) const {
+    const FluidCore::Rectangle queryRect{worldPt.x - 1.0, worldPt.y - 1.0, 2.0, 2.0};
+    auto hits = m_api.queryVisibleNodes(queryRect);
+    for (const auto* node : hits) {
+        if (const auto* stack = dynamic_cast<const FluidCore::CardStackNode*>(node)) {
+            if (!stack->isCollapsed()) {
+                const auto& children = stack->children();
+                for (auto it = children.rbegin(); it != children.rend(); ++it) {
+                    if (*it) {
+                        const auto b = (*it)->bounds();
+                        if (worldPt.x >= b.x && worldPt.x <= b.x + b.w && worldPt.y >= b.y &&
+                            worldPt.y <= b.y + b.h) {
+                            if (outParentStackId) {
+                                *outParentStackId = stack->id();
+                            }
+                            return it->get();
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return nullptr;
+}
+
 const FluidCore::WorkspaceNode*
 WorkspaceView::hitTestNodeAtWorldPoint(const FluidCore::Point& worldPt) const {
     const FluidCore::Rectangle queryRect{worldPt.x - 1.0, worldPt.y - 1.0, 2.0, 2.0};
     auto hits = m_api.queryVisibleNodes(queryRect);
     for (const auto* node : hits) {
-        if (dynamic_cast<const FluidCore::ExcerptCardNode*>(node)) {
+        if (dynamic_cast<const FluidCore::ExcerptCardNode*>(node) ||
+            dynamic_cast<const FluidCore::CardStackNode*>(node)) {
             const auto b = node->bounds();
             if (worldPt.x >= b.x && worldPt.x <= b.x + b.w && worldPt.y >= b.y &&
                 worldPt.y <= b.y + b.h) {
@@ -1810,7 +2366,14 @@ void WorkspaceView::draw(cairo_t* cr, int width, int height) {
     const std::vector<FluidCore::WorkspaceNode*> visibleNodes = m_api.queryVisibleNodes(viewport);
 
     for (const FluidCore::WorkspaceNode* node : visibleNodes) {
-        if (dynamic_cast<const FluidCore::ExcerptCardNode*>(node)) {
+        if (dynamic_cast<const FluidCore::CardStackNode*>(node)) {
+            const FluidCore::Rectangle b = node->bounds();
+            const double sx = (b.x - m_originX) * m_zoom;
+            const double sy = (b.y - m_originY) * m_zoom;
+            const double sw = b.w * m_zoom;
+            const double sh = b.h * m_zoom;
+            drawCardStack(cr, node, sx, sy, sw, sh);
+        } else if (dynamic_cast<const FluidCore::ExcerptCardNode*>(node)) {
             const FluidCore::Rectangle b = node->bounds();
             const double sx = (b.x - m_originX) * m_zoom;
             const double sy = (b.y - m_originY) * m_zoom;
@@ -1881,6 +2444,12 @@ void WorkspaceView::draw(cairo_t* cr, int width, int height) {
             cairo_stroke(cr);
         }
     }
+
+    // Render 16pt magnetic snapping guidelines during drag
+    drawMagneticSnapGuides(cr);
+
+    // Render stack-merge docking aura and ghost during drag
+    drawStackMergeGhost(cr);
 
     // Render drop target ghost box during active drag hover
     if (m_isDropHovering) {

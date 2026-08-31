@@ -79,11 +79,35 @@ struct SearchResult {
     std::string snippet;
 };
 
+// Spatial Snapping & Physics value types (TASK-4.2)
+enum class SnapType { None, MagneticSnap, StackMerge };
+
+struct SnapGuideLine {
+    Point start;
+    Point end;
+    bool isVertical = false;
+};
+
+struct CandidateTarget {
+    std::string id;
+    Rectangle bounds;
+    bool isStack = false;
+};
+
+struct SnapResult {
+    SnapType type = SnapType::None;
+    Rectangle snappedBounds;
+    std::string targetNodeId;
+    std::vector<SnapGuideLine> guideLines;
+    double overlapRatio = 0.0;
+};
+
 class WorkspaceNode {
   public:
     virtual ~WorkspaceNode() = default;
     virtual const std::string& id() const = 0;
     virtual Rectangle bounds() const = 0;
+    virtual void setPosition(double /*x*/, double /*y*/) {}
     virtual std::unique_ptr<WorkspaceNode> clone() const { return nullptr; }
 };
 
@@ -120,6 +144,19 @@ class FluidCoreAPI {
     virtual Rectangle getNodeBounds(const std::string& nodeId) const = 0;
     virtual Point getNodePosition(const std::string& nodeId) const = 0;
     virtual Rectangle getWorkspaceBounds() const = 0;
+
+    // Spatial Snapping, Stacking & Physics API (TASK-4.2)
+    virtual SnapResult solveSnap(const Rectangle& dragBounds, double snapThreshold = 16.0,
+                                 const std::string& ignoreId = "") const = 0;
+    virtual std::string mergeNodesIntoStack(const std::string& sourceNodeId,
+                                            const std::string& targetNodeId) = 0;
+    virtual std::string extractChildFromStack(const std::string& stackId,
+                                              const std::string& childId, const Point& dropPos) = 0;
+    virtual bool setStackCollapsed(const std::string& stackId, bool collapsed) = 0;
+    virtual bool toggleStackCollapsed(const std::string& stackId) = 0;
+    virtual bool isStackNode(const std::string& nodeId) const = 0;
+    virtual bool isStackCollapsed(const std::string& stackId) const = 0;
+    virtual std::vector<std::string> getStackChildren(const std::string& stackId) const = 0;
 
     // Bi-Directional Relational Graph & Live Ink Link API
     virtual std::string createInkLink(const std::string& sourceNodeId,

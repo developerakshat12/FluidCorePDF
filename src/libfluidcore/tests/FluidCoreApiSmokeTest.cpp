@@ -53,6 +53,18 @@ class StubApi final : public FluidCoreAPI {
     std::vector<std::string> getAllEdges() const override { return {}; }
     bool removeEdge(const std::string&) override { return false; }
 
+    SnapResult solveSnap(const Rectangle&, double, const std::string&) const override { return {}; }
+    std::string mergeNodesIntoStack(const std::string&, const std::string&) override { return {}; }
+    std::string extractChildFromStack(const std::string&, const std::string&,
+                                      const Point&) override {
+        return {};
+    }
+    bool setStackCollapsed(const std::string&, bool) override { return false; }
+    bool toggleStackCollapsed(const std::string&) override { return false; }
+    bool isStackNode(const std::string&) const override { return false; }
+    bool isStackCollapsed(const std::string&) const override { return false; }
+    std::vector<std::string> getStackChildren(const std::string&) const override { return {}; }
+
     // Signature-only until M5; must remain implementable as a no-op.
     void openProject(const std::string&) override {}
     void saveProject() override {}

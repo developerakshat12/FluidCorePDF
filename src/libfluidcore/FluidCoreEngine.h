@@ -4,6 +4,8 @@
 
 #include "graph/GraphTopology.h"
 #include "squeeze/SqueezeEngine.h"
+#include "workspace/CardStackNode.h"
+#include "workspace/PhysicsSolver.h"
 #include "workspace/WorkspaceModel.h"
 
 #include <memory>
@@ -13,8 +15,8 @@
 namespace FluidCore {
 
 // Concrete FluidCoreAPI facade over the engine modules. Wave-1 slice: the
-// spatial scene-graph, graph edge routing (M4), and squeeze engine methods are live;
-// persistence/search (M5) stay signature-level no-ops at their delegate points.
+// spatial scene-graph, graph edge routing (M4), snapping/stacking physics, and squeeze engine
+// methods are live; persistence/search (M5) stay signature-level no-ops at their delegate points.
 class FluidCoreEngine final : public FluidCoreAPI {
   public:
     explicit FluidCoreEngine(std::string projectId);
@@ -48,6 +50,19 @@ class FluidCoreEngine final : public FluidCoreAPI {
     Rectangle getNodeBounds(const std::string& nodeId) const override;
     Point getNodePosition(const std::string& nodeId) const override;
     Rectangle getWorkspaceBounds() const override;
+
+    // Spatial Snapping, Stacking & Physics (TASK-4.2)
+    SnapResult solveSnap(const Rectangle& dragBounds, double snapThreshold = 16.0,
+                         const std::string& ignoreId = "") const override;
+    std::string mergeNodesIntoStack(const std::string& sourceNodeId,
+                                    const std::string& targetNodeId) override;
+    std::string extractChildFromStack(const std::string& stackId, const std::string& childId,
+                                      const Point& dropPos) override;
+    bool setStackCollapsed(const std::string& stackId, bool collapsed) override;
+    bool toggleStackCollapsed(const std::string& stackId) override;
+    bool isStackNode(const std::string& nodeId) const override;
+    bool isStackCollapsed(const std::string& stackId) const override;
+    std::vector<std::string> getStackChildren(const std::string& stackId) const override;
 
     // Relational graph & ink links — backed by GraphTopology.
     std::string createInkLink(const std::string& sourceNodeId, const std::string& targetNodeId,

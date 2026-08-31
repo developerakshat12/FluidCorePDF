@@ -15,6 +15,18 @@ std::unique_ptr<WorkspaceNode> CanvasStrokeNode::clone() const {
     return std::make_unique<CanvasStrokeNode>(m_stroke);
 }
 
+void CanvasStrokeNode::setPosition(double x, double y) {
+    if (m_stroke.points.empty())
+        return;
+    const double dx = x - m_bounds.x;
+    const double dy = y - m_bounds.y;
+    for (auto& pt : m_stroke.points) {
+        pt.x += dx;
+        pt.y += dy;
+    }
+    computeBounds();
+}
+
 void CanvasStrokeNode::computeBounds() {
     if (m_stroke.points.empty()) {
         m_bounds = Rectangle{0, 0, 0, 0};

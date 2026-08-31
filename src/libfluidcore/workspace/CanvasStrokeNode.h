@@ -14,8 +14,13 @@ class CanvasStrokeNode : public WorkspaceNode {
 
     const std::string& id() const override { return m_stroke.id; }
     Rectangle bounds() const override { return m_bounds; }
+    void setPosition(double x, double y) override;
 
     const FluidCore::Stroke& stroke() const { return m_stroke; }
+    void setStroke(FluidCore::Stroke stroke) {
+        m_stroke = std::move(stroke);
+        computeBounds();
+    }
 
     std::unique_ptr<WorkspaceNode> clone() const override;
 
