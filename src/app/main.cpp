@@ -1,9 +1,9 @@
+#include "FluidCoreEngine.h"
 #include "document/DocumentPane.h"
 #include "services/ExcerptTileCache.h"
-#include "FluidCoreEngine.h"
 #include "services/PdfDocumentService.h"
-#include "workspace/WorkspaceView.h"
 #include "workspace/ExcerptCardNode.h"
+#include "workspace/WorkspaceView.h"
 
 #include <gtk/gtk.h>
 #include <iostream>

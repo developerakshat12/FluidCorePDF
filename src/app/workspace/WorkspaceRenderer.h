@@ -16,7 +16,8 @@ class WorkspaceRenderer {
     static void drawBackgroundGrid(cairo_t* cr, const WorkspaceState& state, int width, int height);
     static void drawMinimap(cairo_t* cr, const WorkspaceState& state, FluidCore::FluidCoreAPI& api,
                             int width, int height);
-    static void drawGraphEdges(cairo_t* cr, const WorkspaceState& state, FluidCore::FluidCoreAPI& api);
+    static void drawGraphEdges(cairo_t* cr, const WorkspaceState& state,
+                               FluidCore::FluidCoreAPI& api);
     static void drawArrowHead(cairo_t* cr, const FluidCore::Point& tip, double angle, double size,
                               uint32_t color);
 

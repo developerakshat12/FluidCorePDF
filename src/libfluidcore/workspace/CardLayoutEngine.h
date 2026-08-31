@@ -18,7 +18,7 @@ class CardLayoutEngine {
 
     // Bounding box of [ ↗ Anchor ] pill button in screen coordinates
     static Rectangle getExcerptAnchorPillRect(const Rectangle& cardWorldBounds, double originX,
-                                             double originY, double zoom);
+                                              double originY, double zoom);
 
     // Bounding box of Stack Header bar in screen coordinates
     static Rectangle getStackHeaderRect(const Rectangle& stackWorldBounds, double originX,

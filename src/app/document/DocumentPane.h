@@ -2,9 +2,9 @@
 
 #include "document/ReturnAnchorPill.h"
 #include "document/SearchBarWidget.h"
+#include "search/AnchorSqueezePlanner.h"
 #include "services/DocumentSearchService.h"
 #include "services/PageTileCache.h"
-#include "search/AnchorSqueezePlanner.h"
 #include "squeeze/SqueezeEngine.h"
 #include "storage/AnnotationStore.h"
 #include "undo/UndoStack.h"

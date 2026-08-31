@@ -29,8 +29,8 @@ class WorkspaceInteraction {
                                          int viewWidth, int viewHeight);
 
     // Spatial node and edge hit testing
-    static const FluidCore::WorkspaceNode*
-    hitTestNodeAtWorldPoint(FluidCore::FluidCoreAPI& api, const FluidCore::Point& worldPt);
+    static const FluidCore::WorkspaceNode* hitTestNodeAtWorldPoint(FluidCore::FluidCoreAPI& api,
+                                                                   const FluidCore::Point& worldPt);
     static const FluidCore::WorkspaceNode*
     hitTestChildNodeAtWorldPoint(FluidCore::FluidCoreAPI& api, const FluidCore::Point& worldPt,
                                  std::string* outParentStackId);

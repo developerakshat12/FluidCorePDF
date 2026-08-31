@@ -431,8 +431,8 @@ void WorkspaceView::onDragLeave(GdkDragContext*, guint) {
 
 void WorkspaceView::onDragDataReceived(GdkDragContext* context, gint x, gint y,
                                        GtkSelectionData* data, guint info, guint time) {
-    WorkspaceInteraction::handleExcerptDrop(m_state, m_api, m_area, context, x, y, data, info,
-                                            time, m_onExcerptAdded);
+    WorkspaceInteraction::handleExcerptDrop(m_state, m_api, m_area, context, x, y, data, info, time,
+                                            m_onExcerptAdded);
 }
 
 void WorkspaceView::draw(cairo_t* cr, int width, int height) {
@@ -951,8 +951,8 @@ gboolean WorkspaceView::onMotion(GdkEventMotion* event) {
             currentWorld.y - m_state.dragSnap.dragOffsetWorld.y, nodeBounds.w, nodeBounds.h};
 
         const double snapThresholdWorld = 16.0 / m_state.viewport.zoom;
-        const FluidCore::SnapResult snapRes = m_api.solveSnap(
-            proposedBounds, snapThresholdWorld, m_state.dragSnap.dragCandidateNodeId);
+        const FluidCore::SnapResult snapRes = m_api.solveSnap(proposedBounds, snapThresholdWorld,
+                                                              m_state.dragSnap.dragCandidateNodeId);
 
         if (snapRes.type == FluidCore::SnapType::StackMerge) {
             m_state.dragSnap.activeSnapType = FluidCore::SnapType::StackMerge;

@@ -153,8 +153,7 @@ void WorkspaceRenderer::drawMinimap(cairo_t* cr, const WorkspaceState& state,
     }
 
     // Active viewport frame indicator
-    const FluidCore::Point vp1 =
-        worldToMinimap(state.viewport.originX, state.viewport.originY);
+    const FluidCore::Point vp1 = worldToMinimap(state.viewport.originX, state.viewport.originY);
     const FluidCore::Point vp2 = worldToMinimap(state.viewport.originX + currentViewW,
                                                 state.viewport.originY + currentViewH);
     const double vpw = std::max(vp2.x - vp1.x, 6.0);
@@ -323,8 +322,8 @@ void WorkspaceRenderer::drawGraphEdges(cairo_t* cr, const WorkspaceState& state,
 
 void WorkspaceRenderer::drawExcerptCard(cairo_t* cr, const WorkspaceState& state,
                                         const FluidCore::WorkspaceNode* node,
-                                        ExcerptTileCache* tileCache, double sx, double sy, double sw,
-                                        double sh) {
+                                        ExcerptTileCache* tileCache, double sx, double sy,
+                                        double sw, double sh) {
     const auto* excerpt = dynamic_cast<const FluidCore::ExcerptCardNode*>(node);
     const double zoom = state.viewport.zoom;
     const double radius = 8.0 * zoom;
@@ -424,8 +423,7 @@ void WorkspaceRenderer::drawExcerptCard(cairo_t* cr, const WorkspaceState& state
                 cairo_set_line_width(cr, isHovered ? 1.5 * zoom : 1.0 * zoom);
                 cairo_stroke(cr);
 
-                cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL,
-                                       CAIRO_FONT_WEIGHT_BOLD);
+                cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
                 cairo_set_font_size(cr, 8.5 * zoom);
                 if (isHovered) {
                     cairo_set_source_rgb(cr, 0.01, 0.30, 0.85);
@@ -868,8 +866,7 @@ void WorkspaceRenderer::drawStackMergeGhost(cairo_t* cr, const WorkspaceState& s
     }
 
     const double zoom = state.viewport.zoom;
-    const FluidCore::Point sp =
-        state.viewport.worldToScreen(targetBounds.x, targetBounds.y);
+    const FluidCore::Point sp = state.viewport.worldToScreen(targetBounds.x, targetBounds.y);
     const double sw = targetBounds.w * zoom;
     const double sh = targetBounds.h * zoom;
     const double radius = 10.0 * zoom;
@@ -912,9 +909,8 @@ void WorkspaceRenderer::drawStackMergeGhost(cairo_t* cr, const WorkspaceState& s
     cairo_restore(cr);
 }
 
-void WorkspaceRenderer::draw(cairo_t* cr, const WorkspaceState& state,
-                             FluidCore::FluidCoreAPI& api, ExcerptTileCache* excerptTileCache,
-                             int width, int height) {
+void WorkspaceRenderer::draw(cairo_t* cr, const WorkspaceState& state, FluidCore::FluidCoreAPI& api,
+                             ExcerptTileCache* excerptTileCache, int width, int height) {
     cairo_set_source_rgb(cr, 0.975, 0.982, 0.990);
     cairo_paint(cr);
 
@@ -926,8 +922,8 @@ void WorkspaceRenderer::draw(cairo_t* cr, const WorkspaceState& state,
     const double originY = state.viewport.originY;
 
     const double pad = 150.0 / zoom;
-    const FluidCore::Rectangle viewport{originX - pad, originY - pad,
-                                        width / zoom + 2.0 * pad, height / zoom + 2.0 * pad};
+    const FluidCore::Rectangle viewport{originX - pad, originY - pad, width / zoom + 2.0 * pad,
+                                        height / zoom + 2.0 * pad};
     const std::vector<FluidCore::WorkspaceNode*> visibleNodes = api.queryVisibleNodes(viewport);
 
     for (const FluidCore::WorkspaceNode* node : visibleNodes) {
@@ -986,11 +982,10 @@ void WorkspaceRenderer::draw(cairo_t* cr, const WorkspaceState& state,
     // Render active wet ink
     if (state.inking.isDrawing &&
         (state.inking.currentTool == "pen" || state.inking.currentTool == "highlighter")) {
-        cairo_set_source_rgba(
-            cr, ((state.inking.currentColor >> 16) & 0xFF) / 255.0,
-            ((state.inking.currentColor >> 8) & 0xFF) / 255.0,
-            (state.inking.currentColor & 0xFF) / 255.0,
-            state.inking.currentTool == "highlighter" ? 0.45 : 1.0);
+        cairo_set_source_rgba(cr, ((state.inking.currentColor >> 16) & 0xFF) / 255.0,
+                              ((state.inking.currentColor >> 8) & 0xFF) / 255.0,
+                              (state.inking.currentColor & 0xFF) / 255.0,
+                              state.inking.currentTool == "highlighter" ? 0.45 : 1.0);
         cairo_set_line_width(cr, state.inking.currentWidth * zoom);
         cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
         cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);

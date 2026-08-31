@@ -67,9 +67,9 @@ int testSpatialHitTesting() {
     int failed = 0;
     FluidCoreEngine engine("test_project");
 
-    auto card = std::make_unique<ExcerptCardNode>(
-        "card-1", Rectangle{100.0, 100.0, 200.0, 100.0}, "doc-1", 0,
-        Rectangle{0, 0, 1, 1}, "Snippet", false, Color{255, 255, 0, 255}, 1000);
+    auto card = std::make_unique<ExcerptCardNode>("card-1", Rectangle{100.0, 100.0, 200.0, 100.0},
+                                                  "doc-1", 0, Rectangle{0, 0, 1, 1}, "Snippet",
+                                                  false, Color{255, 255, 0, 255}, 1000);
     engine.insertNode(std::move(card));
 
     const auto* hit = WorkspaceInteraction::hitTestNodeAtWorldPoint(engine, Point{150.0, 150.0});

@@ -73,10 +73,8 @@ void WorkspaceInteraction::handleMinimapInteraction(WorkspaceState& state,
     }
 }
 
-const FluidCore::WorkspaceNode*
-WorkspaceInteraction::hitTestChildNodeAtWorldPoint(FluidCore::FluidCoreAPI& api,
-                                                   const FluidCore::Point& worldPt,
-                                                   std::string* outParentStackId) {
+const FluidCore::WorkspaceNode* WorkspaceInteraction::hitTestChildNodeAtWorldPoint(
+    FluidCore::FluidCoreAPI& api, const FluidCore::Point& worldPt, std::string* outParentStackId) {
     const FluidCore::Rectangle queryRect{worldPt.x - 1.0, worldPt.y - 1.0, 2.0, 2.0};
     auto hits = api.queryVisibleNodes(queryRect);
     for (const auto* node : hits) {
@@ -160,8 +158,7 @@ void WorkspaceInteraction::showEdgeContextMenu(WorkspaceState& state, FluidCore:
     GtkWidget* menu = gtk_menu_new();
     GtkWidget* deleteItem = gtk_menu_item_new_with_label("Delete Connector");
     g_signal_connect_data(
-        deleteItem, "activate",
-        G_CALLBACK(+[](GtkMenuItem*, gpointer data) {
+        deleteItem, "activate", G_CALLBACK(+[](GtkMenuItem*, gpointer data) {
             auto* c = static_cast<MenuContext*>(data);
             if (c && c->state && c->state->selectedEdgeId) {
                 c->api->removeEdge(*c->state->selectedEdgeId);
@@ -207,15 +204,13 @@ void WorkspaceInteraction::showNodeContextMenu(WorkspaceState& state, FluidCore:
 
     if (isStack) {
         GtkWidget* renameItem = gtk_menu_item_new_with_label("Rename Stack…");
-        g_signal_connect_data(
-            renameItem, "activate",
-            G_CALLBACK(+[](GtkMenuItem*, gpointer data) {
-                auto* c = static_cast<MenuContext*>(data);
-                if (c) {
-                    promptRenameStack(*c->api, c->area, c->nodeId);
-                }
-            }),
-            ctx, nullptr, static_cast<GConnectFlags>(0));
+        g_signal_connect_data(renameItem, "activate", G_CALLBACK(+[](GtkMenuItem*, gpointer data) {
+                                  auto* c = static_cast<MenuContext*>(data);
+                                  if (c) {
+                                      promptRenameStack(*c->api, c->area, c->nodeId);
+                                  }
+                              }),
+                              ctx, nullptr, static_cast<GConnectFlags>(0));
         gtk_menu_shell_append(GTK_MENU_SHELL(menu), renameItem);
 
         GtkWidget* sep = gtk_separator_menu_item_new();
@@ -224,8 +219,7 @@ void WorkspaceInteraction::showNodeContextMenu(WorkspaceState& state, FluidCore:
 
     GtkWidget* deleteItem = gtk_menu_item_new_with_label(isStack ? "Delete Stack" : "Delete Card");
     g_signal_connect_data(
-        deleteItem, "activate",
-        G_CALLBACK(+[](GtkMenuItem*, gpointer data) {
+        deleteItem, "activate", G_CALLBACK(+[](GtkMenuItem*, gpointer data) {
             auto* c = static_cast<MenuContext*>(data);
             if (c && c->state) {
                 if (!c->parentStackId.empty()) {

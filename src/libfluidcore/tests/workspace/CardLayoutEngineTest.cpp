@@ -65,16 +65,15 @@ int testAnchorPillAndStackHeaderBounds() {
         CardLayoutEngine::getExcerptAnchorPillRect(cardBounds, originX, originY, zoom);
     failed += check(pillRect.w == 72.0 * zoom, "Anchor pill width scaled with zoom");
     failed += check(pillRect.h == 20.0 * zoom, "Anchor pill height scaled with zoom");
-    failed += check(pillRect.x > (cardBounds.x - originX) * zoom, "Anchor pill positioned inside card");
+    failed +=
+        check(pillRect.x > (cardBounds.x - originX) * zoom, "Anchor pill positioned inside card");
 
     Rectangle stackBounds{100.0, 200.0, 300.0, 200.0};
-    Rectangle hdrRect =
-        CardLayoutEngine::getStackHeaderRect(stackBounds, originX, originY, zoom);
+    Rectangle hdrRect = CardLayoutEngine::getStackHeaderRect(stackBounds, originX, originY, zoom);
     failed += check(hdrRect.w == 300.0 * zoom, "Stack header matches stack width");
     failed += check(hdrRect.h == 32.0 * zoom, "Stack header has standard 32pt scaled height");
 
-    Rectangle chevRect =
-        CardLayoutEngine::getStackChevronRect(stackBounds, originX, originY, zoom);
+    Rectangle chevRect = CardLayoutEngine::getStackChevronRect(stackBounds, originX, originY, zoom);
     failed += check(chevRect.x == (stackBounds.x - originX) * zoom + 6.0 * zoom,
                     "Chevron x has 6pt margin");
     failed += check(chevRect.w <= hdrRect.h, "Chevron fits inside header");
