@@ -10,9 +10,9 @@
 
 namespace FluidCore {
 
-// Simple directed graph G=(V,E) with bidirectional promotion + reactive cubic Bézier curve router (TRD §3.5).
-// Invariant: At most one edge exists between any pair of nodes {A, B}.
-// Adheres to ADR-0001 (Zero Cairo/GTK headers in libfluidcore).
+// Simple directed graph G=(V,E) with bidirectional promotion + reactive cubic Bézier curve router
+// (TRD §3.5). Invariant: At most one edge exists between any pair of nodes {A, B}. Adheres to
+// ADR-0001 (Zero Cairo/GTK headers in libfluidcore).
 class GraphTopology {
   public:
     GraphTopology();
@@ -22,8 +22,9 @@ class GraphTopology {
     // Invariant: At most one edge exists between {src, dst}.
     // - If no edge exists: creates a new edge with direction = Forward.
     // - If edge exists in same direction: updates color/style, returns existing edge ID.
-    // - If edge exists in opposite direction: promotes direction to Bidirectional, returns existing edge ID.
-    // Returns edge ID on success, or empty string on failure (e.g. self-loop or empty node IDs).
+    // - If edge exists in opposite direction: promotes direction to Bidirectional, returns existing
+    // edge ID. Returns edge ID on success, or empty string on failure (e.g. self-loop or empty node
+    // IDs).
     std::string addEdge(const GraphEdge& edge);
     std::string addEdge(const std::string& sourceNodeId, const std::string& targetNodeId,
                         const Color& color = {30, 144, 255, 255}, double strokeWidth = 2.0,

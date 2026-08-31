@@ -689,17 +689,15 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
 
             GtkWidget* menu = gtk_menu_new();
             GtkWidget* deleteItem = gtk_menu_item_new_with_label("Delete Connector");
-            g_signal_connect(
-                deleteItem, "activate",
-                G_CALLBACK(+[](GtkMenuItem*, gpointer data) {
-                    auto* self = static_cast<WorkspaceView*>(data);
-                    if (self && self->m_selectedEdgeId) {
-                        self->m_api.removeEdge(*self->m_selectedEdgeId);
-                        self->m_selectedEdgeId.reset();
-                        gtk_widget_queue_draw(self->m_area);
-                    }
-                }),
-                this);
+            g_signal_connect(deleteItem, "activate", G_CALLBACK(+[](GtkMenuItem*, gpointer data) {
+                                 auto* self = static_cast<WorkspaceView*>(data);
+                                 if (self && self->m_selectedEdgeId) {
+                                     self->m_api.removeEdge(*self->m_selectedEdgeId);
+                                     self->m_selectedEdgeId.reset();
+                                     gtk_widget_queue_draw(self->m_area);
+                                 }
+                             }),
+                             this);
             gtk_menu_shell_append(GTK_MENU_SHELL(menu), deleteItem);
             gtk_widget_show_all(menu);
             gtk_menu_popup_at_pointer(GTK_MENU(menu), reinterpret_cast<GdkEvent*>(event));
@@ -860,10 +858,9 @@ gboolean WorkspaceView::onButtonRelease(GdkEventButton* event) {
         FluidCore::Point wPt = screenToWorld(event->x, event->y);
         const auto* targetNode = hitTestNodeAtWorldPoint(wPt);
         if (targetNode && targetNode->id() != m_connectorSourceNodeId) {
-            FluidCore::Color edgeColor{
-                static_cast<unsigned char>((m_currentColor >> 16) & 0xFF),
-                static_cast<unsigned char>((m_currentColor >> 8) & 0xFF),
-                static_cast<unsigned char>(m_currentColor & 0xFF), 255};
+            FluidCore::Color edgeColor{static_cast<unsigned char>((m_currentColor >> 16) & 0xFF),
+                                       static_cast<unsigned char>((m_currentColor >> 8) & 0xFF),
+                                       static_cast<unsigned char>(m_currentColor & 0xFF), 255};
             if (m_currentColor == 0x000000) {
                 edgeColor = {30, 144, 255, 255}; // Default clean DodgerBlue for connectors
             }
@@ -919,7 +916,8 @@ gboolean WorkspaceView::onButtonRelease(GdkEventButton* event) {
                         const double straightness =
                             totalArcLen > 1e-6 ? (chordDist / totalArcLen) : 1.0;
 
-                        // Strict straightness threshold (>= 0.82) to avoid converting circles/underlines
+                        // Strict straightness threshold (>= 0.82) to avoid converting
+                        // circles/underlines
                         if (straightness >= 0.82) {
                             FluidCore::Color edgeColor{
                                 static_cast<unsigned char>((m_currentColor >> 16) & 0xFF),
@@ -935,8 +933,7 @@ gboolean WorkspaceView::onButtonRelease(GdkEventButton* event) {
                 }
 
                 if (!convertedToConnector) {
-                    m_api.insertNode(
-                        std::make_unique<FluidCore::CanvasStrokeNode>(m_activeStroke));
+                    m_api.insertNode(std::make_unique<FluidCore::CanvasStrokeNode>(m_activeStroke));
                 }
             }
             m_activeSegments.clear();
@@ -1114,7 +1111,8 @@ gboolean WorkspaceView::onKeyPress(GdkEventKey* event) {
         if (m_selectedEdgeId.has_value()) {
             GdkWindow* win = gtk_widget_get_window(m_area);
             if (win) {
-                GtkWidget* focusWidget = gtk_window_get_focus(GTK_WINDOW(gtk_widget_get_toplevel(m_area)));
+                GtkWidget* focusWidget =
+                    gtk_window_get_focus(GTK_WINDOW(gtk_widget_get_toplevel(m_area)));
                 if (focusWidget && GTK_IS_ENTRY(focusWidget)) {
                     // Do not delete edge if typing in a text entry
                     return FALSE;

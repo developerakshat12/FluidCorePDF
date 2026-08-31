@@ -6,15 +6,11 @@
 
 namespace FluidCore {
 
-enum class ArrowStyle {
-    SharpTriangle = 0,
-    OpenChevron = 1,
-    None = 2
-};
+enum class ArrowStyle { SharpTriangle = 0, OpenChevron = 1, None = 2 };
 
 enum class EdgeDirection {
-    Forward = 0,       // Source -> Target (A ──▶ B)
-    Bidirectional = 1  // Both Directions (A ◀──▶ B)
+    Forward = 0,      // Source -> Target (A ──▶ B)
+    Bidirectional = 1 // Both Directions (A ◀──▶ B)
 };
 
 // Represents a directed or bidirectional link between two workspace nodes.

@@ -40,8 +40,10 @@ int main() {
     failures += check(edgeOpt->direction == EdgeDirection::Forward, "initial direction is Forward");
     failures += check(edgeOpt->color.r == 255, "color matches");
 
-    failures += check(graph.connectedEdgeIds("node-1").size() == 1, "connected edges for node-1 is 1");
-    failures += check(graph.connectedEdgeIds("node-2").size() == 1, "connected edges for node-2 is 1");
+    failures +=
+        check(graph.connectedEdgeIds("node-1").size() == 1, "connected edges for node-1 is 1");
+    failures +=
+        check(graph.connectedEdgeIds("node-2").size() == 1, "connected edges for node-2 is 1");
     failures += check(graph.outEdgeIds("node-1").size() == 1, "out edges for node-1 is 1");
     failures += check(graph.inEdgeIds("node-2").size() == 1, "in edges for node-2 is 1");
 
@@ -56,7 +58,8 @@ int main() {
     failures += check(graph.edgeCount() == 1, "edgeCount remains 1 on redundant stroke");
     auto e1Refreshed = graph.findEdge(e1);
     failures += check(e1Refreshed->color.g == 255, "color updated on redundant stroke");
-    failures += check(e1Refreshed->direction == EdgeDirection::Forward, "direction remains Forward");
+    failures +=
+        check(e1Refreshed->direction == EdgeDirection::Forward, "direction remains Forward");
 
     // 4. Forward-First Promotion (A -> B then B -> A)
     std::string e1Promoted = graph.addEdge("node-2", "node-1", Color{0, 0, 255, 255}, 3.0);
@@ -67,10 +70,12 @@ int main() {
 
     // 5. Reverse-First Promotion (B -> A then A -> B on a new node pair)
     std::string e2 = graph.addEdge("node-3", "node-4", Color{100, 100, 100, 255});
-    failures += check(graph.findEdge(e2)->direction == EdgeDirection::Forward, "node-3->node-4 is Forward");
+    failures +=
+        check(graph.findEdge(e2)->direction == EdgeDirection::Forward, "node-3->node-4 is Forward");
     std::string e2Promoted = graph.addEdge("node-4", "node-3", Color{200, 200, 200, 255});
     failures += check(e2Promoted == e2, "reverse-first stroke promotes same edge ID");
-    failures += check(graph.findEdge(e2)->direction == EdgeDirection::Bidirectional, "node-3<->node-4 promoted to Bidirectional");
+    failures += check(graph.findEdge(e2)->direction == EdgeDirection::Bidirectional,
+                      "node-3<->node-4 promoted to Bidirectional");
 
     // 6. Perimeter docking and single spline geometry
     Rectangle rect1{100.0, 100.0, 100.0, 60.0}; // center (150, 130)
@@ -85,15 +90,19 @@ int main() {
 
     // 7. Spline hit-testing (world space polyline distance)
     // Point on line between (200, 130) and (400, 130) is approximately (300, 130)
-    failures += check(GraphTopology::hitTestSpline(s1, Point{300.0, 130.0}, 8.0), "hitTestSpline succeeds near curve");
-    failures += check(GraphTopology::hitTestSpline(s1, Point{300.0, 135.0}, 8.0), "hitTestSpline succeeds within 8pt");
-    failures += check(!GraphTopology::hitTestSpline(s1, Point{300.0, 160.0}, 8.0), "hitTestSpline fails when far from curve");
+    failures += check(GraphTopology::hitTestSpline(s1, Point{300.0, 130.0}, 8.0),
+                      "hitTestSpline succeeds near curve");
+    failures += check(GraphTopology::hitTestSpline(s1, Point{300.0, 135.0}, 8.0),
+                      "hitTestSpline succeeds within 8pt");
+    failures += check(!GraphTopology::hitTestSpline(s1, Point{300.0, 160.0}, 8.0),
+                      "hitTestSpline fails when far from curve");
 
     // 8. Degenerate distance & overlapping nodes guard
     Rectangle rectOverlap1{100.0, 100.0, 100.0, 60.0};
     Rectangle rectOverlap2{104.0, 102.0, 100.0, 60.0};
     BezierSpline sOverlap = graph.computeEdgeSpline(e1, rectOverlap1, rectOverlap2);
-    failures += check(sOverlap.controlPoints.size() == 4, "overlap produces 4 valid control points");
+    failures +=
+        check(sOverlap.controlPoints.size() == 4, "overlap produces 4 valid control points");
     for (const auto& pt : sOverlap.controlPoints) {
         failures += check(!std::isnan(pt.x) && !std::isnan(pt.y), "overlap points are not NaN");
     }
@@ -102,7 +111,8 @@ int main() {
     std::vector<std::string> removed = graph.removeEdgesForNode("node-2");
     failures += check(removed.size() == 1, "removeEdgesForNode removes e1");
     failures += check(graph.edgeCount() == 1, "graph has 1 edge left (e2)");
-    failures += check(graph.connectedEdgeIds("node-1").empty(), "node-1 has no connected edges left");
+    failures +=
+        check(graph.connectedEdgeIds("node-1").empty(), "node-1 has no connected edges left");
 
     if (failures == 0) {
         std::cout << "GraphTopologyTest: all checks passed\n";

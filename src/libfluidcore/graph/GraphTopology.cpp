@@ -87,9 +87,8 @@ std::string GraphTopology::addEdge(const GraphEdge& edge) {
     return edgeId;
 }
 
-std::string GraphTopology::addEdge(const std::string& sourceNodeId,
-                                   const std::string& targetNodeId, const Color& color,
-                                   double strokeWidth, ArrowStyle arrowStyle,
+std::string GraphTopology::addEdge(const std::string& sourceNodeId, const std::string& targetNodeId,
+                                   const Color& color, double strokeWidth, ArrowStyle arrowStyle,
                                    const std::string& label) {
     GraphEdge edge;
     edge.sourceNodeId = sourceNodeId;

@@ -93,24 +93,32 @@ int main() {
     const std::string edgeAB = api.createInkLink(nodeA, nodeB, Color{0, 120, 255, 255});
     failures += check(!edgeAB.empty(), "createInkLink creates valid edge ID");
     failures += check(api.getAllEdges().size() == 1, "getAllEdges returns registered edge");
-    failures += check(api.getConnectedEdges(nodeA).size() == 1, "getConnectedEdges finds edge for node A");
-    failures += check(api.getConnectedEdges(nodeB).size() == 1, "getConnectedEdges finds edge for node B");
+    failures +=
+        check(api.getConnectedEdges(nodeA).size() == 1, "getConnectedEdges finds edge for node A");
+    failures +=
+        check(api.getConnectedEdges(nodeB).size() == 1, "getConnectedEdges finds edge for node B");
 
     BezierSpline spline = api.getEdgeGeometry(edgeAB);
-    failures += check(spline.controlPoints.size() == 4, "getEdgeGeometry returns 4 cubic Bezier control points");
-    // p0 should dock to right perimeter of nodeA (x = 150.0) and p3 to left perimeter of nodeB (x = 300.0)
-    failures += check(close(spline.controlPoints.front().x, 150.0), "p0 docks to source node right edge");
-    failures += check(close(spline.controlPoints.back().x, 300.0), "p3 docks to target node left edge");
+    failures += check(spline.controlPoints.size() == 4,
+                      "getEdgeGeometry returns 4 cubic Bezier control points");
+    // p0 should dock to right perimeter of nodeA (x = 150.0) and p3 to left perimeter of nodeB (x =
+    // 300.0)
+    failures +=
+        check(close(spline.controlPoints.front().x, 150.0), "p0 docks to source node right edge");
+    failures +=
+        check(close(spline.controlPoints.back().x, 300.0), "p3 docks to target node left edge");
 
     // Dynamic re-routing: moving nodeB shifts docking points and spline
     api.updateNodePosition(nodeB, 500.0, 50.0);
     BezierSpline movedSpline = api.getEdgeGeometry(edgeAB);
-    failures += check(close(movedSpline.controlPoints.back().x, 500.0), "p3 dynamically tracks moved node");
+    failures +=
+        check(close(movedSpline.controlPoints.back().x, 500.0), "p3 dynamically tracks moved node");
 
     // Cascading node removal: removing nodeA removes edgeAB
     api.removeNode(nodeA);
     failures += check(api.getAllEdges().empty(), "removeNode cascades deletion to connected edges");
-    failures += check(api.getConnectedEdges(nodeB).empty(), "nodeB has no remaining connected edges");
+    failures +=
+        check(api.getConnectedEdges(nodeB).empty(), "nodeB has no remaining connected edges");
     api.removeNode(nodeB);
 
     api.openProject("/tmp/nonexistent.ltproj");
