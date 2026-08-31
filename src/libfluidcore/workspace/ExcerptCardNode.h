@@ -48,6 +48,11 @@ class ExcerptCardNode final : public WorkspaceNode {
     Color color() const { return m_color; }
     void setColor(const Color& color) { m_color = color; }
 
+    const std::vector<std::string>& tags() const { return m_tags; }
+    void setTags(std::vector<std::string> tags) { m_tags = std::move(tags); }
+    void addTag(std::string tag);
+    bool hasTag(const std::string& tag) const;
+
     uint64_t creationTimestamp() const { return m_creationTimestamp; }
     void setCreationTimestamp(uint64_t timestamp) { m_creationTimestamp = timestamp; }
 
@@ -60,6 +65,7 @@ class ExcerptCardNode final : public WorkspaceNode {
     std::string m_textSnippet;
     bool m_isImageExcerpt = false;
     Color m_color{255, 255, 255, 255};
+    std::vector<std::string> m_tags;
     uint64_t m_creationTimestamp = 0;
 };
 

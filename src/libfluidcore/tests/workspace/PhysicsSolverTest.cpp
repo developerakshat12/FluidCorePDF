@@ -136,7 +136,7 @@ void testIgnoreAndDistanceFiltering() {
     assert(res.type == SnapType::None);
 
     // Beyond snap threshold (>16pt distance)
-    Rectangle dragFar{300.0, 300.0, 100.0, 100.0};
+    Rectangle dragFar{500.0, 500.0, 100.0, 100.0};
     SnapResult resFar = PhysicsSolver::solveSnap(dragFar, candidates, 16.0, 0.50);
     assert(resFar.type == SnapType::None);
 

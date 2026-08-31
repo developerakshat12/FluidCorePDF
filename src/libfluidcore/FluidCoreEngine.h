@@ -77,10 +77,18 @@ class FluidCoreEngine final : public FluidCoreAPI {
     GraphTopology& graphTopology() { return m_graph; }
     const GraphTopology& graphTopology() const { return m_graph; }
 
-    // Persistence & search — TODO(M5): ProjectStore once docs/specs/ltspec.md locks schema.
+    // Workspace Markdown Outline Export (TASK-4.4)
+    WorkspaceExportResult
+    exportWorkspaceMarkdown(const WorkspaceExportOptions& options = {}) const override;
+    bool exportWorkspaceMarkdownToFile(const std::string& filePath,
+                                       const WorkspaceExportOptions& options = {}) const override;
+
+    // Persistence & search
     void openProject(const std::string& ltprojDirectoryPath) override;
     void saveProject() override;
     std::vector<SearchResult> executeSearch(const std::string& query) const override;
+    std::vector<WorkspaceMatch> searchWorkspace(const std::string& query,
+                                                bool caseSensitive = false) const override;
 
   private:
     WorkspaceModel m_model;

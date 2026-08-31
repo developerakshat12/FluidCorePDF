@@ -206,8 +206,14 @@ void WorkspaceInteraction::showNodeContextMenu(WorkspaceState& state, FluidCore:
         GtkWidget* renameItem = gtk_menu_item_new_with_label("Rename Stack…");
         g_signal_connect_data(renameItem, "activate", G_CALLBACK(+[](GtkMenuItem*, gpointer data) {
                                   auto* c = static_cast<MenuContext*>(data);
-                                  if (c) {
-                                      promptRenameStack(*c->api, c->area, c->nodeId);
+                                  if (c && c->area) {
+                                      auto* renameFn = static_cast<std::function<void(const std::string&)>*>(
+                                          g_object_get_data(G_OBJECT(c->area), "workspace-rename-handler"));
+                                      if (renameFn) {
+                                          (*renameFn)(c->nodeId);
+                                      } else {
+                                          promptRenameStack(*c->api, c->area, c->nodeId);
+                                      }
                                   }
                               }),
                               ctx, nullptr, static_cast<GConnectFlags>(0));
@@ -242,6 +248,15 @@ void WorkspaceInteraction::showNodeContextMenu(WorkspaceState& state, FluidCore:
 
 void WorkspaceInteraction::promptRenameStack(FluidCore::FluidCoreAPI& api, GtkWidget* area,
                                              const std::string& stackId) {
+    if (area && GTK_IS_WIDGET(area)) {
+        auto* renameFn = static_cast<std::function<void(const std::string&)>*>(
+            g_object_get_data(G_OBJECT(area), "workspace-rename-handler"));
+        if (renameFn) {
+            (*renameFn)(stackId);
+            return;
+        }
+    }
+
     GtkWidget* toplevel = area ? gtk_widget_get_toplevel(area) : nullptr;
     GtkWindow* parentWin = (toplevel && GTK_IS_WINDOW(toplevel)) ? GTK_WINDOW(toplevel) : nullptr;
 
@@ -268,20 +283,33 @@ void WorkspaceInteraction::promptRenameStack(FluidCore::FluidCoreAPI& api, GtkWi
     gtk_entry_set_activates_default(GTK_ENTRY(entry), TRUE);
     gtk_box_pack_start(GTK_BOX(contentArea), entry, FALSE, FALSE, 0);
 
+    struct DialogCtx {
+        FluidCore::FluidCoreAPI* api;
+        GtkWidget* area;
+        GtkWidget* entry;
+        std::string stackId;
+    };
+    auto* ctx = new DialogCtx{&api, area, entry, stackId};
+
+    g_signal_connect_data(
+        dialog, "response",
+        G_CALLBACK(+[](GtkDialog* dlg, gint response, gpointer data) {
+            auto* c = static_cast<DialogCtx*>(data);
+            if (c && response == GTK_RESPONSE_ACCEPT) {
+                const gchar* newText = gtk_entry_get_text(GTK_ENTRY(c->entry));
+                if (newText && newText[0] != '\0') {
+                    c->api->setStackTitle(c->stackId, std::string(newText));
+                }
+            }
+            if (c && c->area && GTK_IS_WIDGET(c->area)) {
+                gtk_widget_queue_draw(c->area);
+            }
+            gtk_widget_destroy(GTK_WIDGET(dlg));
+        }),
+        ctx, [](gpointer data, GClosure*) { delete static_cast<DialogCtx*>(data); },
+        static_cast<GConnectFlags>(0));
+
     gtk_widget_show_all(dialog);
-
-    const gint response = gtk_dialog_run(GTK_DIALOG(dialog));
-    if (response == GTK_RESPONSE_ACCEPT) {
-        const gchar* newText = gtk_entry_get_text(GTK_ENTRY(entry));
-        if (newText && newText[0] != '\0') {
-            api.setStackTitle(stackId, std::string(newText));
-        }
-    }
-
-    gtk_widget_destroy(dialog);
-    if (area && GTK_IS_WIDGET(area)) {
-        gtk_widget_queue_draw(area);
-    }
 }
 
 void WorkspaceInteraction::handleExcerptDrop(WorkspaceState& state, FluidCore::FluidCoreAPI& api,

@@ -37,6 +37,11 @@ class CardStackNode final : public WorkspaceNode {
     bool hasCustomTitle() const { return m_customTitle; }
     void setCustomTitle(bool custom) { m_customTitle = custom; }
 
+    const std::vector<std::string>& tags() const { return m_tags; }
+    void setTags(std::vector<std::string> tags) { m_tags = std::move(tags); }
+    void addTag(std::string tag);
+    bool hasTag(const std::string& tag) const;
+
     bool isCollapsed() const { return m_isCollapsed; }
     void setCollapsed(bool collapsed);
     void toggleCollapsed();
@@ -83,6 +88,7 @@ class CardStackNode final : public WorkspaceNode {
     bool m_isCollapsed = false;
     Rectangle m_bounds;
     std::vector<std::unique_ptr<WorkspaceNode>> m_children;
+    std::vector<std::string> m_tags;
 
     void updateAutoTitle();
 };

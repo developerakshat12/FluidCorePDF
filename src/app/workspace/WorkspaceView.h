@@ -26,6 +26,13 @@ class WorkspaceView {
     WorkspaceView& operator=(const WorkspaceView&) = delete;
 
     GtkWidget* widget() const { return m_area; }
+    GtkWidget* drawingArea() const { return m_area; }
+
+    // Instant Inline In-Place Stack Renaming
+    void startInlineStackRename(const std::string& stackId);
+    void cancelInlineStackRename();
+    void commitInlineStackRename();
+    bool isInlineRenaming() const { return m_activeRenamePopover != nullptr; }
 
     void setExcerptTileCache(ExcerptTileCache* cache);
     ExcerptTileCache* excerptTileCache() const { return m_excerptTileCache; }
@@ -53,6 +60,17 @@ class WorkspaceView {
 
     bool isMinimapVisible() const { return m_state.showMinimap; }
     void setMinimapVisible(bool visible);
+
+    // Workspace Search & Navigation API (TASK-4.3)
+    void setSearchResults(std::vector<FluidCore::WorkspaceMatch> matches, const std::string& query,
+                          int activeIndex = 0);
+    void clearSearch();
+    void navigateSearch(int direction);
+    int activeSearchMatchIndex() const { return m_state.search.activeMatchIndex; }
+    std::size_t searchMatchCount() const { return m_state.search.matches.size(); }
+    const std::vector<FluidCore::WorkspaceMatch>& searchMatches() const {
+        return m_state.search.matches;
+    }
 
     void setTool(const std::string& tool);
     const std::string& tool() const { return m_state.inking.currentTool; }
@@ -107,6 +125,10 @@ class WorkspaceView {
 
     FluidCore::FluidCoreAPI& m_api;
     GtkWidget* m_area = nullptr;
+    GtkWidget* m_activeRenamePopover = nullptr;
+    GtkWidget* m_activeRenameEntry = nullptr;
+    std::string m_activeRenameStackId;
+
     ExcerptTileCache* m_excerptTileCache = nullptr;
     WorkspaceState m_state;
 

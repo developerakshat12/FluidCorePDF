@@ -34,6 +34,9 @@ class WorkspaceRenderer {
     static void drawMagneticSnapGuides(cairo_t* cr, const WorkspaceState& state);
     static void drawStackMergeGhost(cairo_t* cr, const WorkspaceState& state,
                                     FluidCore::FluidCoreAPI& api);
+    static void drawSearchAura(cairo_t* cr, const WorkspaceState& state,
+                               const FluidCore::WorkspaceNode* node, double sx, double sy,
+                               double sw, double sh, double radius);
 
     static void drawRoundedRect(cairo_t* cr, double x, double y, double w, double h, double r);
 };

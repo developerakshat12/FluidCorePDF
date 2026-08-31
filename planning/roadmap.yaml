@@ -55,12 +55,12 @@ milestones:
   - id: M4
     name: links-stacks-search
     window_weeks: [39, 48]
-    status: in_progress
+    status: complete
     items:
       - ink connectors -> GraphEdge + Bezier routing                    # complete: pure domain GraphEdge & GraphTopology model, bidirectional promotion, straightness classification, Alt+6/F6/A/L connector tool, edge selection & deletion (TASK-4.1)
       - card snapping/stacking (16pt proximity)                         # complete: pure C++20 PhysicsSolver, screen-adaptive 16pt magnetic alignment, >50% overlap stack merge, CardStackNode container, accordion deck & child extraction, bounds sync (TASK-4.2)
-      - project-wide FTS5 search (async ingestion)
-      - export flattened annotated PDF + Markdown outline
+      - workspace search & scoped find                                  # complete: pure C++20 WorkspaceSearchEngine full-text & tag search (#tag, tag:xyz), SearchBarWidget scope selector (Doc, Canvas, All), WorkspaceView 250ms camera glide navigation, WorkspaceRenderer golden match halos & minimap hit dots, DocumentPane cross-pane coordination (TASK-4.3)
+      - export flattened annotated PDF + Markdown outline               # complete: pure C++20 WorkspaceExportEngine synthesis exporter (stacks, excerpts, visual crop metadata notes, free notes, relational links, and Mermaid flowcharts), FluidCoreAPI export methods, PdfExportService Cairo vector PDF flattening pipeline, and GTK3 ExportDialog with Ctrl+E accelerator (TASK-4.4)
 
   - id: M5
     name: hardening

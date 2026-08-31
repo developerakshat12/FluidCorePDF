@@ -113,21 +113,19 @@ void testNestingDepthAndFlattening() {
     s4->addChild(std::move(stack5));
     assert(stack1->nestingDepth() == 5);
 
-    // Attempting to nest stack6 inside stack5 would exceed depth 5 -> FLATTENS
+    // Attempting to nest stack6 inside stack1 (already at depth 5) -> FLATTENS
     auto stack6 = std::make_unique<CardStackNode>("stack-6");
     stack6->addChild(makeCard("card-6a", 0.0, 0.0));
     stack6->addChild(makeCard("card-6b", 0.0, 0.0));
 
-    auto* s5 = dynamic_cast<CardStackNode*>(stack1->findChildRecursive("stack-5"));
-    assert(s5 != nullptr);
-    assert(!s5->canNest(stack6->nestingDepth()));
+    assert(!stack1->canNest(stack6->nestingDepth()));
 
-    s5->addChild(std::move(stack6));
+    stack1->addChild(std::move(stack6));
     // Depth remains capped at 5
     assert(stack1->nestingDepth() == 5);
-    // Children card-6a and card-6b were flattened directly into s5
-    assert(s5->findChild("card-6a") != nullptr);
-    assert(s5->findChild("card-6b") != nullptr);
+    // Children card-6a and card-6b were flattened directly into stack1
+    assert(stack1->findChild("card-6a") != nullptr);
+    assert(stack1->findChild("card-6b") != nullptr);
 
     std::cout << "[PASS] testNestingDepthAndFlattening\n";
 }

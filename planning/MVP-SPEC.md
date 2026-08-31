@@ -19,7 +19,7 @@ The MVP is the smallest product that lets a knowledge worker complete one full *
 | A1 | Load multi-document projects | ≥ 10 PDFs / 1000 pages open simultaneously; per-doc tabs |
 | A2 | Continuous scroll + zoom (10%–400%) | No rasterization artifacts at native resolution; ≤ 300 ms page swap p95 |
 | A3 | Text selection & copy | Preserves reading order; includes page number on paste |
-| A4 | Full-text search per document + project-wide | FTS5-backed; results < 500 ms on 5,000-page project |
+| A4 | Scoped search per document & workspace | Instant in-memory search in PDF document pane and/or workspace canvas cards & tags |
 
 ### 2.2 Fluid Reading
 | # | Requirement | Acceptance Criteria |

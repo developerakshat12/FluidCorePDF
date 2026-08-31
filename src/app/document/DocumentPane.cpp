@@ -5,6 +5,8 @@
 #include "search/SearchSqueezePlanner.h"
 #include "undo/AnnotationCommands.h"
 #include "undo/SqueezeCommands.h"
+#include "workspace/WorkspaceView.h"
+#include "FluidCoreAPI.h"
 
 #include <algorithm>
 #include <cmath>
@@ -56,6 +58,9 @@ DocumentPane::DocumentPane(const std::string& pdfPath) : m_pdfPath(pdfPath) {
     m_searchBar->setNavigateCallback([this](int dir) { navigateSearch(dir); });
     m_searchBar->setSqueezeToggleCallback(
         [this](bool enableSqueeze) { onSearchSqueezeToggled(enableSqueeze); });
+    m_searchBar->setScopeChangedCallback([this](SearchScope) {
+        onSearchQueryChanged(m_searchBar->currentQuery(), m_searchBar->isSqueezeEnabled());
+    });
     m_searchBar->setCloseCallback([this]() { closeSearch(); });
 
     GtkWidget* searchWidget = m_searchBar->widget();
@@ -431,9 +436,9 @@ void DocumentPane::applyHighlightSqueeze() {
     updateLayoutDimensions();
 }
 
-void DocumentPane::openSearch(bool enableSqueeze) {
+void DocumentPane::openSearch(bool enableSqueeze, SearchScope scope) {
     if (m_searchBar) {
-        m_searchBar->show(enableSqueeze);
+        m_searchBar->show(enableSqueeze, scope);
         if (!m_searchBar->currentQuery().empty()) {
             onSearchQueryChanged(m_searchBar->currentQuery(), enableSqueeze);
         }
@@ -447,6 +452,9 @@ void DocumentPane::closeSearch() {
     m_searchService.cancel();
     m_searchHits.clear();
     m_squeezeEngine.clearSearchSqueeze(m_docId);
+    if (m_workspaceView) {
+        m_workspaceView->clearSearch();
+    }
     updateLayoutDimensions();
 }
 
@@ -461,29 +469,92 @@ void DocumentPane::onSearchQueryChanged(const std::string& query, bool enableSqu
             m_searchBar->setMatchStatus(0, 0);
         }
         m_squeezeEngine.clearSearchSqueeze(m_docId);
+        if (m_workspaceView) {
+            m_workspaceView->clearSearch();
+        }
         updateLayoutDimensions();
         return;
     }
 
-    m_searchService.searchAsync(
-        m_document, m_pages, query, [this, enableSqueeze](std::vector<SearchHit> hits) {
-            m_searchHits = std::move(hits);
-            m_activeSearchHitIndex = 0;
+    const SearchScope scope = m_searchBar ? m_searchBar->currentScope() : SearchScope::Document;
+
+    if (scope == SearchScope::Workspace) {
+        m_searchHits.clear();
+        m_squeezeEngine.clearSearchSqueeze(m_docId);
+        updateLayoutDimensions();
+
+        if (m_coreApi && m_workspaceView) {
+            auto wsMatches = m_coreApi->searchWorkspace(query);
+            m_workspaceView->setSearchResults(wsMatches, query, 0);
             if (m_searchBar) {
-                m_searchBar->setMatchStatus(m_activeSearchHitIndex, m_searchHits.size());
+                m_searchBar->setMatchStatus(
+                    wsMatches.empty() ? 0 : m_workspaceView->activeSearchMatchIndex(),
+                    wsMatches.size());
             }
+        }
+        return;
+    }
 
-            if (enableSqueeze && !m_searchHits.empty()) {
-                applySearchSqueeze();
-            } else {
-                m_squeezeEngine.clearSearchSqueeze(m_docId);
-                updateLayoutDimensions();
-            }
+    if (scope == SearchScope::Document) {
+        if (m_workspaceView) {
+            m_workspaceView->clearSearch();
+        }
 
-            if (!m_searchHits.empty()) {
-                scrollToSearchHit(0);
-            }
-        });
+        m_searchService.searchAsync(
+            m_document, m_pages, query, [this, enableSqueeze](std::vector<SearchHit> hits) {
+                m_searchHits = std::move(hits);
+                m_activeSearchHitIndex = 0;
+                if (m_searchBar) {
+                    m_searchBar->setMatchStatus(m_activeSearchHitIndex, m_searchHits.size());
+                }
+
+                if (enableSqueeze && !m_searchHits.empty()) {
+                    applySearchSqueeze();
+                } else {
+                    m_squeezeEngine.clearSearchSqueeze(m_docId);
+                    updateLayoutDimensions();
+                }
+
+                if (!m_searchHits.empty()) {
+                    scrollToSearchHit(0);
+                }
+            });
+        return;
+    }
+
+    if (scope == SearchScope::All) {
+        std::vector<FluidCore::WorkspaceMatch> wsMatches;
+        if (m_coreApi && m_workspaceView) {
+            wsMatches = m_coreApi->searchWorkspace(query);
+            m_workspaceView->setSearchResults(wsMatches, query, 0);
+        }
+
+        const std::size_t wsCount = wsMatches.size();
+
+        m_searchService.searchAsync(
+            m_document, m_pages, query,
+            [this, enableSqueeze, wsCount](std::vector<SearchHit> hits) {
+                m_searchHits = std::move(hits);
+                m_activeSearchHitIndex = 0;
+                const std::size_t total = m_searchHits.size() + wsCount;
+
+                if (m_searchBar) {
+                    m_searchBar->setScopedMatchStatus(m_activeSearchHitIndex, total,
+                                                     m_searchHits.size(), wsCount);
+                }
+
+                if (enableSqueeze && !m_searchHits.empty()) {
+                    applySearchSqueeze();
+                } else {
+                    m_squeezeEngine.clearSearchSqueeze(m_docId);
+                    updateLayoutDimensions();
+                }
+
+                if (!m_searchHits.empty()) {
+                    scrollToSearchHit(0);
+                }
+            });
+    }
 }
 
 void DocumentPane::onSearchSqueezeToggled(bool enableSqueeze) {
@@ -515,7 +586,29 @@ void DocumentPane::applySearchSqueeze() {
 }
 
 void DocumentPane::navigateSearch(int direction) {
+    const SearchScope scope = m_searchBar ? m_searchBar->currentScope() : SearchScope::Document;
+
+    if (scope == SearchScope::Workspace) {
+        if (m_workspaceView) {
+            m_workspaceView->navigateSearch(direction);
+            if (m_searchBar) {
+                m_searchBar->setMatchStatus(m_workspaceView->activeSearchMatchIndex(),
+                                            m_workspaceView->searchMatchCount());
+            }
+        }
+        return;
+    }
+
     if (m_searchHits.empty()) {
+        if (scope == SearchScope::All && m_workspaceView && m_workspaceView->searchMatchCount() > 0) {
+            m_workspaceView->navigateSearch(direction);
+            if (m_searchBar) {
+                m_searchBar->setScopedMatchStatus(
+                    m_workspaceView->activeSearchMatchIndex(),
+                    m_workspaceView->searchMatchCount(),
+                    0, m_workspaceView->searchMatchCount());
+            }
+        }
         return;
     }
 
@@ -527,7 +620,14 @@ void DocumentPane::navigateSearch(int direction) {
     }
 
     if (m_searchBar) {
-        m_searchBar->setMatchStatus(m_activeSearchHitIndex, m_searchHits.size());
+        if (scope == SearchScope::All && m_workspaceView) {
+            m_searchBar->setScopedMatchStatus(
+                m_activeSearchHitIndex,
+                m_searchHits.size() + m_workspaceView->searchMatchCount(),
+                m_searchHits.size(), m_workspaceView->searchMatchCount());
+        } else {
+            m_searchBar->setMatchStatus(m_activeSearchHitIndex, m_searchHits.size());
+        }
     }
 
     scrollToSearchHit(m_activeSearchHitIndex);

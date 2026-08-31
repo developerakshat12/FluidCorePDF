@@ -1,5 +1,7 @@
 #include "FluidCoreEngine.h"
 
+#include "export/WorkspaceExportEngine.h"
+#include "search/WorkspaceSearchEngine.h"
 #include "workspace/ExcerptCardNode.h"
 
 #include <utility>
@@ -250,8 +252,26 @@ void FluidCoreEngine::openProject(const std::string&) {}
 
 void FluidCoreEngine::saveProject() {}
 
-std::vector<SearchResult> FluidCoreEngine::executeSearch(const std::string&) const {
-    return {};
+std::vector<SearchResult> FluidCoreEngine::executeSearch(const std::string& query) const {
+    auto matches = WorkspaceSearchEngine::search(m_model, query);
+    return WorkspaceSearchEngine::toSearchResults(matches);
+}
+
+std::vector<WorkspaceMatch> FluidCoreEngine::searchWorkspace(const std::string& query,
+                                                             bool caseSensitive) const {
+    WorkspaceSearchOptions options;
+    options.caseSensitive = caseSensitive;
+    return WorkspaceSearchEngine::search(m_model, query, options);
+}
+
+WorkspaceExportResult
+FluidCoreEngine::exportWorkspaceMarkdown(const WorkspaceExportOptions& options) const {
+    return WorkspaceExportEngine::exportToMarkdown(m_model, m_graph, options);
+}
+
+bool FluidCoreEngine::exportWorkspaceMarkdownToFile(const std::string& filePath,
+                                                   const WorkspaceExportOptions& options) const {
+    return WorkspaceExportEngine::exportToFile(filePath, m_model, m_graph, options);
 }
 
 } // namespace FluidCore

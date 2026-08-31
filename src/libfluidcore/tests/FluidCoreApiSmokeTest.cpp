@@ -67,10 +67,22 @@ class StubApi final : public FluidCoreAPI {
     bool setStackTitle(const std::string&, const std::string&) override { return false; }
     std::string getStackTitle(const std::string&) const override { return ""; }
 
+    // Workspace Markdown Outline Export (TASK-4.4)
+    WorkspaceExportResult exportWorkspaceMarkdown(const WorkspaceExportOptions&) const override {
+        return {};
+    }
+    bool exportWorkspaceMarkdownToFile(const std::string&,
+                                       const WorkspaceExportOptions&) const override {
+        return false;
+    }
+
     // Signature-only until M5; must remain implementable as a no-op.
     void openProject(const std::string&) override {}
     void saveProject() override {}
     std::vector<SearchResult> executeSearch(const std::string&) const override { return {}; }
+    std::vector<WorkspaceMatch> searchWorkspace(const std::string&, bool) const override {
+        return {};
+    }
 };
 
 class StubNode final : public WorkspaceNode {

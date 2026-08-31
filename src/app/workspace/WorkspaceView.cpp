@@ -27,6 +27,16 @@ WorkspaceView::WorkspaceView(FluidCore::FluidCoreAPI& api) : m_api(api) {
                                       GDK_KEY_PRESS_MASK | GDK_KEY_RELEASE_MASK |
                                       GDK_SMOOTH_SCROLL_MASK);
 
+    g_object_set_data(G_OBJECT(m_area), "workspace-view-instance", this);
+
+    g_object_set_data_full(
+        G_OBJECT(m_area), "workspace-rename-handler",
+        new std::function<void(const std::string&)>(
+            [this](const std::string& stackId) { startInlineStackRename(stackId); }),
+        +[](gpointer p) { delete static_cast<std::function<void(const std::string&)>*>(p); });
+
+    gtk_widget_show(m_area);
+
     g_signal_connect(m_area, "draw", G_CALLBACK(WorkspaceView::drawCallback), this);
     g_signal_connect(m_area, "scroll-event", G_CALLBACK(WorkspaceView::scrollCallback), this);
     g_signal_connect(m_area, "button-press-event", G_CALLBACK(WorkspaceView::buttonPressCallback),
@@ -53,6 +63,8 @@ WorkspaceView::WorkspaceView(FluidCore::FluidCoreAPI& api) : m_api(api) {
 }
 
 WorkspaceView::~WorkspaceView() {
+    cancelInlineStackRename();
+
     if (m_state.animation.zoomSettlingTimerId != 0) {
         g_source_remove(m_state.animation.zoomSettlingTimerId);
         m_state.animation.zoomSettlingTimerId = 0;
@@ -89,7 +101,7 @@ gboolean WorkspaceView::zoomSettlingTimeoutCallback(gpointer userData) {
 }
 
 void WorkspaceView::onZoomSettled() {
-    if (!m_excerptTileCache || !m_area) {
+    if (!m_excerptTileCache || !m_area || !GTK_IS_WIDGET(m_area)) {
         return;
     }
 
@@ -109,7 +121,9 @@ void WorkspaceView::onZoomSettled() {
                 excerpt->bounds().h - 40.0, m_state.viewport.zoom);
         }
     }
-    gtk_widget_queue_draw(m_area);
+    if (m_area && GTK_IS_WIDGET(m_area)) {
+        gtk_widget_queue_draw(m_area);
+    }
 }
 
 void WorkspaceView::zoomAt(double factor, double focalScreenX, double focalScreenY) {
@@ -131,10 +145,13 @@ void WorkspaceView::zoomAt(double factor, double focalScreenX, double focalScree
     }
     m_state.animation.zoomSettlingTimerId = g_timeout_add(150, zoomSettlingTimeoutCallback, this);
 
-    gtk_widget_queue_draw(m_area);
+    if (m_area && GTK_IS_WIDGET(m_area)) {
+        gtk_widget_queue_draw(m_area);
+    }
 }
 
 void WorkspaceView::setZoom(double zoom) {
+    if (!m_area || !GTK_IS_WIDGET(m_area)) return;
     GtkAllocation alloc;
     gtk_widget_get_allocation(m_area, &alloc);
     const double cx = alloc.width > 0 ? alloc.width / 2.0 : 0.0;
@@ -145,10 +162,13 @@ void WorkspaceView::setZoom(double zoom) {
 void WorkspaceView::panBy(double dxScreen, double dyScreen) {
     m_state.viewport.originX -= dxScreen / m_state.viewport.zoom;
     m_state.viewport.originY -= dyScreen / m_state.viewport.zoom;
-    gtk_widget_queue_draw(m_area);
+    if (m_area && GTK_IS_WIDGET(m_area)) {
+        gtk_widget_queue_draw(m_area);
+    }
 }
 
 void WorkspaceView::centerOn(double worldX, double worldY) {
+    if (!m_area || !GTK_IS_WIDGET(m_area)) return;
     GtkAllocation alloc;
     gtk_widget_get_allocation(m_area, &alloc);
     const double vw = alloc.width > 0 ? alloc.width / m_state.viewport.zoom : 800.0;
@@ -156,7 +176,9 @@ void WorkspaceView::centerOn(double worldX, double worldY) {
 
     m_state.viewport.originX = worldX - vw / 2.0;
     m_state.viewport.originY = worldY - vh / 2.0;
-    gtk_widget_queue_draw(m_area);
+    if (m_area && GTK_IS_WIDGET(m_area)) {
+        gtk_widget_queue_draw(m_area);
+    }
 }
 
 void WorkspaceView::glideToWorldCoord(double targetWorldX, double targetWorldY) {
@@ -165,6 +187,7 @@ void WorkspaceView::glideToWorldCoord(double targetWorldX, double targetWorldY) 
         m_state.animation.glideTimerId = 0;
     }
 
+    if (!m_area || !GTK_IS_WIDGET(m_area)) return;
     GtkAllocation alloc;
     gtk_widget_get_allocation(m_area, &alloc);
     const double vw = alloc.width > 0 ? alloc.width / m_state.viewport.zoom : 800.0;
@@ -180,7 +203,7 @@ void WorkspaceView::glideToWorldCoord(double targetWorldX, double targetWorldY) 
         16,
         +[](gpointer data) -> gboolean {
             auto* self = static_cast<WorkspaceView*>(data);
-            if (!self) {
+            if (!self || !self->m_area || !GTK_IS_WIDGET(self->m_area)) {
                 return G_SOURCE_REMOVE;
             }
 
@@ -192,7 +215,7 @@ void WorkspaceView::glideToWorldCoord(double targetWorldX, double targetWorldY) 
                 self->m_state.viewport.originX = self->m_state.animation.glideTargetX;
                 self->m_state.viewport.originY = self->m_state.animation.glideTargetY;
                 self->m_state.animation.glideTimerId = 0;
-                if (self->m_area) {
+                if (self->m_area && GTK_IS_WIDGET(self->m_area)) {
                     gtk_widget_queue_draw(self->m_area);
                 }
                 return G_SOURCE_REMOVE;
@@ -211,7 +234,7 @@ void WorkspaceView::glideToWorldCoord(double targetWorldX, double targetWorldY) 
                 (self->m_state.animation.glideTargetY - self->m_state.animation.glideStartY) *
                     easeOut;
 
-            if (self->m_area) {
+            if (self->m_area && GTK_IS_WIDGET(self->m_area)) {
                 gtk_widget_queue_draw(self->m_area);
             }
             return G_SOURCE_CONTINUE;
@@ -244,7 +267,7 @@ void WorkspaceView::flashExcerptCard(const std::string& cardId) {
         16,
         +[](gpointer data) -> gboolean {
             auto* self = static_cast<WorkspaceView*>(data);
-            if (!self) {
+            if (!self || !self->m_area || !GTK_IS_WIDGET(self->m_area)) {
                 return G_SOURCE_REMOVE;
             }
 
@@ -256,7 +279,7 @@ void WorkspaceView::flashExcerptCard(const std::string& cardId) {
                 self->m_state.animation.flashCardId.clear();
                 self->m_state.animation.flashAlpha = 0.0;
                 self->m_state.animation.flashTimerId = 0;
-                if (self->m_area) {
+                if (self->m_area && GTK_IS_WIDGET(self->m_area)) {
                     gtk_widget_queue_draw(self->m_area);
                 }
                 return G_SOURCE_REMOVE;
@@ -265,14 +288,81 @@ void WorkspaceView::flashExcerptCard(const std::string& cardId) {
             const double progress = elapsedSec / totalDurationSec;
             self->m_state.animation.flashAlpha = (1.0 - progress) * (1.0 - progress);
 
-            if (self->m_area) {
+            if (self->m_area && GTK_IS_WIDGET(self->m_area)) {
                 gtk_widget_queue_draw(self->m_area);
             }
             return G_SOURCE_CONTINUE;
         },
         this);
 
-    if (m_area) {
+    if (m_area && GTK_IS_WIDGET(m_area)) {
+        gtk_widget_queue_draw(m_area);
+    }
+}
+
+void WorkspaceView::setSearchResults(std::vector<FluidCore::WorkspaceMatch> matches,
+                                     const std::string& query, int activeIndex) {
+    m_state.search.matches = std::move(matches);
+    m_state.search.query = query;
+    m_state.search.active = !m_state.search.matches.empty() || !query.empty();
+    m_state.search.matchingNodeIds.clear();
+    m_state.search.matchingTopLevelNodeIds.clear();
+
+    for (const auto& match : m_state.search.matches) {
+        m_state.search.matchingNodeIds.push_back(match.nodeId);
+        m_state.search.matchingTopLevelNodeIds.push_back(match.topLevelNodeId);
+    }
+
+    if (m_state.search.matches.empty()) {
+        m_state.search.activeMatchIndex = -1;
+    } else {
+        m_state.search.activeMatchIndex =
+            std::clamp(activeIndex, 0, static_cast<int>(m_state.search.matches.size() - 1));
+        const auto& match = m_state.search.matches[m_state.search.activeMatchIndex];
+        const double cx = match.bounds.x + match.bounds.w / 2.0;
+        const double cy = match.bounds.y + match.bounds.h / 2.0;
+        glideToWorldCoord(cx, cy);
+        flashExcerptCard(match.nodeId);
+    }
+
+    if (m_area && GTK_IS_WIDGET(m_area)) {
+        gtk_widget_queue_draw(m_area);
+    }
+}
+
+void WorkspaceView::clearSearch() {
+    m_state.search.active = false;
+    m_state.search.query.clear();
+    m_state.search.matches.clear();
+    m_state.search.activeMatchIndex = -1;
+    m_state.search.matchingNodeIds.clear();
+    m_state.search.matchingTopLevelNodeIds.clear();
+    if (m_area && GTK_IS_WIDGET(m_area)) {
+        gtk_widget_queue_draw(m_area);
+    }
+}
+
+void WorkspaceView::navigateSearch(int direction) {
+    if (m_state.search.matches.empty()) {
+        return;
+    }
+
+    const int total = static_cast<int>(m_state.search.matches.size());
+    int nextIdx = m_state.search.activeMatchIndex + direction;
+    if (nextIdx >= total) {
+        nextIdx = 0;
+    } else if (nextIdx < 0) {
+        nextIdx = total - 1;
+    }
+
+    m_state.search.activeMatchIndex = nextIdx;
+    const auto& match = m_state.search.matches[nextIdx];
+    const double cx = match.bounds.x + match.bounds.w / 2.0;
+    const double cy = match.bounds.y + match.bounds.h / 2.0;
+    glideToWorldCoord(cx, cy);
+    flashExcerptCard(match.nodeId);
+
+    if (m_area && GTK_IS_WIDGET(m_area)) {
         gtk_widget_queue_draw(m_area);
     }
 }
@@ -318,12 +408,150 @@ void WorkspaceView::resetView() {
         m_state.viewport.originX = 0.0;
         m_state.viewport.originY = 0.0;
     }
-    gtk_widget_queue_draw(m_area);
+    if (m_area && GTK_IS_WIDGET(m_area)) {
+        gtk_widget_queue_draw(m_area);
+    }
 }
 
 void WorkspaceView::setMinimapVisible(bool visible) {
     if (m_state.showMinimap != visible) {
         m_state.showMinimap = visible;
+        if (m_area && GTK_IS_WIDGET(m_area)) {
+            gtk_widget_queue_draw(m_area);
+        }
+    }
+}
+
+void WorkspaceView::startInlineStackRename(const std::string& stackId) {
+    if (m_activeRenamePopover) {
+        commitInlineStackRename();
+    }
+
+    const FluidCore::CardStackNode* stack = nullptr;
+    const FluidCore::Rectangle wsBounds = m_api.getWorkspaceBounds();
+    for (const auto* node : m_api.queryVisibleNodes(wsBounds)) {
+        if (const auto* s = dynamic_cast<const FluidCore::CardStackNode*>(node)) {
+            if (s->id() == stackId) {
+                stack = s;
+                break;
+            }
+        }
+    }
+    if (!stack || !m_area) {
+        return;
+    }
+
+    const double zoom = m_state.viewport.zoom;
+    const auto hdrRect = FluidCore::CardLayoutEngine::getStackHeaderRect(
+        stack->bounds(), m_state.viewport.originX, m_state.viewport.originY, zoom);
+
+    const double chevronSize = std::min(18.0 * zoom, hdrRect.h * 0.7);
+    const double titleStartX = hdrRect.x + 8.0 * zoom + chevronSize + 6.0 * zoom;
+    const double badgeSpace = 70.0 * zoom;
+    const double entryW = std::clamp(hdrRect.w - (titleStartX - hdrRect.x) - badgeSpace, 140.0, 360.0);
+
+    GtkWidget* popover = gtk_popover_new(m_area);
+    m_activeRenamePopover = popover;
+    m_activeRenameStackId = stackId;
+
+    GdkRectangle pointRect = {static_cast<int>(titleStartX), static_cast<int>(hdrRect.y),
+                              static_cast<int>(entryW), static_cast<int>(hdrRect.h)};
+    gtk_popover_set_pointing_to(GTK_POPOVER(popover), &pointRect);
+    gtk_popover_set_position(GTK_POPOVER(popover), GTK_POS_BOTTOM);
+    gtk_popover_set_modal(GTK_POPOVER(popover), TRUE);
+
+    GtkWidget* box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+    gtk_container_set_border_width(GTK_CONTAINER(box), 4);
+
+    GtkWidget* entry = gtk_entry_new();
+    m_activeRenameEntry = entry;
+    gtk_entry_set_text(GTK_ENTRY(entry), stack->title().c_str());
+    gtk_widget_set_size_request(entry, static_cast<int>(entryW), -1);
+
+    GtkCssProvider* provider = gtk_css_provider_new();
+    const char* css = "entry { "
+                      "  background: #0f172a; "
+                      "  color: #f8fafc; "
+                      "  border: 1.5px solid #38bdf8; "
+                      "  border-radius: 4px; "
+                      "  padding: 3px 8px; "
+                      "  font-weight: bold; "
+                      "  font-size: 12px; "
+                      "}";
+    gtk_css_provider_load_from_data(provider, css, -1, nullptr);
+    GtkStyleContext* ctx = gtk_widget_get_style_context(entry);
+    gtk_style_context_add_provider(ctx, GTK_STYLE_PROVIDER(provider),
+                                   GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+    g_object_unref(provider);
+
+    gtk_box_pack_start(GTK_BOX(box), entry, TRUE, TRUE, 0);
+    gtk_container_add(GTK_CONTAINER(popover), box);
+
+    g_signal_connect(entry, "activate", G_CALLBACK(+[](GtkEntry*, gpointer data) {
+                         auto* ws = static_cast<WorkspaceView*>(data);
+                         if (ws) ws->commitInlineStackRename();
+                     }), this);
+
+    g_signal_connect(entry, "key-press-event", G_CALLBACK(+[](GtkWidget*, GdkEventKey* event, gpointer data) -> gboolean {
+                         auto* ws = static_cast<WorkspaceView*>(data);
+                         if (ws && event->keyval == GDK_KEY_Escape) {
+                             ws->cancelInlineStackRename();
+                             return TRUE;
+                         }
+                         return FALSE;
+                     }), this);
+
+    g_signal_connect(popover, "closed", G_CALLBACK(+[](GtkPopover*, gpointer data) {
+                         auto* ws = static_cast<WorkspaceView*>(data);
+                         if (ws) ws->commitInlineStackRename();
+                     }), this);
+
+    gtk_widget_show_all(popover);
+    gtk_popover_popup(GTK_POPOVER(popover));
+    gtk_widget_grab_focus(entry);
+    gtk_editable_select_region(GTK_EDITABLE(entry), 0, -1);
+}
+
+void WorkspaceView::commitInlineStackRename() {
+    if (!m_activeRenamePopover) return;
+
+    GtkWidget* popover = m_activeRenamePopover;
+    GtkWidget* entry = m_activeRenameEntry;
+    m_activeRenamePopover = nullptr;
+    m_activeRenameEntry = nullptr;
+
+    const std::string stackId = m_activeRenameStackId;
+    m_activeRenameStackId.clear();
+
+    if (entry && GTK_IS_ENTRY(entry)) {
+        const gchar* newText = gtk_entry_get_text(GTK_ENTRY(entry));
+        if (newText && newText[0] != '\0') {
+            m_api.setStackTitle(stackId, std::string(newText));
+        }
+    }
+
+    if (popover && GTK_IS_WIDGET(popover)) {
+        gtk_widget_destroy(popover);
+    }
+    if (m_area && GTK_IS_WIDGET(m_area)) {
+        gtk_widget_grab_focus(m_area);
+        gtk_widget_queue_draw(m_area);
+    }
+}
+
+void WorkspaceView::cancelInlineStackRename() {
+    if (!m_activeRenamePopover) return;
+
+    GtkWidget* popover = m_activeRenamePopover;
+    m_activeRenamePopover = nullptr;
+    m_activeRenameEntry = nullptr;
+    m_activeRenameStackId.clear();
+
+    if (popover && GTK_IS_WIDGET(popover)) {
+        gtk_widget_destroy(popover);
+    }
+    if (m_area && GTK_IS_WIDGET(m_area)) {
+        gtk_widget_grab_focus(m_area);
         gtk_widget_queue_draw(m_area);
     }
 }
@@ -418,14 +646,18 @@ gboolean WorkspaceView::onDragMotion(GdkDragContext* context, gint x, gint y, gu
     m_state.dropHoverScreenX = x;
     m_state.dropHoverScreenY = y;
     gdk_drag_status(context, GDK_ACTION_COPY, time);
-    gtk_widget_queue_draw(m_area);
+    if (m_area && GTK_IS_WIDGET(m_area)) {
+        gtk_widget_queue_draw(m_area);
+    }
     return TRUE;
 }
 
 void WorkspaceView::onDragLeave(GdkDragContext*, guint) {
     if (m_state.isDropHovering) {
         m_state.isDropHovering = false;
-        gtk_widget_queue_draw(m_area);
+        if (m_area && GTK_IS_WIDGET(m_area)) {
+            gtk_widget_queue_draw(m_area);
+        }
     }
 }
 
@@ -557,7 +789,9 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
                 if (event->x >= chevRect.x && event->x <= chevRect.x + chevRect.w &&
                     event->y >= chevRect.y && event->y <= chevRect.y + chevRect.h) {
                     m_api.toggleStackCollapsed(stack->id());
-                    gtk_widget_queue_draw(m_area);
+                    if (m_area && GTK_IS_WIDGET(m_area)) {
+                        gtk_widget_queue_draw(m_area);
+                    }
                     return TRUE;
                 }
             }
@@ -611,7 +845,7 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
             }
         }
 
-        // 3. Double-Click: toggle collapse if on stack header; otherwise center on point
+        // 3. Double-Click: toggle collapse if on chevron; inline rename on title area; otherwise center on point
         if (event->type == GDK_2BUTTON_PRESS) {
             for (const auto* node : visibleNodes) {
                 if (const auto* stack = dynamic_cast<const FluidCore::CardStackNode*>(node)) {
@@ -620,8 +854,18 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
                         m_state.viewport.zoom);
                     if (event->x >= hdrRect.x && event->x <= hdrRect.x + hdrRect.w &&
                         event->y >= hdrRect.y && event->y <= hdrRect.y + hdrRect.h) {
-                        m_api.toggleStackCollapsed(stack->id());
-                        gtk_widget_queue_draw(m_area);
+                        const auto chevRect = FluidCore::CardLayoutEngine::getStackChevronRect(
+                            stack->bounds(), m_state.viewport.originX, m_state.viewport.originY,
+                            m_state.viewport.zoom);
+                        if (event->x >= chevRect.x && event->x <= chevRect.x + chevRect.w &&
+                            event->y >= chevRect.y && event->y <= chevRect.y + chevRect.h) {
+                            m_api.toggleStackCollapsed(stack->id());
+                            if (m_area && GTK_IS_WIDGET(m_area)) {
+                                gtk_widget_queue_draw(m_area);
+                            }
+                        } else {
+                            startInlineStackRename(stack->id());
+                        }
                         return TRUE;
                     }
                 }
@@ -644,12 +888,16 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
                 if (!hitEdge.empty()) {
                     m_state.selectedEdgeId = hitEdge;
                     m_state.selectedNodeId.reset();
-                    gtk_widget_queue_draw(m_area);
+                    if (m_area && GTK_IS_WIDGET(m_area)) {
+                        gtk_widget_queue_draw(m_area);
+                    }
                     return TRUE;
                 } else {
                     if (m_state.selectedEdgeId.has_value()) {
                         m_state.selectedEdgeId.reset();
-                        gtk_widget_queue_draw(m_area);
+                        if (m_area && GTK_IS_WIDGET(m_area)) {
+                            gtk_widget_queue_draw(m_area);
+                        }
                     }
                 }
             }
@@ -668,7 +916,9 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
                 m_state.dragSnap.dragInitialWorldPos = {b.x, b.y};
                 m_state.dragSnap.dragOffsetWorld = {wPt.x - b.x, wPt.y - b.y};
                 m_state.selectedNodeId = hitChild->id();
-                gtk_widget_queue_draw(m_area);
+                if (m_area && GTK_IS_WIDGET(m_area)) {
+                    gtk_widget_queue_draw(m_area);
+                }
                 return TRUE;
             }
 
@@ -684,12 +934,16 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
                 m_state.dragSnap.dragOffsetWorld = {wPt.x - m_state.dragSnap.dragInitialWorldPos.x,
                                                     wPt.y - m_state.dragSnap.dragInitialWorldPos.y};
                 m_state.selectedNodeId = hitNode->id();
-                gtk_widget_queue_draw(m_area);
+                if (m_area && GTK_IS_WIDGET(m_area)) {
+                    gtk_widget_queue_draw(m_area);
+                }
                 return TRUE;
             } else {
                 if (m_state.selectedNodeId.has_value()) {
                     m_state.selectedNodeId.reset();
-                    gtk_widget_queue_draw(m_area);
+                    if (m_area && GTK_IS_WIDGET(m_area)) {
+                        gtk_widget_queue_draw(m_area);
+                    }
                 }
             }
         }
@@ -703,7 +957,9 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
                 m_state.connector.connectorStartWorld = wPt;
                 m_state.connector.connectorCurrentWorld = wPt;
                 m_state.connector.connectorTargetHoverNodeId.clear();
-                gtk_widget_queue_draw(m_area);
+                if (m_area && GTK_IS_WIDGET(m_area)) {
+                    gtk_widget_queue_draw(m_area);
+                }
                 return TRUE;
             }
         }
@@ -724,7 +980,9 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
             FluidCore::Point wPt = screenToWorld(event->x, event->y);
             m_state.inking.stabilizer.beginStroke(
                 FluidCoreApp::StrokeStabilizer::Point2D{wPt.x, wPt.y}, 1.0, g_get_real_time());
-            gtk_widget_queue_draw(m_area);
+            if (m_area && GTK_IS_WIDGET(m_area)) {
+                gtk_widget_queue_draw(m_area);
+            }
             return TRUE;
         } else if (m_state.inking.currentTool == "eraser") {
             m_state.inking.isDrawing = true;
@@ -755,7 +1013,7 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
                 removed = true;
             }
 
-            if (removed) {
+            if (removed && m_area && GTK_IS_WIDGET(m_area)) {
                 gtk_widget_queue_draw(m_area);
             }
             return TRUE;
@@ -774,16 +1032,18 @@ gboolean WorkspaceView::onButtonRelease(GdkEventButton* event) {
 
     if (m_state.isPanning) {
         m_state.isPanning = false;
-        GdkWindow* win = gtk_widget_get_window(m_area);
-        if (win) {
-            if (m_state.isSpacePressed) {
-                GdkDisplay* display = gdk_window_get_display(win);
-                GdkCursor* cursor = gdk_cursor_new_for_display(display, GDK_HAND1);
-                gdk_window_set_cursor(win, cursor);
-                if (cursor)
-                    g_object_unref(cursor);
-            } else {
-                gdk_window_set_cursor(win, nullptr);
+        if (m_area && GTK_IS_WIDGET(m_area)) {
+            GdkWindow* win = gtk_widget_get_window(m_area);
+            if (win) {
+                if (m_state.isSpacePressed) {
+                    GdkDisplay* display = gdk_window_get_display(win);
+                    GdkCursor* cursor = gdk_cursor_new_for_display(display, GDK_HAND1);
+                    gdk_window_set_cursor(win, cursor);
+                    if (cursor)
+                        g_object_unref(cursor);
+                } else {
+                    gdk_window_set_cursor(win, nullptr);
+                }
             }
         }
         return TRUE;
@@ -803,12 +1063,13 @@ gboolean WorkspaceView::onButtonRelease(GdkEventButton* event) {
         m_state.dragSnap.activeSnapGuideLines.clear();
         m_state.dragSnap.activeSnapType = FluidCore::SnapType::None;
 
-        GdkWindow* win = gtk_widget_get_window(m_area);
-        if (win) {
-            gdk_window_set_cursor(win, nullptr);
+        if (m_area && GTK_IS_WIDGET(m_area)) {
+            GdkWindow* win = gtk_widget_get_window(m_area);
+            if (win) {
+                gdk_window_set_cursor(win, nullptr);
+            }
+            gtk_widget_queue_draw(m_area);
         }
-
-        gtk_widget_queue_draw(m_area);
         return TRUE;
     }
 
@@ -831,7 +1092,9 @@ gboolean WorkspaceView::onButtonRelease(GdkEventButton* event) {
         }
         m_state.connector.connectorSourceNodeId.clear();
         m_state.connector.connectorTargetHoverNodeId.clear();
-        gtk_widget_queue_draw(m_area);
+        if (m_area && GTK_IS_WIDGET(m_area)) {
+            gtk_widget_queue_draw(m_area);
+        }
         return TRUE;
     }
 
@@ -899,7 +1162,9 @@ gboolean WorkspaceView::onButtonRelease(GdkEventButton* event) {
                 }
             }
             m_state.inking.activeSegments.clear();
-            gtk_widget_queue_draw(m_area);
+            if (m_area && GTK_IS_WIDGET(m_area)) {
+                gtk_widget_queue_draw(m_area);
+            }
         }
         return TRUE;
     }
@@ -908,6 +1173,7 @@ gboolean WorkspaceView::onButtonRelease(GdkEventButton* event) {
 }
 
 gboolean WorkspaceView::onMotion(GdkEventMotion* event) {
+    if (!m_area || !GTK_IS_WIDGET(m_area)) return FALSE;
     GtkAllocation alloc;
     gtk_widget_get_allocation(m_area, &alloc);
 
@@ -977,16 +1243,17 @@ gboolean WorkspaceView::onMotion(GdkEventMotion* event) {
                                      proposedBounds.y);
         }
 
-        GdkWindow* win = gtk_widget_get_window(m_area);
-        if (win) {
-            GdkDisplay* display = gdk_window_get_display(win);
-            GdkCursor* grabCursor = gdk_cursor_new_for_display(display, GDK_FLEUR);
-            gdk_window_set_cursor(win, grabCursor);
-            if (grabCursor)
-                g_object_unref(grabCursor);
+        if (m_area && GTK_IS_WIDGET(m_area)) {
+            GdkWindow* win = gtk_widget_get_window(m_area);
+            if (win) {
+                GdkDisplay* display = gdk_window_get_display(win);
+                GdkCursor* grabCursor = gdk_cursor_new_for_display(display, GDK_FLEUR);
+                gdk_window_set_cursor(win, grabCursor);
+                if (grabCursor)
+                    g_object_unref(grabCursor);
+            }
+            gtk_widget_queue_draw(m_area);
         }
-
-        gtk_widget_queue_draw(m_area);
         return TRUE;
     }
 
@@ -998,7 +1265,9 @@ gboolean WorkspaceView::onMotion(GdkEventMotion* event) {
             (targetNode && targetNode->id() != m_state.connector.connectorSourceNodeId)
                 ? targetNode->id()
                 : "";
-        gtk_widget_queue_draw(m_area);
+        if (m_area && GTK_IS_WIDGET(m_area)) {
+            gtk_widget_queue_draw(m_area);
+        }
         return TRUE;
     }
 
@@ -1013,7 +1282,9 @@ gboolean WorkspaceView::onMotion(GdkEventMotion* event) {
             }
             m_state.inking.hasWetSegment = result.hasWetSegment;
             m_state.inking.activeWetTip = result.wetTip;
-            gtk_widget_queue_draw(m_area);
+            if (m_area && GTK_IS_WIDGET(m_area)) {
+                gtk_widget_queue_draw(m_area);
+            }
         } else if (m_state.inking.currentTool == "eraser") {
             const double wRadius = 30.0 / m_state.viewport.zoom;
             const FluidCore::Rectangle queryRect{wPt.x - wRadius, wPt.y - wRadius, wRadius * 2.0,
@@ -1028,85 +1299,89 @@ gboolean WorkspaceView::onMotion(GdkEventMotion* event) {
                     removed = true;
                 }
             }
-            if (removed) {
+            if (removed && m_area && GTK_IS_WIDGET(m_area)) {
                 gtk_widget_queue_draw(m_area);
             }
         }
         return TRUE;
     }
 
-    GdkWindow* win = gtk_widget_get_window(m_area);
-    if (win) {
-        GdkDisplay* display = gdk_window_get_display(win);
+    if (m_area && GTK_IS_WIDGET(m_area)) {
+        GdkWindow* win = gtk_widget_get_window(m_area);
+        if (win) {
+            GdkDisplay* display = gdk_window_get_display(win);
 
-        std::string newHoveredId;
-        bool isHoveringChevron = false;
-        if (m_state.viewport.zoom >= 0.2) {
-            const FluidCore::Point worldTopLeft = screenToWorld(0, 0);
-            const FluidCore::Point worldBottomRight = screenToWorld(
-                alloc.width > 0 ? alloc.width : 800, alloc.height > 0 ? alloc.height : 600);
-            const FluidCore::Rectangle viewWorldRect{
-                worldTopLeft.x, worldTopLeft.y, std::max(0.0, worldBottomRight.x - worldTopLeft.x),
-                std::max(0.0, worldBottomRight.y - worldTopLeft.y)};
+            std::string newHoveredId;
+            bool isHoveringChevron = false;
+            if (m_state.viewport.zoom >= 0.2) {
+                const FluidCore::Point worldTopLeft = screenToWorld(0, 0);
+                const FluidCore::Point worldBottomRight = screenToWorld(
+                    alloc.width > 0 ? alloc.width : 800, alloc.height > 0 ? alloc.height : 600);
+                const FluidCore::Rectangle viewWorldRect{
+                    worldTopLeft.x, worldTopLeft.y, std::max(0.0, worldBottomRight.x - worldTopLeft.x),
+                    std::max(0.0, worldBottomRight.y - worldTopLeft.y)};
 
-            auto visibleNodes = m_api.queryVisibleNodes(viewWorldRect);
-            for (const auto* node : visibleNodes) {
-                if (const auto* stack = dynamic_cast<const FluidCore::CardStackNode*>(node)) {
-                    const auto chevRect = FluidCore::CardLayoutEngine::getStackChevronRect(
-                        stack->bounds(), m_state.viewport.originX, m_state.viewport.originY,
-                        m_state.viewport.zoom);
-                    if (event->x >= chevRect.x && event->x <= chevRect.x + chevRect.w &&
-                        event->y >= chevRect.y && event->y <= chevRect.y + chevRect.h) {
-                        isHoveringChevron = true;
-                        break;
+                auto visibleNodes = m_api.queryVisibleNodes(viewWorldRect);
+                for (const auto* node : visibleNodes) {
+                    if (const auto* stack = dynamic_cast<const FluidCore::CardStackNode*>(node)) {
+                        const auto chevRect = FluidCore::CardLayoutEngine::getStackChevronRect(
+                            stack->bounds(), m_state.viewport.originX, m_state.viewport.originY,
+                            m_state.viewport.zoom);
+                        if (event->x >= chevRect.x && event->x <= chevRect.x + chevRect.w &&
+                            event->y >= chevRect.y && event->y <= chevRect.y + chevRect.h) {
+                            isHoveringChevron = true;
+                            break;
+                        }
                     }
-                }
 
-                if (dynamic_cast<const FluidCore::ExcerptCardNode*>(node)) {
-                    const auto pillRect = FluidCore::CardLayoutEngine::getExcerptAnchorPillRect(
-                        node->bounds(), m_state.viewport.originX, m_state.viewport.originY,
-                        m_state.viewport.zoom);
-                    if (event->x >= pillRect.x && event->x <= pillRect.x + pillRect.w &&
-                        event->y >= pillRect.y && event->y <= pillRect.y + pillRect.h) {
-                        newHoveredId = node->id();
-                        break;
+                    if (dynamic_cast<const FluidCore::ExcerptCardNode*>(node)) {
+                        const auto pillRect = FluidCore::CardLayoutEngine::getExcerptAnchorPillRect(
+                            node->bounds(), m_state.viewport.originX, m_state.viewport.originY,
+                            m_state.viewport.zoom);
+                        if (event->x >= pillRect.x && event->x <= pillRect.x + pillRect.w &&
+                            event->y >= pillRect.y && event->y <= pillRect.y + pillRect.h) {
+                            newHoveredId = node->id();
+                            break;
+                        }
                     }
                 }
             }
-        }
 
-        if (newHoveredId != m_state.hoveredAnchorCardId) {
-            m_state.hoveredAnchorCardId = newHoveredId;
-            gtk_widget_queue_draw(m_area);
-        }
+            if (newHoveredId != m_state.hoveredAnchorCardId) {
+                m_state.hoveredAnchorCardId = newHoveredId;
+                if (m_area && GTK_IS_WIDGET(m_area)) {
+                    gtk_widget_queue_draw(m_area);
+                }
+            }
 
-        if (!m_state.hoveredAnchorCardId.empty() || isHoveringChevron) {
-            GdkCursor* pointerCursor = gdk_cursor_new_for_display(display, GDK_HAND2);
-            gdk_window_set_cursor(win, pointerCursor);
-            if (pointerCursor)
-                g_object_unref(pointerCursor);
-        } else if (WorkspaceInteraction::minimapHitTest(m_state, event->x, event->y, alloc.width,
-                                                        alloc.height)) {
-            GdkCursor* pointerCursor = gdk_cursor_new_for_display(display, GDK_HAND2);
-            gdk_window_set_cursor(win, pointerCursor);
-            if (pointerCursor)
-                g_object_unref(pointerCursor);
-        } else if (m_state.inking.currentTool != "pen" &&
-                   m_state.inking.currentTool != "highlighter" &&
-                   m_state.inking.currentTool != "eraser" &&
-                   m_state.inking.currentTool != "connector") {
-            const FluidCore::Point wPt = screenToWorld(event->x, event->y);
-            const auto* hitNode = WorkspaceInteraction::hitTestNodeAtWorldPoint(m_api, wPt);
-            if (hitNode) {
-                GdkCursor* moveCursor = gdk_cursor_new_for_display(display, GDK_HAND1);
-                gdk_window_set_cursor(win, moveCursor);
-                if (moveCursor)
-                    g_object_unref(moveCursor);
+            if (!m_state.hoveredAnchorCardId.empty() || isHoveringChevron) {
+                GdkCursor* pointerCursor = gdk_cursor_new_for_display(display, GDK_HAND2);
+                gdk_window_set_cursor(win, pointerCursor);
+                if (pointerCursor)
+                    g_object_unref(pointerCursor);
+            } else if (WorkspaceInteraction::minimapHitTest(m_state, event->x, event->y, alloc.width,
+                                                            alloc.height)) {
+                GdkCursor* pointerCursor = gdk_cursor_new_for_display(display, GDK_HAND2);
+                gdk_window_set_cursor(win, pointerCursor);
+                if (pointerCursor)
+                    g_object_unref(pointerCursor);
+            } else if (m_state.inking.currentTool != "pen" &&
+                       m_state.inking.currentTool != "highlighter" &&
+                       m_state.inking.currentTool != "eraser" &&
+                       m_state.inking.currentTool != "connector") {
+                const FluidCore::Point wPt = screenToWorld(event->x, event->y);
+                const auto* hitNode = WorkspaceInteraction::hitTestNodeAtWorldPoint(m_api, wPt);
+                if (hitNode) {
+                    GdkCursor* moveCursor = gdk_cursor_new_for_display(display, GDK_HAND1);
+                    gdk_window_set_cursor(win, moveCursor);
+                    if (moveCursor)
+                        g_object_unref(moveCursor);
+                } else {
+                    gdk_window_set_cursor(win, nullptr);
+                }
             } else {
                 gdk_window_set_cursor(win, nullptr);
             }
-        } else {
-            gdk_window_set_cursor(win, nullptr);
         }
     }
 
@@ -1114,6 +1389,7 @@ gboolean WorkspaceView::onMotion(GdkEventMotion* event) {
 }
 
 gboolean WorkspaceView::onKeyPress(GdkEventKey* event) {
+    if (!m_area || !GTK_IS_WIDGET(m_area)) return FALSE;
     switch (event->keyval) {
     case GDK_KEY_plus:
     case GDK_KEY_equal:
@@ -1165,26 +1441,34 @@ gboolean WorkspaceView::onKeyPress(GdkEventKey* event) {
     case GDK_KEY_Delete:
     case GDK_KEY_KP_Delete:
     case GDK_KEY_BackSpace: {
-        GdkWindow* win = gtk_widget_get_window(m_area);
-        if (win) {
-            GtkWidget* focusWidget =
-                gtk_window_get_focus(GTK_WINDOW(gtk_widget_get_toplevel(m_area)));
-            if (focusWidget && GTK_IS_ENTRY(focusWidget)) {
-                return FALSE;
+        if (m_area && GTK_IS_WIDGET(m_area)) {
+            GdkWindow* win = gtk_widget_get_window(m_area);
+            if (win) {
+                GtkWidget* toplevel = gtk_widget_get_toplevel(m_area);
+                if (toplevel && GTK_IS_WINDOW(toplevel)) {
+                    GtkWidget* focusWidget = gtk_window_get_focus(GTK_WINDOW(toplevel));
+                    if (focusWidget && GTK_IS_ENTRY(focusWidget)) {
+                        return FALSE;
+                    }
+                }
             }
         }
 
         if (m_state.selectedEdgeId.has_value()) {
             m_api.removeEdge(*m_state.selectedEdgeId);
             m_state.selectedEdgeId.reset();
-            gtk_widget_queue_draw(m_area);
+            if (m_area && GTK_IS_WIDGET(m_area)) {
+                gtk_widget_queue_draw(m_area);
+            }
             return TRUE;
         }
 
         if (m_state.selectedNodeId.has_value()) {
             m_api.removeNode(*m_state.selectedNodeId);
             m_state.selectedNodeId.reset();
-            gtk_widget_queue_draw(m_area);
+            if (m_area && GTK_IS_WIDGET(m_area)) {
+                gtk_widget_queue_draw(m_area);
+            }
             return TRUE;
         }
         break;

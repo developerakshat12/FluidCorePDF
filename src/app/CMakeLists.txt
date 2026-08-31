@@ -11,10 +11,13 @@ add_executable(fluidcore_app
     document/ReturnAnchorPill.cpp
     document/SearchBarWidget.cpp
     document/SqueezeRenderHelper.cpp
+    export/ExportDialog.cpp
+    export/ExportProgressDialog.cpp
     services/DocumentSearchService.cpp
     services/ExcerptTileCache.cpp
     services/PageTileCache.cpp
     services/PdfDocumentService.cpp
+    services/PdfExportService.cpp
     services/StrokeStabilizer.cpp
     services/TextSelectionService.cpp
     workspace/WorkspaceInteraction.cpp
@@ -120,4 +123,14 @@ if(BUILD_TESTING)
         target_compile_options(workspace_interaction_test PRIVATE -Wall -Wextra -Wpedantic)
     endif()
     add_test(NAME WorkspaceInteractionTest COMMAND workspace_interaction_test)
+
+    add_executable(pdf_export_service_test tests/PdfExportServiceTest.cpp services/PdfExportService.cpp services/StrokeStabilizer.cpp)
+    target_include_directories(pdf_export_service_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(pdf_export_service_test PRIVATE fluidcore PkgConfig::CAIRO PkgConfig::POPPLER_GLIB)
+    if(MSVC)
+        target_compile_options(pdf_export_service_test PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(pdf_export_service_test PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    add_test(NAME PdfExportServiceTest COMMAND pdf_export_service_test)
 endif()

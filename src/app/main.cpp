@@ -1,5 +1,6 @@
 #include "FluidCoreEngine.h"
 #include "document/DocumentPane.h"
+#include "export/ExportDialog.h"
 #include "services/ExcerptTileCache.h"
 #include "services/PdfDocumentService.h"
 #include "workspace/ExcerptCardNode.h"
@@ -40,19 +41,25 @@ void seedDemoContent(FluidCoreAPI& api, const std::string& docPath) {
     const std::string docRef = docPath.empty() ? "doc-primary.pdf" : docPath;
 
     // Cluster 1: Primary PDF excerpts (Drag-out Excerpt Cards)
-    api.insertNode(std::make_unique<ExcerptCardNode>(
+    auto card1 = std::make_unique<ExcerptCardNode>(
         "excerpt-clause-1", Rectangle{80.0, 80.0, 260.0, 150.0}, docRef, 0,
         Rectangle{0.08, 0.12, 0.84, 0.18},
         "The infinite 2D canvas provides unconstrained spatial arrangement for research synthesis "
-        "and literature clustering.",
-        false, Color{255, 220, 0, 255}));
+        "and literature clustering #synthesis #canvas.",
+        false, Color{255, 220, 0, 255});
+    card1->addTag("synthesis");
+    card1->addTag("canvas");
+    api.insertNode(std::move(card1));
 
-    api.insertNode(std::make_unique<ExcerptCardNode>(
+    auto card2 = std::make_unique<ExcerptCardNode>(
         "excerpt-clause-2", Rectangle{370.0, 80.0, 260.0, 150.0}, docRef, 1,
         Rectangle{0.10, 0.20, 0.80, 0.22},
         "Spatial indexing with R*-tree enables O(log N) viewport culling and sub-millisecond query "
-        "latencies across 100,000+ items.",
-        false, Color{56, 189, 248, 255}));
+        "latencies across 100,000+ items #indexing #rtree.",
+        false, Color{56, 189, 248, 255});
+    card2->addTag("indexing");
+    card2->addTag("rtree");
+    api.insertNode(std::move(card2));
 
     api.insertNode(std::make_unique<ExcerptCardNode>(
         "excerpt-diagram-1", Rectangle{660.0, 80.0, 320.0, 208.0}, docRef, 0,
@@ -142,6 +149,9 @@ void onActivate(GtkApplication* app, gpointer userData) {
         }
     });
 
+    // Wire Workspace context to DocumentPane for scoped cross-canvas search (TASK-4.3)
+    documentPane->setWorkspaceContext(workspace, context->api);
+
     // Sync initial excerpt document source anchors into DocumentPane
     if (context->api) {
         std::vector<FluidCore::AnchorSpan> excerptAnchors;
@@ -228,11 +238,29 @@ void onActivate(GtkApplication* app, gpointer userData) {
     struct AppViewContext {
         FluidCoreApp::DocumentPane* pane;
         FluidCoreApp::WorkspaceView* workspace;
+        FluidCore::FluidCoreAPI* api;
+        GtkWindow* window;
     };
-    auto* viewCtx = new AppViewContext{documentPane, workspace};
+    auto* viewCtx = new AppViewContext{documentPane, workspace, context->api, GTK_WINDOW(window)};
     g_object_set_data_full(
         G_OBJECT(app), "app-view-context", viewCtx,
         +[](gpointer data) { delete static_cast<AppViewContext*>(data); });
+
+    // Wire Ctrl+E (Export) action
+    GSimpleAction* exportAction = g_simple_action_new("export", nullptr);
+    g_signal_connect(exportAction, "activate",
+                     G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
+                         auto* ctx = static_cast<AppViewContext*>(data);
+                         if (ctx) {
+                             FluidCoreApp::ExportDialog::show(ctx->window, ctx->pane,
+                                                              ctx->workspace, ctx->api);
+                         }
+                     }),
+                     viewCtx);
+    g_action_map_add_action(G_ACTION_MAP(window), G_ACTION(exportAction));
+
+    const gchar* exportAccels[] = {"<Primary>e", "<Control>e", nullptr};
+    gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.export", exportAccels);
 
     // Wire tool switching actions
     GSimpleAction* penAction = g_simple_action_new("tool_pen", nullptr);
@@ -346,13 +374,13 @@ void onActivate(GtkApplication* app, gpointer userData) {
     gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.reset_squeeze",
                                           resetSqueezeAccels);
 
-    // Wire Ctrl+F (Search) and Ctrl+Shift+S (Search Squeeze) actions
+    // Wire Ctrl+F (Search), Ctrl+Shift+S (Search Squeeze), Ctrl+Shift+F (Canvas Find), and Ctrl+Alt+F (All Search)
     GSimpleAction* searchAction = g_simple_action_new("search", nullptr);
     g_signal_connect(searchAction, "activate",
                      G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
                          auto* pane = static_cast<FluidCoreApp::DocumentPane*>(data);
                          if (pane) {
-                             pane->openSearch(false);
+                             pane->openSearch(false, FluidCoreApp::SearchScope::Document);
                          }
                      }),
                      documentPane);
@@ -365,15 +393,41 @@ void onActivate(GtkApplication* app, gpointer userData) {
                      G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
                          auto* pane = static_cast<FluidCoreApp::DocumentPane*>(data);
                          if (pane) {
-                             pane->openSearch(true);
+                             pane->openSearch(true, FluidCoreApp::SearchScope::Document);
                          }
                      }),
                      documentPane);
     g_action_map_add_action(G_ACTION_MAP(window), G_ACTION(searchSqueezeAction));
-    const gchar* searchSqueezeAccels[] = {"<Primary><Shift>s", "<Control><Shift>s",
-                                          "<Primary><Shift>f", nullptr};
+    const gchar* searchSqueezeAccels[] = {"<Primary><Shift>s", "<Control><Shift>s", nullptr};
     gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.search_squeeze",
                                           searchSqueezeAccels);
+
+    GSimpleAction* canvasSearchAction = g_simple_action_new("canvas_search", nullptr);
+    g_signal_connect(canvasSearchAction, "activate",
+                     G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
+                         auto* pane = static_cast<FluidCoreApp::DocumentPane*>(data);
+                         if (pane) {
+                             pane->openSearch(false, FluidCoreApp::SearchScope::Workspace);
+                         }
+                     }),
+                     documentPane);
+    g_action_map_add_action(G_ACTION_MAP(window), G_ACTION(canvasSearchAction));
+    const gchar* canvasSearchAccels[] = {"<Primary><Shift>f", "<Control><Shift>f", nullptr};
+    gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.canvas_search",
+                                          canvasSearchAccels);
+
+    GSimpleAction* allSearchAction = g_simple_action_new("all_search", nullptr);
+    g_signal_connect(allSearchAction, "activate",
+                     G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
+                         auto* pane = static_cast<FluidCoreApp::DocumentPane*>(data);
+                         if (pane) {
+                             pane->openSearch(false, FluidCoreApp::SearchScope::All);
+                         }
+                     }),
+                     documentPane);
+    g_action_map_add_action(G_ACTION_MAP(window), G_ACTION(allSearchAction));
+    const gchar* allSearchAccels[] = {"<Primary><Alt>f", "<Control><Alt>f", nullptr};
+    gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.all_search", allSearchAccels);
 
     // Wire Ctrl+Shift+H (Highlight Squeeze / Highlight View) action
     GSimpleAction* highlightSqueezeAction = g_simple_action_new("highlight_squeeze", nullptr);
@@ -493,6 +547,10 @@ void onActivate(GtkApplication* app, gpointer userData) {
                     pane->save();
                 return TRUE;
             }
+            if (ctrl && !shift && !alt && (event->keyval == GDK_KEY_e || event->keyval == GDK_KEY_E)) {
+                FluidCoreApp::ExportDialog::show(ctx->window, pane, ws, ctx->api);
+                return TRUE;
+            }
             if (ctrl && shift &&
                 (event->keyval == GDK_KEY_0 || event->keyval == GDK_KEY_parenright ||
                  event->keyval == GDK_KEY_KP_0 || event->keyval == GDK_KEY_r ||
@@ -508,9 +566,21 @@ void onActivate(GtkApplication* app, gpointer userData) {
                     return TRUE;
                 }
             }
+            if (ctrl && shift && (event->keyval == GDK_KEY_f || event->keyval == GDK_KEY_F)) {
+                if (pane) {
+                    pane->openSearch(false, FluidCoreApp::SearchScope::Workspace);
+                    return TRUE;
+                }
+            }
+            if (ctrl && !shift && (event->keyval == GDK_KEY_f || event->keyval == GDK_KEY_F)) {
+                if (pane) {
+                    pane->openSearch(false, FluidCoreApp::SearchScope::Document);
+                    return TRUE;
+                }
+            }
             if (ctrl && shift && (event->keyval == GDK_KEY_s || event->keyval == GDK_KEY_S)) {
                 if (pane) {
-                    pane->openSearch(true);
+                    pane->openSearch(true, FluidCoreApp::SearchScope::Document);
                     return TRUE;
                 }
             }

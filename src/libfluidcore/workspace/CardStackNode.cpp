@@ -18,6 +18,7 @@ CardStackNode::CardStackNode(std::string id, Rectangle bounds, std::string title
 std::unique_ptr<WorkspaceNode> CardStackNode::clone() const {
     auto copy = std::make_unique<CardStackNode>(m_id, m_bounds, m_title, m_isCollapsed);
     copy->m_customTitle = m_customTitle;
+    copy->m_tags = m_tags;
     copy->m_children.reserve(m_children.size());
     for (const auto& child : m_children) {
         if (child) {
@@ -25,6 +26,19 @@ std::unique_ptr<WorkspaceNode> CardStackNode::clone() const {
         }
     }
     return copy;
+}
+
+void CardStackNode::addTag(std::string tag) {
+    if (tag.empty()) {
+        return;
+    }
+    if (!hasTag(tag)) {
+        m_tags.push_back(std::move(tag));
+    }
+}
+
+bool CardStackNode::hasTag(const std::string& tag) const {
+    return std::find(m_tags.begin(), m_tags.end(), tag) != m_tags.end();
 }
 
 void CardStackNode::setCollapsed(bool collapsed) {

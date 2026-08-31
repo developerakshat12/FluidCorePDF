@@ -22,6 +22,7 @@
 namespace FluidCoreApp {
 
 class InkOverlay;
+class WorkspaceView;
 
 struct PulseHighlightState {
     bool active = false;
@@ -112,8 +113,12 @@ class DocumentPane {
     void addExcerptAnchor(const FluidCore::ExcerptCardNode& card);
     void applyHighlightSqueeze();
 
-    // Search-Driven Squeeze Subsystem
-    void openSearch(bool enableSqueeze = true);
+    // Search-Driven Squeeze & Workspace Find Subsystem (TASK-4.3)
+    void setWorkspaceContext(WorkspaceView* ws, FluidCore::FluidCoreAPI* api) {
+        m_workspaceView = ws;
+        m_coreApi = api;
+    }
+    void openSearch(bool enableSqueeze = true, SearchScope scope = SearchScope::Document);
     void closeSearch();
     void navigateSearch(int direction);
     void scrollToSearchHit(std::size_t hitIndex);
@@ -201,6 +206,9 @@ class DocumentPane {
     guint m_pulseTimerId = 0;
     double m_savedReadingScrollY = 0.0;
     bool m_hasSavedReadingState = false;
+
+    WorkspaceView* m_workspaceView = nullptr;
+    FluidCore::FluidCoreAPI* m_coreApi = nullptr;
 };
 
 } // namespace FluidCoreApp

@@ -80,12 +80,32 @@ struct AnimationState {
     guint zoomSettlingTimerId = 0;
 };
 
+struct WorkspaceSearchState {
+    bool active = false;
+    std::string query;
+    std::vector<FluidCore::WorkspaceMatch> matches;
+    int activeMatchIndex = -1;
+    std::vector<std::string> matchingNodeIds;
+    std::vector<std::string> matchingTopLevelNodeIds;
+
+    bool hasMatch(const std::string& nodeId) const {
+        return std::find(matchingNodeIds.begin(), matchingNodeIds.end(), nodeId) !=
+               matchingNodeIds.end();
+    }
+
+    bool hasTopLevelMatch(const std::string& topLevelId) const {
+        return std::find(matchingTopLevelNodeIds.begin(), matchingTopLevelNodeIds.end(),
+                         topLevelId) != matchingTopLevelNodeIds.end();
+    }
+};
+
 struct WorkspaceState {
     ViewportTransform viewport;
     DragSnapState dragSnap;
     InkingState inking;
     ConnectorState connector;
     AnimationState animation;
+    WorkspaceSearchState search;
 
     bool isPanning = false;
     bool isSpacePressed = false;

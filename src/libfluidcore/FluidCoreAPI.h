@@ -79,6 +79,25 @@ struct SearchResult {
     std::string snippet;
 };
 
+// Workspace Canvas Find & Scoped Search value types (TASK-4.3)
+enum class MatchTarget {
+    TextSnippet,
+    Title,
+    Tag,
+    NodeId
+};
+
+struct WorkspaceMatch {
+    std::string nodeId;
+    std::string topLevelNodeId;
+    std::string title;
+    std::string snippet;
+    MatchTarget target = MatchTarget::TextSnippet;
+    Rectangle bounds{0.0, 0.0, 0.0, 0.0};
+    size_t matchOffset = 0;
+    size_t matchLength = 0;
+};
+
 // Spatial Snapping & Physics value types (TASK-4.2)
 enum class SnapType { None, MagneticSnap, StackMerge };
 
@@ -100,6 +119,27 @@ struct SnapResult {
     std::string targetNodeId;
     std::vector<SnapGuideLine> guideLines;
     double overlapRatio = 0.0;
+};
+
+// Workspace Markdown Outline Export value types (TASK-4.4)
+struct WorkspaceExportOptions {
+    std::string customTitle;
+    bool includeHeader = true;
+    bool includeMetadataSummary = true;
+    bool includeSourceCitations = true;
+    bool includeTags = true;
+    bool includeMermaidGraph = true;
+    bool includeRelationalGraph = true;
+};
+
+struct WorkspaceExportResult {
+    bool success = true;
+    std::string markdown;
+    size_t totalCards = 0;
+    size_t totalStacks = 0;
+    size_t totalConnectors = 0;
+    size_t uniqueTagsCount = 0;
+    std::string errorMessage;
 };
 
 class WorkspaceNode {
@@ -168,6 +208,12 @@ class FluidCoreAPI {
     virtual std::vector<std::string> getAllEdges() const = 0;
     virtual bool removeEdge(const std::string& edgeId) = 0;
 
+    // Workspace Markdown Outline Export API (TASK-4.4)
+    virtual WorkspaceExportResult
+    exportWorkspaceMarkdown(const WorkspaceExportOptions& options = {}) const = 0;
+    virtual bool exportWorkspaceMarkdownToFile(const std::string& filePath,
+                                               const WorkspaceExportOptions& options = {}) const = 0;
+
     // Persistence & Search API
     // TODO(M5): signature-only by design. The .ltproj schema-locking decision is deferred
     // to M5 (ROADMAP §3); implementations must not ship DDL before docs/specs/ltspec.md
@@ -175,6 +221,8 @@ class FluidCoreAPI {
     virtual void openProject(const std::string& ltprojDirectoryPath) = 0;
     virtual void saveProject() = 0;
     virtual std::vector<SearchResult> executeSearch(const std::string& query) const = 0;
+    virtual std::vector<WorkspaceMatch> searchWorkspace(const std::string& query,
+                                                        bool caseSensitive = false) const = 0;
 };
 
 } // namespace FluidCore

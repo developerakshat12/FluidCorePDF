@@ -152,6 +152,17 @@ void WorkspaceRenderer::drawMinimap(cairo_t* cr, const WorkspaceState& state,
         cairo_fill(cr);
     }
 
+    // Glowing amber search hits on minimap (TASK-4.3)
+    if (state.search.active && !state.search.matches.empty()) {
+        cairo_set_source_rgba(cr, 0.96, 0.62, 0.07, 0.95);
+        for (const auto& match : state.search.matches) {
+            const FluidCore::Point mp = worldToMinimap(match.bounds.x + match.bounds.w / 2.0,
+                                                       match.bounds.y + match.bounds.h / 2.0);
+            cairo_arc(cr, mp.x, mp.y, 3.5, 0, 2 * M_PI);
+            cairo_fill(cr);
+        }
+    }
+
     // Active viewport frame indicator
     const FluidCore::Point vp1 = worldToMinimap(state.viewport.originX, state.viewport.originY);
     const FluidCore::Point vp2 = worldToMinimap(state.viewport.originX + currentViewW,
@@ -452,6 +463,9 @@ void WorkspaceRenderer::drawExcerptCard(cairo_t* cr, const WorkspaceState& state
         cairo_restore(cr);
     }
 
+    // Workspace Canvas Find search match aura (TASK-4.3)
+    drawSearchAura(cr, state, node, sx, sy, sw, sh, radius);
+
     // Body Content Rendering
     if (excerpt) {
         if (excerpt->isImageExcerpt()) {
@@ -646,6 +660,9 @@ void WorkspaceRenderer::drawGenericNode(cairo_t* cr, const WorkspaceState& state
         cairo_show_text(cr, node->id().c_str());
     }
     cairo_restore(cr);
+
+    // Workspace Canvas Find search match aura (TASK-4.3)
+    drawSearchAura(cr, state, node, sx, sy, sw, sh, radius);
 }
 
 void WorkspaceRenderer::drawCardStack(cairo_t* cr, const WorkspaceState& state,
@@ -824,6 +841,9 @@ void WorkspaceRenderer::drawCardStack(cairo_t* cr, const WorkspaceState& state,
     }
 
     cairo_restore(cr);
+
+    // Workspace Canvas Find search match aura (TASK-4.3)
+    drawSearchAura(cr, state, node, sx, sy, sw, sh, radius);
 }
 
 void WorkspaceRenderer::drawMagneticSnapGuides(cairo_t* cr, const WorkspaceState& state) {
@@ -904,6 +924,79 @@ void WorkspaceRenderer::drawStackMergeGhost(cairo_t* cr, const WorkspaceState& s
         cairo_move_to(cr, badgeX + (badgeW - ext.width) / 2.0,
                       badgeY + (badgeH + ext.height) / 2.0 - 0.5 * zoom);
         cairo_show_text(cr, "+ Drop to Stack");
+    }
+
+    cairo_restore(cr);
+}
+
+void WorkspaceRenderer::drawSearchAura(cairo_t* cr, const WorkspaceState& state,
+                                       const FluidCore::WorkspaceNode* node, double sx, double sy,
+                                       double sw, double sh, double radius) {
+    if (!state.search.active || !node) {
+        return;
+    }
+
+    const std::string& id = node->id();
+    const bool isDirectMatch = state.search.hasMatch(id);
+    const bool isTopLevelMatch = state.search.hasTopLevelMatch(id);
+
+    if (!isDirectMatch && !isTopLevelMatch) {
+        return;
+    }
+
+    bool isActiveMatch = false;
+    if (state.search.activeMatchIndex >= 0 &&
+        state.search.activeMatchIndex < static_cast<int>(state.search.matches.size())) {
+        const auto& activeM = state.search.matches[state.search.activeMatchIndex];
+        if (activeM.nodeId == id || activeM.topLevelNodeId == id) {
+            isActiveMatch = true;
+        }
+    }
+
+    const double zoom = state.viewport.zoom;
+
+    cairo_save(cr);
+
+    if (isActiveMatch) {
+        // Prominent Golden Amber Active Match Halo
+        drawRoundedRect(cr, sx - 6.0, sy - 6.0, sw + 12.0, sh + 12.0, radius + 6.0);
+        cairo_set_source_rgba(cr, 0.96, 0.62, 0.07, 0.35);
+        cairo_fill_preserve(cr);
+        cairo_set_source_rgba(cr, 0.96, 0.62, 0.07, 0.95);
+        cairo_set_line_width(cr, std::max(2.5, 3.0 * zoom));
+        cairo_stroke(cr);
+
+        // Floating match badge [Match X/N]
+        const std::string badgeStr = "Match " + std::to_string(state.search.activeMatchIndex + 1) +
+                                     "/" + std::to_string(state.search.matches.size());
+        const double badgeH = std::clamp(20.0 * zoom, 16.0, 24.0);
+        const double badgeW = std::clamp(80.0 * zoom, 60.0, 100.0);
+        const double badgeX = sx + 12.0 * zoom;
+        const double badgeY = sy - badgeH / 2.0;
+
+        drawRoundedRect(cr, badgeX, badgeY, badgeW, badgeH, badgeH / 2.0);
+        cairo_set_source_rgba(cr, 0.96, 0.62, 0.07, 0.95);
+        cairo_fill_preserve(cr);
+        cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.85);
+        cairo_set_line_width(cr, 1.0);
+        cairo_stroke(cr);
+
+        cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
+        cairo_set_font_size(cr, std::clamp(9.5 * zoom, 8.0, 12.0));
+        cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+        cairo_text_extents_t ext;
+        cairo_text_extents(cr, badgeStr.c_str(), &ext);
+        cairo_move_to(cr, badgeX + (badgeW - ext.width) / 2.0,
+                      badgeY + (badgeH + ext.height) / 2.0 - 0.5);
+        cairo_show_text(cr, badgeStr.c_str());
+    } else {
+        // Soft Glowing Amber Match Outline
+        drawRoundedRect(cr, sx - 4.0, sy - 4.0, sw + 8.0, sh + 8.0, radius + 4.0);
+        cairo_set_source_rgba(cr, 0.96, 0.62, 0.07, 0.18);
+        cairo_fill_preserve(cr);
+        cairo_set_source_rgba(cr, 0.96, 0.62, 0.07, 0.75);
+        cairo_set_line_width(cr, std::max(1.8, 2.0 * zoom));
+        cairo_stroke(cr);
     }
 
     cairo_restore(cr);

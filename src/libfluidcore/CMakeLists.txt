@@ -20,6 +20,8 @@ add_library(fluidcore STATIC
     text/TextSelection.cpp
     search/AnchorSqueezePlanner.cpp
     search/SearchSqueezePlanner.cpp
+    search/WorkspaceSearchEngine.cpp
+    export/WorkspaceExportEngine.cpp
 )
 
 find_package(ZLIB REQUIRED)
@@ -103,4 +105,12 @@ if(BUILD_TESTING)
     add_executable(card_layout_engine_test tests/workspace/CardLayoutEngineTest.cpp)
     target_link_libraries(card_layout_engine_test PRIVATE fluidcore)
     add_test(NAME CardLayoutEngineTest COMMAND card_layout_engine_test)
+
+    add_executable(workspace_search_engine_test tests/WorkspaceSearchEngineTest.cpp)
+    target_link_libraries(workspace_search_engine_test PRIVATE fluidcore)
+    add_test(NAME WorkspaceSearchEngineTest COMMAND workspace_search_engine_test)
+
+    add_executable(workspace_export_engine_test tests/WorkspaceExportEngineTest.cpp)
+    target_link_libraries(workspace_export_engine_test PRIVATE fluidcore)
+    add_test(NAME WorkspaceExportEngineTest COMMAND workspace_export_engine_test)
 endif()

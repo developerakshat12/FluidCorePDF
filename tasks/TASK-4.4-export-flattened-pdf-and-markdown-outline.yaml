@@ -1,0 +1,35 @@
+id: TASK-4.4-export-flattened-pdf-and-markdown-outline
+title: Export Annotated PDF Flattening & Workspace Markdown Outline (PdfExportService, WorkspaceExportEngine, ExportDialog, and Mermaid Link Diagrams)
+milestone: M4
+status: complete
+workspace: D:\FluidCorePDF\fluidcore-platform
+specs:
+  - specs/features.md (section 7 — Export & Interoperability Matrix)
+  - specs/integration.md (section 1 & 2 — Export pipeline & cross-pane interoperability)
+  - specs/new-features-backlog.md (section 5 — Export pipeline & multi-doc synthesis)
+  - planning/ROADMAP.md (Milestone 4, Step 4)
+  - skills/cpp-core-dev/SKILL.md
+  - skills/gtk-frontend/SKILL.md
+dependencies:
+  - TASK-4.3-workspace-canvas-find-and-scoped-search
+deliverables:
+  - src/libfluidcore/export/WorkspaceExportEngine.{h,cpp} — pure C++20 standard library synthesis exporter traversing WorkspaceModel and GraphTopology, formatting hierarchical stacks into headings (#, ##, ###), excerpt cards into blockquotes with citations, visual crop metadata placeholders, tags, free notes, relational link graph summaries, and Mermaid relationship flowcharts.
+  - src/libfluidcore/FluidCoreAPI.h, FluidCoreEngine.{h,cpp} — WorkspaceExportOptions and WorkspaceExportResult structs, exportWorkspaceMarkdown() and exportWorkspaceMarkdownToFile() public API methods.
+  - src/libfluidcore/tests/WorkspaceExportEngineTest.cpp — comprehensive 5-suite unit test coverage testing quotes, citations, stack nesting, free notes, explicit tags, hashtags, relational graphs, Mermaid generation, and file writing.
+  - src/app/services/PdfExportService.{h,cpp} — high-fidelity vector PDF export service utilizing Cairo's vector PDF surface backend and Poppler (poppler_page_render_for_printing), burning pen and highlighter strokes with Catmull-Rom Bezier curves and transparency groups without raster distortion.
+  - src/app/tests/PdfExportServiceTest.cpp — integration test suite validating multi-page PDF generation, vector page preservation, stroke burning, and Poppler re-opening.
+  - src/app/export/ExportDialog.{h,cpp} — GTK3 file chooser dialog with format selectors (Flattened PDF / Workspace Markdown), Mermaid and citation option toggles, default filename proposals, and status notifications.
+  - src/app/main.cpp — win.export action registration, Ctrl+E accelerator, and direct keyboard shortcut listener.
+acceptance_checks:
+  - "clang-format --dry-run --Werror clean on all touched files"
+  - "python ops/scripts/check_invariants.py passes (0 GUI includes in libfluidcore)"
+  - "all registered CTest targets pass (100% - 28/28 test suites)"
+  - "Exporting annotated PDF preserves full vector fidelity and renders ink/highlighters across pages"
+  - "Exporting Markdown outline generates structured headers for stacks, quotes for snippets, citations, and valid Mermaid diagram blocks"
+  - "Ctrl+E accelerator opens the modern Export dialog with proper filter defaults and filename proposals"
+constraints:
+  - Do not add GUI/Cairo/GTK headers to src/libfluidcore/ (ADR-0001 clean separation)
+  - PdfExportService lives exclusively in src/app/services/ with Cairo/Poppler dependencies
+  - WorkspaceExportEngine is pure C++20 standard library with zero platform GUI dependencies
+  - Flattening must preserve vector quality (no rasterization of PDF pages)
+  - Commit means commit AND push; every commit carries -s (DCO)
