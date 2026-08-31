@@ -50,6 +50,8 @@ class StubApi final : public FluidCoreAPI {
     }
     BezierSpline getEdgeGeometry(const std::string&) const override { return {}; }
     std::vector<std::string> getConnectedEdges(const std::string&) const override { return {}; }
+    std::vector<std::string> getAllEdges() const override { return {}; }
+    bool removeEdge(const std::string&) override { return false; }
 
     // Signature-only until M5; must remain implementable as a no-op.
     void openProject(const std::string&) override {}

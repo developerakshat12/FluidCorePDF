@@ -81,6 +81,10 @@ if(BUILD_TESTING)
     target_link_libraries(anchor_squeeze_planner_test PRIVATE fluidcore)
     add_test(NAME AnchorSqueezePlannerTest COMMAND anchor_squeeze_planner_test)
 
+    add_executable(graph_topology_test tests/GraphTopologyTest.cpp)
+    target_link_libraries(graph_topology_test PRIVATE fluidcore)
+    add_test(NAME GraphTopologyTest COMMAND graph_topology_test)
+
     add_executable(rtree_benchmark_test tests/workspace/RTreeBenchmarkTest.cpp)
     target_link_libraries(rtree_benchmark_test PRIVATE fluidcore)
     add_test(NAME RTreeBenchmarkTest COMMAND rtree_benchmark_test)

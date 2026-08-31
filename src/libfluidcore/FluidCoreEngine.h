@@ -2,6 +2,7 @@
 
 #include "FluidCoreAPI.h"
 
+#include "graph/GraphTopology.h"
 #include "squeeze/SqueezeEngine.h"
 #include "workspace/WorkspaceModel.h"
 
@@ -12,7 +13,7 @@
 namespace FluidCore {
 
 // Concrete FluidCoreAPI facade over the engine modules. Wave-1 slice: the
-// spatial scene-graph and squeeze engine methods are live; edge routing (M4) and
+// spatial scene-graph, graph edge routing (M4), and squeeze engine methods are live;
 // persistence/search (M5) stay signature-level no-ops at their delegate points.
 class FluidCoreEngine final : public FluidCoreAPI {
   public:
@@ -48,11 +49,16 @@ class FluidCoreEngine final : public FluidCoreAPI {
     Point getNodePosition(const std::string& nodeId) const override;
     Rectangle getWorkspaceBounds() const override;
 
-    // Relational graph & ink links — TODO(M4): delegate to GraphTopology.
+    // Relational graph & ink links — backed by GraphTopology.
     std::string createInkLink(const std::string& sourceNodeId, const std::string& targetNodeId,
                               const Color& color) override;
     BezierSpline getEdgeGeometry(const std::string& edgeId) const override;
     std::vector<std::string> getConnectedEdges(const std::string& nodeId) const override;
+    std::vector<std::string> getAllEdges() const override;
+    bool removeEdge(const std::string& edgeId) override;
+
+    GraphTopology& graphTopology() { return m_graph; }
+    const GraphTopology& graphTopology() const { return m_graph; }
 
     // Persistence & search — TODO(M5): ProjectStore once docs/specs/ltspec.md locks schema.
     void openProject(const std::string& ltprojDirectoryPath) override;
@@ -62,6 +68,7 @@ class FluidCoreEngine final : public FluidCoreAPI {
   private:
     WorkspaceModel m_model;
     SqueezeEngine m_squeezeEngine;
+    GraphTopology m_graph;
 };
 
 } // namespace FluidCore

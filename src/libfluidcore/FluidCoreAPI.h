@@ -126,6 +126,8 @@ class FluidCoreAPI {
                                       const std::string& targetNodeId, const Color& color) = 0;
     virtual BezierSpline getEdgeGeometry(const std::string& edgeId) const = 0;
     virtual std::vector<std::string> getConnectedEdges(const std::string& nodeId) const = 0;
+    virtual std::vector<std::string> getAllEdges() const = 0;
+    virtual bool removeEdge(const std::string& edgeId) = 0;
 
     // Persistence & Search API
     // TODO(M5): signature-only by design. The .ltproj schema-locking decision is deferred

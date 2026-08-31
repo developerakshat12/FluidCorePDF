@@ -311,6 +311,21 @@ void onActivate(GtkApplication* app, gpointer userData) {
     const gchar* cropAccels[] = {"<Alt>5", "F5", nullptr};
     gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.tool_crop", cropAccels);
 
+    GSimpleAction* connectorAction = g_simple_action_new("tool_connector", nullptr);
+    g_signal_connect(connectorAction, "activate",
+                     G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
+                         auto* ctx = static_cast<AppViewContext*>(data);
+                         if (ctx) {
+                             if (ctx->workspace)
+                                 ctx->workspace->setTool("connector");
+                         }
+                     }),
+                     viewCtx);
+    g_action_map_add_action(G_ACTION_MAP(window), G_ACTION(connectorAction));
+    const gchar* connectorAccels[] = {"<Alt>6", "F6", "a", "A", nullptr};
+    gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.tool_connector",
+                                          connectorAccels);
+
     // Wire Ctrl+Shift+0 (Reset Squeeze) action
     GSimpleAction* resetSqueezeAction = g_simple_action_new("reset_squeeze", nullptr);
     g_signal_connect(resetSqueezeAction, "activate",
@@ -542,6 +557,12 @@ void onActivate(GtkApplication* app, gpointer userData) {
                         pane->setTool("crop");
                     if (ws)
                         ws->setTool("crop");
+                    return TRUE;
+                }
+                if (event->keyval == GDK_KEY_a || event->keyval == GDK_KEY_A ||
+                    event->keyval == GDK_KEY_l || event->keyval == GDK_KEY_L) {
+                    if (ws)
+                        ws->setTool("connector");
                     return TRUE;
                 }
             }

@@ -78,8 +78,8 @@ gantt
 - [x] Bi-directional anchors + `ReturnAnchorPill` navigation *(complete via TASK-3.3: WorkspaceView [ ↗ Anchor ] hit-testing, SqueezeEngine auto-expansion, docYToScreen zoom contract, Cairo luminous pulse highlight with cancel-and-replace decay timer, floating glassmorphic ReturnAnchorPill overlay, smooth cubic ease-out camera gliding [glideToWorldCoord], active card focus aura, and 19/19 passing CTest suites)*
 - **Demo gate**: Sarah-persona workflow (extract 10 clauses from 3 PDFs into canvas, click any excerpt to jump back).
 
-### M4 — Links, Stacks & Search (Weeks 39–48)
-- [ ] Ink connectors → `GraphEdge` registration w/ cubic Bezier routing
+### M4 — Links, Stacks & Search (Weeks 39–48) — IN PROGRESS 🟡
+- [x] Ink connectors → `GraphEdge` registration w/ cubic Bezier routing *(complete via TASK-4.1: pure domain `GraphEdge` & `GraphTopology` simple graph model with single-edge invariant, forward/reverse bi-state bidirectional promotion `A ◀──▶ B`, safe straightness gesture classification with non-destructive ink preservation, dedicated `<Alt>6`/`F6`/`A`/`L` connector tool mode with text-entry focus guards, edge selection with glowing halo, multi-channel edge deletion via Delete/Backspace, right-click context menu, and Eraser tool, degenerate distance/overlap fallback guard, and 21/21 passing CTest suites)*
 - [ ] Card snapping/stacking (`PhysicsSolver`, proximity threshold 16 pt)
 - [ ] SQLite FTS5 project-wide search with async ingestion worker
 - [ ] Export: annotated PDF flattening + workspace outline to Markdown

@@ -1,4 +1,6 @@
 #include "WorkspaceView.h"
+#include "FluidCoreEngine.h"
+#include "graph/GraphTopology.h"
 #include "undo/WorkspaceCommands.h"
 #include "workspace/CanvasStrokeNode.h"
 #include "workspace/ExcerptCardNode.h"
@@ -677,6 +679,34 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
         return TRUE;
     }
 
+    if (event->button == GDK_BUTTON_SECONDARY) {
+        // Right-click: hit-test edge for deletion context menu
+        FluidCore::Point wPt = screenToWorld(event->x, event->y);
+        std::string hitEdge = hitTestEdgeAtWorldPoint(wPt, 10.0);
+        if (!hitEdge.empty()) {
+            m_selectedEdgeId = hitEdge;
+            gtk_widget_queue_draw(m_area);
+
+            GtkWidget* menu = gtk_menu_new();
+            GtkWidget* deleteItem = gtk_menu_item_new_with_label("Delete Connector");
+            g_signal_connect(
+                deleteItem, "activate",
+                G_CALLBACK(+[](GtkMenuItem*, gpointer data) {
+                    auto* self = static_cast<WorkspaceView*>(data);
+                    if (self && self->m_selectedEdgeId) {
+                        self->m_api.removeEdge(*self->m_selectedEdgeId);
+                        self->m_selectedEdgeId.reset();
+                        gtk_widget_queue_draw(self->m_area);
+                    }
+                }),
+                this);
+            gtk_menu_shell_append(GTK_MENU_SHELL(menu), deleteItem);
+            gtk_widget_show_all(menu);
+            gtk_menu_popup_at_pointer(GTK_MENU(menu), reinterpret_cast<GdkEvent*>(event));
+            return TRUE;
+        }
+    }
+
     if (event->button == GDK_BUTTON_PRIMARY) {
         // 1. Check if click hits any visible ExcerptCardNode's [ ↗ Anchor ] pill button
         if (m_zoom >= 0.2) {
@@ -712,6 +742,35 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
             FluidCore::Point worldPt = screenToWorld(event->x, event->y);
             centerOn(worldPt.x, worldPt.y);
             return TRUE;
+        }
+
+        if (m_currentTool == "select") {
+            FluidCore::Point wPt = screenToWorld(event->x, event->y);
+            std::string hitEdge = hitTestEdgeAtWorldPoint(wPt, 8.0);
+            if (!hitEdge.empty()) {
+                m_selectedEdgeId = hitEdge;
+                gtk_widget_queue_draw(m_area);
+                return TRUE;
+            } else {
+                if (m_selectedEdgeId.has_value()) {
+                    m_selectedEdgeId.reset();
+                    gtk_widget_queue_draw(m_area);
+                }
+            }
+        }
+
+        if (m_currentTool == "connector") {
+            FluidCore::Point wPt = screenToWorld(event->x, event->y);
+            const auto* hitNode = hitTestNodeAtWorldPoint(wPt);
+            if (hitNode) {
+                m_isConnecting = true;
+                m_connectorSourceNodeId = hitNode->id();
+                m_connectorStartWorld = wPt;
+                m_connectorCurrentWorld = wPt;
+                m_connectorTargetHoverNodeId.clear();
+                gtk_widget_queue_draw(m_area);
+                return TRUE;
+            }
         }
 
         if (m_currentTool == "pen" || m_currentTool == "highlighter") {
@@ -751,6 +810,17 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
                     removed = true;
                 }
             }
+
+            // Eraser edge deletion
+            std::string hitEdge = hitTestEdgeAtWorldPoint(wPt, wRadius);
+            if (!hitEdge.empty()) {
+                m_api.removeEdge(hitEdge);
+                if (m_selectedEdgeId && *m_selectedEdgeId == hitEdge) {
+                    m_selectedEdgeId.reset();
+                }
+                removed = true;
+            }
+
             if (removed) {
                 gtk_widget_queue_draw(m_area);
             }
@@ -785,6 +855,26 @@ gboolean WorkspaceView::onButtonRelease(GdkEventButton* event) {
         return TRUE;
     }
 
+    if (m_isConnecting) {
+        m_isConnecting = false;
+        FluidCore::Point wPt = screenToWorld(event->x, event->y);
+        const auto* targetNode = hitTestNodeAtWorldPoint(wPt);
+        if (targetNode && targetNode->id() != m_connectorSourceNodeId) {
+            FluidCore::Color edgeColor{
+                static_cast<unsigned char>((m_currentColor >> 16) & 0xFF),
+                static_cast<unsigned char>((m_currentColor >> 8) & 0xFF),
+                static_cast<unsigned char>(m_currentColor & 0xFF), 255};
+            if (m_currentColor == 0x000000) {
+                edgeColor = {30, 144, 255, 255}; // Default clean DodgerBlue for connectors
+            }
+            m_api.createInkLink(m_connectorSourceNodeId, targetNode->id(), edgeColor);
+        }
+        m_connectorSourceNodeId.clear();
+        m_connectorTargetHoverNodeId.clear();
+        gtk_widget_queue_draw(m_area);
+        return TRUE;
+    }
+
     if (m_isDrawing) {
         m_isDrawing = false;
         if (m_currentTool == "pen" || m_currentTool == "highlighter") {
@@ -799,7 +889,55 @@ gboolean WorkspaceView::onButtonRelease(GdkEventButton* event) {
             }
 
             if (!m_activeStroke.points.empty()) {
-                m_api.insertNode(std::make_unique<FluidCore::CanvasStrokeNode>(m_activeStroke));
+                bool convertedToConnector = false;
+
+                // Safe classification check (only for "pen" tool with >= 2 points)
+                if (m_currentTool == "pen" && m_activeStroke.points.size() >= 2) {
+                    const auto& ptStart = m_activeStroke.points.front();
+                    const auto& ptEnd = m_activeStroke.points.back();
+                    const auto* srcNode =
+                        hitTestNodeAtWorldPoint(FluidCore::Point{ptStart.x, ptStart.y});
+                    const auto* dstNode =
+                        hitTestNodeAtWorldPoint(FluidCore::Point{ptEnd.x, ptEnd.y});
+
+                    // Must start on node A and end on distinct node B (self-loops rejected)
+                    if (srcNode && dstNode && srcNode->id() != dstNode->id()) {
+                        // Compute direct chord distance vs total arc length
+                        const double dx = ptEnd.x - ptStart.x;
+                        const double dy = ptEnd.y - ptStart.y;
+                        const double chordDist = std::sqrt(dx * dx + dy * dy);
+
+                        double totalArcLen = 0.0;
+                        for (size_t i = 1; i < m_activeStroke.points.size(); ++i) {
+                            const double segDx =
+                                m_activeStroke.points[i].x - m_activeStroke.points[i - 1].x;
+                            const double segDy =
+                                m_activeStroke.points[i].y - m_activeStroke.points[i - 1].y;
+                            totalArcLen += std::sqrt(segDx * segDx + segDy * segDy);
+                        }
+
+                        const double straightness =
+                            totalArcLen > 1e-6 ? (chordDist / totalArcLen) : 1.0;
+
+                        // Strict straightness threshold (>= 0.82) to avoid converting circles/underlines
+                        if (straightness >= 0.82) {
+                            FluidCore::Color edgeColor{
+                                static_cast<unsigned char>((m_currentColor >> 16) & 0xFF),
+                                static_cast<unsigned char>((m_currentColor >> 8) & 0xFF),
+                                static_cast<unsigned char>(m_currentColor & 0xFF), 255};
+                            if (m_currentColor == 0x000000) {
+                                edgeColor = {30, 144, 255, 255};
+                            }
+                            m_api.createInkLink(srcNode->id(), dstNode->id(), edgeColor);
+                            convertedToConnector = true;
+                        }
+                    }
+                }
+
+                if (!convertedToConnector) {
+                    m_api.insertNode(
+                        std::make_unique<FluidCore::CanvasStrokeNode>(m_activeStroke));
+                }
             }
             m_activeSegments.clear();
             gtk_widget_queue_draw(m_area);
@@ -825,6 +963,15 @@ gboolean WorkspaceView::onMotion(GdkEventMotion* event) {
         m_lastMouseX = event->x;
         m_lastMouseY = event->y;
         panBy(dx, dy);
+        return TRUE;
+    }
+
+    if (m_isConnecting) {
+        m_connectorCurrentWorld = screenToWorld(event->x, event->y);
+        const auto* targetNode = hitTestNodeAtWorldPoint(m_connectorCurrentWorld);
+        m_connectorTargetHoverNodeId =
+            (targetNode && targetNode->id() != m_connectorSourceNodeId) ? targetNode->id() : "";
+        gtk_widget_queue_draw(m_area);
         return TRUE;
     }
 
@@ -961,6 +1108,25 @@ gboolean WorkspaceView::onKeyPress(GdkEventKey* event) {
     case GDK_KEY_Down:
         panBy(0.0, -50.0);
         return TRUE;
+    case GDK_KEY_Delete:
+    case GDK_KEY_KP_Delete:
+    case GDK_KEY_BackSpace: {
+        if (m_selectedEdgeId.has_value()) {
+            GdkWindow* win = gtk_widget_get_window(m_area);
+            if (win) {
+                GtkWidget* focusWidget = gtk_window_get_focus(GTK_WINDOW(gtk_widget_get_toplevel(m_area)));
+                if (focusWidget && GTK_IS_ENTRY(focusWidget)) {
+                    // Do not delete edge if typing in a text entry
+                    return FALSE;
+                }
+            }
+            m_api.removeEdge(*m_selectedEdgeId);
+            m_selectedEdgeId.reset();
+            gtk_widget_queue_draw(m_area);
+            return TRUE;
+        }
+        break;
+    }
     default:
         break;
     }
@@ -1453,6 +1619,181 @@ void WorkspaceView::drawGenericNode(cairo_t* cr, const FluidCore::WorkspaceNode*
     cairo_restore(cr);
 }
 
+const FluidCore::WorkspaceNode*
+WorkspaceView::hitTestNodeAtWorldPoint(const FluidCore::Point& worldPt) const {
+    const FluidCore::Rectangle queryRect{worldPt.x - 1.0, worldPt.y - 1.0, 2.0, 2.0};
+    auto hits = m_api.queryVisibleNodes(queryRect);
+    for (const auto* node : hits) {
+        if (dynamic_cast<const FluidCore::ExcerptCardNode*>(node)) {
+            const auto b = node->bounds();
+            if (worldPt.x >= b.x && worldPt.x <= b.x + b.w && worldPt.y >= b.y &&
+                worldPt.y <= b.y + b.h) {
+                return node;
+            }
+        }
+    }
+    for (const auto* node : hits) {
+        if (!dynamic_cast<const FluidCore::CanvasStrokeNode*>(node)) {
+            const auto b = node->bounds();
+            if (worldPt.x >= b.x && worldPt.x <= b.x + b.w && worldPt.y >= b.y &&
+                worldPt.y <= b.y + b.h) {
+                return node;
+            }
+        }
+    }
+    return nullptr;
+}
+
+std::string WorkspaceView::hitTestEdgeAtWorldPoint(const FluidCore::Point& worldPt,
+                                                   double tolerance) const {
+    const auto edgeIds = m_api.getAllEdges();
+    for (const auto& eid : edgeIds) {
+        FluidCore::BezierSpline spline = m_api.getEdgeGeometry(eid);
+        if (FluidCore::GraphTopology::hitTestSpline(spline, worldPt, tolerance)) {
+            return eid;
+        }
+    }
+    return "";
+}
+
+void WorkspaceView::drawArrowHead(cairo_t* cr, const FluidCore::Point& tip, double angle,
+                                  double size, uint32_t color) {
+    const double arrowAngle = M_PI / 6.0; // 30 degrees
+    const double p1X = tip.x - size * std::cos(angle - arrowAngle);
+    const double p1Y = tip.y - size * std::sin(angle - arrowAngle);
+    const double p2X = tip.x - size * std::cos(angle + arrowAngle);
+    const double p2Y = tip.y - size * std::sin(angle + arrowAngle);
+
+    cairo_save(cr);
+    cairo_set_source_rgba(cr, ((color >> 16) & 0xFF) / 255.0, ((color >> 8) & 0xFF) / 255.0,
+                          (color & 0xFF) / 255.0, 1.0);
+    cairo_move_to(cr, tip.x, tip.y);
+    cairo_line_to(cr, p1X, p1Y);
+    cairo_line_to(cr, p2X, p2Y);
+    cairo_close_path(cr);
+    cairo_fill(cr);
+    cairo_restore(cr);
+}
+
+void WorkspaceView::drawGraphEdges(cairo_t* cr) {
+    auto* engine = dynamic_cast<FluidCore::FluidCoreEngine*>(&m_api);
+    std::vector<std::string> allEdges = m_api.getAllEdges();
+    for (const auto& edgeId : allEdges) {
+        FluidCore::BezierSpline spline = m_api.getEdgeGeometry(edgeId);
+        if (spline.controlPoints.size() < 4) {
+            continue;
+        }
+
+        const auto& p0W = spline.controlPoints[0];
+        const auto& p1W = spline.controlPoints[1];
+        const auto& p2W = spline.controlPoints[2];
+        const auto& p3W = spline.controlPoints[3];
+
+        const FluidCore::Point s0 = worldToScreen(p0W.x, p0W.y);
+        const FluidCore::Point s1 = worldToScreen(p1W.x, p1W.y);
+        const FluidCore::Point s2 = worldToScreen(p2W.x, p2W.y);
+        const FluidCore::Point s3 = worldToScreen(p3W.x, p3W.y);
+
+        const bool isSelected = (m_selectedEdgeId && *m_selectedEdgeId == edgeId);
+
+        // Render selection glow halo if selected
+        if (isSelected) {
+            cairo_save(cr);
+            cairo_set_source_rgba(cr, 0.05, 0.65, 1.0, 0.35);
+            cairo_set_line_width(cr, std::max(6.0, 8.0 * m_zoom));
+            cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+            cairo_move_to(cr, s0.x, s0.y);
+            cairo_curve_to(cr, s1.x, s1.y, s2.x, s2.y, s3.x, s3.y);
+            cairo_stroke(cr);
+            cairo_restore(cr);
+        }
+
+        // Render shadow under connector curve
+        cairo_save(cr);
+        cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.08);
+        cairo_set_line_width(cr, std::max(2.5, 3.5 * m_zoom));
+        cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+        cairo_move_to(cr, s0.x, s0.y + 1.5 * m_zoom);
+        cairo_curve_to(cr, s1.x, s1.y + 1.5 * m_zoom, s2.x, s2.y + 1.5 * m_zoom, s3.x,
+                       s3.y + 1.5 * m_zoom);
+        cairo_stroke(cr);
+        cairo_restore(cr);
+
+        // Render main connector curve
+        cairo_save(cr);
+        if (isSelected) {
+            cairo_set_source_rgb(cr, 0.02, 0.45, 0.90);
+            cairo_set_line_width(cr, std::max(2.2, 3.0 * m_zoom));
+        } else {
+            cairo_set_source_rgb(cr, 0.12, 0.50, 0.95);
+            cairo_set_line_width(cr, std::max(1.5, 2.2 * m_zoom));
+        }
+        cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+        cairo_move_to(cr, s0.x, s0.y);
+        cairo_curve_to(cr, s1.x, s1.y, s2.x, s2.y, s3.x, s3.y);
+        cairo_stroke(cr);
+
+        // Check edge direction for arrowhead rendering
+        bool isBidirectional = false;
+        if (engine) {
+            auto edgeOpt = engine->graphTopology().findEdge(edgeId);
+            if (edgeOpt && edgeOpt->direction == FluidCore::EdgeDirection::Bidirectional) {
+                isBidirectional = true;
+            }
+        }
+
+        const double arrowSize = std::clamp(12.0 * m_zoom, 7.0, 20.0);
+
+        // Forward arrowhead at target node (s3)
+        double tangentTargetX = s3.x - s2.x;
+        double tangentTargetY = s3.y - s2.y;
+        if (std::abs(tangentTargetX) < 1e-6 && std::abs(tangentTargetY) < 1e-6) {
+            tangentTargetX = s3.x - s0.x;
+            tangentTargetY = s3.y - s0.y;
+        }
+        const double arrivalAngle = std::atan2(tangentTargetY, tangentTargetX);
+        drawArrowHead(cr, s3, arrivalAngle, arrowSize, isSelected ? 0x0374B5 : 0x1E88E5);
+
+        // Bidirectional backward arrowhead at source node (s0)
+        if (isBidirectional) {
+            double tangentSourceX = s0.x - s1.x;
+            double tangentSourceY = s0.y - s1.y;
+            if (std::abs(tangentSourceX) < 1e-6 && std::abs(tangentSourceY) < 1e-6) {
+                tangentSourceX = s0.x - s3.x;
+                tangentSourceY = s0.y - s3.y;
+            }
+            const double departureAngle = std::atan2(tangentSourceY, tangentSourceX);
+            drawArrowHead(cr, s0, departureAngle, arrowSize, isSelected ? 0x0374B5 : 0x1E88E5);
+        }
+
+        cairo_restore(cr);
+    }
+
+    // If active connector tool drag in progress, render live rubber-band preview
+    if (m_isConnecting) {
+        const FluidCore::Point sStart =
+            worldToScreen(m_connectorStartWorld.x, m_connectorStartWorld.y);
+        const FluidCore::Point sCur =
+            worldToScreen(m_connectorCurrentWorld.x, m_connectorCurrentWorld.y);
+
+        cairo_save(cr);
+        cairo_set_source_rgba(cr, 0.12, 0.55, 0.95, 0.85);
+        double dashes[] = {6.0, 4.0};
+        cairo_set_dash(cr, dashes, 2, 0.0);
+        cairo_set_line_width(cr, std::max(1.8, 2.5 * m_zoom));
+        cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+        cairo_move_to(cr, sStart.x, sStart.y);
+        cairo_line_to(cr, sCur.x, sCur.y);
+        cairo_stroke(cr);
+        cairo_set_dash(cr, nullptr, 0, 0.0);
+
+        const double angle = std::atan2(sCur.y - sStart.y, sCur.x - sStart.x);
+        const double arrowSize = std::clamp(12.0 * m_zoom, 7.0, 20.0);
+        drawArrowHead(cr, sCur, angle, arrowSize, 0x1E88E5);
+        cairo_restore(cr);
+    }
+}
+
 void WorkspaceView::draw(cairo_t* cr, int width, int height) {
     // Clear background canvas with modern slate-50 tone
     cairo_set_source_rgb(cr, 0.975, 0.982, 0.990);
@@ -1460,6 +1801,9 @@ void WorkspaceView::draw(cairo_t* cr, int width, int height) {
 
     // Render infinite dot-grid
     drawBackgroundGrid(cr, width, height);
+
+    // Render reactive relational graph edges & dynamic cubic Bézier splines
+    drawGraphEdges(cr);
 
     // Viewport spatial culling query (O(log N) R-tree query with 150pt safety padding)
     const double pad = 150.0 / m_zoom;

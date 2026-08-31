@@ -56,6 +56,7 @@ void FluidCoreEngine::updateNodePosition(const std::string& nodeId, double x, do
 }
 
 void FluidCoreEngine::removeNode(const std::string& nodeId) {
+    m_graph.removeEdgesForNode(nodeId);
     m_model.remove(nodeId);
 }
 
@@ -76,17 +77,31 @@ Rectangle FluidCoreEngine::getWorkspaceBounds() const {
     return m_model.globalBounds();
 }
 
-std::string FluidCoreEngine::createInkLink(const std::string&, const std::string&, const Color&) {
-    // TODO(M4): route through GraphTopology and return the edge id.
-    return {};
+std::string FluidCoreEngine::createInkLink(const std::string& sourceNodeId,
+                                           const std::string& targetNodeId, const Color& color) {
+    return m_graph.addEdge(sourceNodeId, targetNodeId, color);
 }
 
-BezierSpline FluidCoreEngine::getEdgeGeometry(const std::string&) const {
-    return {};
+BezierSpline FluidCoreEngine::getEdgeGeometry(const std::string& edgeId) const {
+    auto edgeOpt = m_graph.findEdge(edgeId);
+    if (!edgeOpt.has_value()) {
+        return {};
+    }
+    const Rectangle srcBounds = m_model.boundsOf(edgeOpt->sourceNodeId);
+    const Rectangle dstBounds = m_model.boundsOf(edgeOpt->targetNodeId);
+    return m_graph.computeEdgeSpline(edgeId, srcBounds, dstBounds);
 }
 
-std::vector<std::string> FluidCoreEngine::getConnectedEdges(const std::string&) const {
-    return {};
+std::vector<std::string> FluidCoreEngine::getConnectedEdges(const std::string& nodeId) const {
+    return m_graph.connectedEdgeIds(nodeId);
+}
+
+std::vector<std::string> FluidCoreEngine::getAllEdges() const {
+    return m_graph.allEdgeIds();
+}
+
+bool FluidCoreEngine::removeEdge(const std::string& edgeId) {
+    return m_graph.removeEdge(edgeId);
 }
 
 void FluidCoreEngine::openProject(const std::string&) {}

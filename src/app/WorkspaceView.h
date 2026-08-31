@@ -7,6 +7,7 @@
 #include "workspace/ExcerptCardNode.h"
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -109,10 +110,17 @@ class WorkspaceView {
     void draw(cairo_t* cr, int width, int height);
     void drawBackgroundGrid(cairo_t* cr, int width, int height);
     void drawMinimap(cairo_t* cr, int width, int height);
+    void drawGraphEdges(cairo_t* cr);
+    void drawArrowHead(cairo_t* cr, const FluidCore::Point& tip, double angle, double size,
+                       uint32_t color);
     void drawExcerptCard(cairo_t* cr, const FluidCore::WorkspaceNode* node, double sx, double sy,
                          double sw, double sh);
     void drawGenericNode(cairo_t* cr, const FluidCore::WorkspaceNode* node, double sx, double sy,
                          double sw, double sh);
+
+    const FluidCore::WorkspaceNode* hitTestNodeAtWorldPoint(const FluidCore::Point& worldPt) const;
+    std::string hitTestEdgeAtWorldPoint(const FluidCore::Point& worldPt,
+                                        double tolerance = 8.0) const;
 
     gboolean onScroll(GdkEventScroll* event);
     gboolean onButtonPress(GdkEventButton* event);
@@ -146,12 +154,15 @@ class WorkspaceView {
     double m_lastMouseX = 0.0;
     double m_lastMouseY = 0.0;
 
+    // Selected edge state for selection & deletion
+    std::optional<std::string> m_selectedEdgeId;
+
     // Drag-and-drop drop hover feedback
     bool m_isDropHovering = false;
     double m_dropHoverScreenX = 0.0;
     double m_dropHoverScreenY = 0.0;
 
-    // Canvas inking state
+    // Canvas inking & connector state
     std::string m_currentTool = "select";
     uint32_t m_currentColor = 0x000000;
     double m_currentWidth = 1.5;
@@ -162,6 +173,13 @@ class WorkspaceView {
     std::vector<StrokeStabilizer::BezierSegment> m_activeSegments;
     StrokeStabilizer::Point2D m_activeWetTip;
     bool m_hasWetSegment = false;
+
+    // Connector tool interaction state
+    bool m_isConnecting = false;
+    std::string m_connectorSourceNodeId;
+    FluidCore::Point m_connectorStartWorld{0.0, 0.0};
+    FluidCore::Point m_connectorCurrentWorld{0.0, 0.0};
+    std::string m_connectorTargetHoverNodeId;
 
     // Minimap display settings
     bool m_showMinimap = true;

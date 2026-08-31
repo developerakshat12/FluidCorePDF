@@ -85,10 +85,34 @@ int main() {
     api.resetSqueeze("doc-1");
     failures += check(api.mapDocumentYToScreen(15.0, "doc-1").alpha == 1.0,
                       "squeeze mapping resets to alpha 1.0 after resetSqueeze");
-    failures +=
-        check(api.getEdgeGeometry("e").controlPoints.empty(), "edge spline stub empty (M4)");
-    failures += check(api.createInkLink("a", "b", {}).empty(), "ink-link stub returns no id (M4)");
-    failures += check(api.getConnectedEdges("a").empty(), "edge adjacency stub empty (M4)");
+    // Graph Edge routing and lifecycle (M4)
+    const std::string nodeA =
+        api.insertNode(std::make_unique<RectNode>("node-A", Rectangle{50.0, 50.0, 100.0, 80.0}));
+    const std::string nodeB =
+        api.insertNode(std::make_unique<RectNode>("node-B", Rectangle{300.0, 50.0, 100.0, 80.0}));
+    const std::string edgeAB = api.createInkLink(nodeA, nodeB, Color{0, 120, 255, 255});
+    failures += check(!edgeAB.empty(), "createInkLink creates valid edge ID");
+    failures += check(api.getAllEdges().size() == 1, "getAllEdges returns registered edge");
+    failures += check(api.getConnectedEdges(nodeA).size() == 1, "getConnectedEdges finds edge for node A");
+    failures += check(api.getConnectedEdges(nodeB).size() == 1, "getConnectedEdges finds edge for node B");
+
+    BezierSpline spline = api.getEdgeGeometry(edgeAB);
+    failures += check(spline.controlPoints.size() == 4, "getEdgeGeometry returns 4 cubic Bezier control points");
+    // p0 should dock to right perimeter of nodeA (x = 150.0) and p3 to left perimeter of nodeB (x = 300.0)
+    failures += check(close(spline.controlPoints.front().x, 150.0), "p0 docks to source node right edge");
+    failures += check(close(spline.controlPoints.back().x, 300.0), "p3 docks to target node left edge");
+
+    // Dynamic re-routing: moving nodeB shifts docking points and spline
+    api.updateNodePosition(nodeB, 500.0, 50.0);
+    BezierSpline movedSpline = api.getEdgeGeometry(edgeAB);
+    failures += check(close(movedSpline.controlPoints.back().x, 500.0), "p3 dynamically tracks moved node");
+
+    // Cascading node removal: removing nodeA removes edgeAB
+    api.removeNode(nodeA);
+    failures += check(api.getAllEdges().empty(), "removeNode cascades deletion to connected edges");
+    failures += check(api.getConnectedEdges(nodeB).empty(), "nodeB has no remaining connected edges");
+    api.removeNode(nodeB);
+
     api.openProject("/tmp/nonexistent.ltproj");
     api.saveProject();
     failures += check(api.executeSearch("query").empty(), "search stub empty (M5)");
