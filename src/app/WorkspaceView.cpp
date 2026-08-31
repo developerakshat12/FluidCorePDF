@@ -717,13 +717,15 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
     }
 
     if (event->button == GDK_BUTTON_SECONDARY) {
-        // Right-click: hit-test edge or node for deletion context menu
+        // Right-click: hit-test edge or node for deletion / rename context menu
         FluidCore::Point wPt = screenToWorld(event->x, event->y);
         std::string hitEdge = hitTestEdgeAtWorldPoint(wPt, 10.0);
         if (!hitEdge.empty()) {
             m_selectedEdgeId = hitEdge;
             m_selectedNodeId.reset();
-            gtk_widget_queue_draw(m_area);
+            if (m_area && GTK_IS_WIDGET(m_area)) {
+                gtk_widget_queue_draw(m_area);
+            }
 
             GtkWidget* menu = gtk_menu_new();
             GtkWidget* deleteItem = gtk_menu_item_new_with_label("Delete Connector");
@@ -732,7 +734,9 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
                                  if (self && self->m_selectedEdgeId) {
                                      self->m_api.removeEdge(*self->m_selectedEdgeId);
                                      self->m_selectedEdgeId.reset();
-                                     gtk_widget_queue_draw(self->m_area);
+                                     if (self->m_area && GTK_IS_WIDGET(self->m_area)) {
+                                         gtk_widget_queue_draw(self->m_area);
+                                     }
                                  }
                              }),
                              this);
@@ -740,51 +744,91 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
             gtk_widget_show_all(menu);
             gtk_menu_popup_at_pointer(GTK_MENU(menu), reinterpret_cast<GdkEvent*>(event));
             return TRUE;
-            const auto* hitNode = hitTestNodeAtWorldPoint(wPt);
-            if (hitNode) {
-                m_selectedNodeId = hitNode->id();
-                m_selectedEdgeId.reset();
+        }
+
+        // Check if right-clicking a child card nested inside an expanded stack
+        std::string parentStackId;
+        const auto* hitChild = hitTestChildNodeAtWorldPoint(wPt, &parentStackId);
+        if (hitChild && !parentStackId.empty()) {
+            const std::string childId = hitChild->id();
+            m_selectedNodeId = childId;
+            m_selectedEdgeId.reset();
+            if (m_area && GTK_IS_WIDGET(m_area)) {
                 gtk_widget_queue_draw(m_area);
+            }
 
-                GtkWidget* menu = gtk_menu_new();
-                const bool isStack =
-                    (dynamic_cast<const FluidCore::CardStackNode*>(hitNode) != nullptr);
+            GtkWidget* menu = gtk_menu_new();
+            GtkWidget* deleteItem = gtk_menu_item_new_with_label("Delete Card");
+            g_signal_connect(deleteItem, "activate", G_CALLBACK(+[](GtkMenuItem*, gpointer data) {
+                                 auto* self = static_cast<WorkspaceView*>(data);
+                                 if (self && self->m_selectedNodeId) {
+                                     if (!self->m_dragCandidateParentStackId.empty()) {
+                                         self->m_api.extractChildFromStack(
+                                             self->m_dragCandidateParentStackId,
+                                             *self->m_selectedNodeId, {0, 0});
+                                         self->m_dragCandidateParentStackId.clear();
+                                     }
+                                     self->m_api.removeNode(*self->m_selectedNodeId);
+                                     self->m_selectedNodeId.reset();
+                                     if (self->m_area && GTK_IS_WIDGET(self->m_area)) {
+                                         gtk_widget_queue_draw(self->m_area);
+                                     }
+                                 }
+                             }),
+                             this);
+            m_dragCandidateParentStackId = parentStackId;
+            gtk_menu_shell_append(GTK_MENU_SHELL(menu), deleteItem);
+            gtk_widget_show_all(menu);
+            gtk_menu_popup_at_pointer(GTK_MENU(menu), reinterpret_cast<GdkEvent*>(event));
+            return TRUE;
+        }
 
-                if (isStack) {
-                    GtkWidget* renameItem = gtk_menu_item_new_with_label("Rename Stack…");
-                    g_signal_connect(renameItem, "activate",
-                                     G_CALLBACK(+[](GtkMenuItem*, gpointer data) {
-                                         auto* self = static_cast<WorkspaceView*>(data);
-                                         if (self && self->m_selectedNodeId) {
-                                             self->promptRenameStack(*self->m_selectedNodeId);
-                                         }
-                                     }),
-                                     this);
-                    gtk_menu_shell_append(GTK_MENU_SHELL(menu), renameItem);
+        // Top-level node hit test (CardStackNode, ExcerptCardNode, etc.)
+        const auto* hitNode = hitTestNodeAtWorldPoint(wPt);
+        if (hitNode) {
+            m_selectedNodeId = hitNode->id();
+            m_selectedEdgeId.reset();
+            if (m_area && GTK_IS_WIDGET(m_area)) {
+                gtk_widget_queue_draw(m_area);
+            }
 
-                    GtkWidget* sep = gtk_separator_menu_item_new();
-                    gtk_menu_shell_append(GTK_MENU_SHELL(menu), sep);
-                }
+            GtkWidget* menu = gtk_menu_new();
+            const bool isStack =
+                (dynamic_cast<const FluidCore::CardStackNode*>(hitNode) != nullptr);
 
-                GtkWidget* deleteItem =
-                    gtk_menu_item_new_with_label(isStack ? "Delete Stack" : "Delete Card");
-                g_signal_connect(deleteItem, "activate",
+            if (isStack) {
+                GtkWidget* renameItem = gtk_menu_item_new_with_label("Rename Stack…");
+                g_signal_connect(renameItem, "activate",
                                  G_CALLBACK(+[](GtkMenuItem*, gpointer data) {
                                      auto* self = static_cast<WorkspaceView*>(data);
                                      if (self && self->m_selectedNodeId) {
-                                         self->m_api.removeNode(*self->m_selectedNodeId);
-                                         self->m_selectedNodeId.reset();
-                                         if (self->m_area && GTK_IS_WIDGET(self->m_area)) {
-                                             gtk_widget_queue_draw(self->m_area);
-                                         }
+                                         self->promptRenameStack(*self->m_selectedNodeId);
                                      }
                                  }),
                                  this);
-                gtk_menu_shell_append(GTK_MENU_SHELL(menu), deleteItem);
-                gtk_widget_show_all(menu);
-                gtk_menu_popup_at_pointer(GTK_MENU(menu), reinterpret_cast<GdkEvent*>(event));
-                return TRUE;
+                gtk_menu_shell_append(GTK_MENU_SHELL(menu), renameItem);
+
+                GtkWidget* sep = gtk_separator_menu_item_new();
+                gtk_menu_shell_append(GTK_MENU_SHELL(menu), sep);
             }
+
+            GtkWidget* deleteItem =
+                gtk_menu_item_new_with_label(isStack ? "Delete Stack" : "Delete Card");
+            g_signal_connect(deleteItem, "activate", G_CALLBACK(+[](GtkMenuItem*, gpointer data) {
+                                 auto* self = static_cast<WorkspaceView*>(data);
+                                 if (self && self->m_selectedNodeId) {
+                                     self->m_api.removeNode(*self->m_selectedNodeId);
+                                     self->m_selectedNodeId.reset();
+                                     if (self->m_area && GTK_IS_WIDGET(self->m_area)) {
+                                         gtk_widget_queue_draw(self->m_area);
+                                     }
+                                 }
+                             }),
+                             this);
+            gtk_menu_shell_append(GTK_MENU_SHELL(menu), deleteItem);
+            gtk_widget_show_all(menu);
+            gtk_menu_popup_at_pointer(GTK_MENU(menu), reinterpret_cast<GdkEvent*>(event));
+            return TRUE;
         }
     }
 
