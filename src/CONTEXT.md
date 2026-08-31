@@ -1,9 +1,9 @@
 # Src Workspace (Code)
 
-Last updated: 2026-08-31
+Last updated: 2026-09-01
 
 ## What this is for
-The core codebase for the FluidCore platform. Milestones M0–M3 are complete, and M4 (Links, Stacks & Search) is currently in progress.
+The core codebase for the FluidCore platform. Milestones M0–M4 are complete, and M5 (Hardening) is currently in progress.
 
 ```
 src/
@@ -12,18 +12,20 @@ src/
 │   ├── squeeze/                # Piecewise coordinate mapper (SqueezeEngine)
 │   ├── graph/                  # Relational multigraph & Bezier routing (GraphTopology, GraphEdge)
 │   ├── storage/                # SQLite WAL ProjectStore, AnnotationStore, XoppDocument (.xopp bridge)
-│   ├── search/                 # AnchorSqueezePlanner, SearchSqueezePlanner
+│   ├── search/                 # AnchorSqueezePlanner, SearchSqueezePlanner, WorkspaceSearchEngine
+│   ├── export/                 # Pure C++20 WorkspaceExportEngine (Markdown outline & synthesis export)
 │   ├── text/                   # TextSelection domain model & interval arithmetic
 │   ├── undo/                   # UndoStack, Command, Annotation/Squeeze/Workspace command primitives
-│   ├── tests/                  # Headless CTest suites (storage/, workspace/, engine, topology, squeeze, text, undo)
+│   ├── tests/                  # Headless CTest suites (storage/, workspace/, engine, topology, squeeze, text, undo, search, export)
 │   ├── FluidCoreAPI.h          # Public abstract engine facade interface
 │   ├── FluidCoreEngine.h/.cpp  # Concrete engine implementation
 │   └── CMakeLists.txt
 └── app/                        # GTK 3 / Cairo / Poppler desktop frontend
     ├── document/               # DocumentPane (Poppler PDF viewport), InkOverlay, ReturnAnchorPill, SearchBarWidget, SqueezeRenderHelper, DamageRect
-    ├── services/               # DocumentSearchService, ExcerptTileCache, PageTileCache, PdfDocumentService, StrokeStabilizer, TextSelectionService
+    ├── export/                 # ExportDialog (multi-format modal selector), ExportProgressDialog (async worker tracking)
+    ├── services/               # DocumentSearchService, ExcerptTileCache, PageTileCache, PdfDocumentService, PdfExportService, StrokeStabilizer, TextSelectionService
     ├── workspace/              # Infinite canvas: WorkspaceView, WorkspaceRenderer, WorkspaceInteraction, WorkspaceState
-    ├── tests/                  # Viewport, tile cache, stabilizer, anchor, and interaction tests
+    ├── tests/                  # Viewport, tile cache, stabilizer, anchor, export, and interaction tests
     ├── main.cpp                # GTK3 application entry point
     └── CMakeLists.txt
 ```

@@ -14,11 +14,15 @@ app/
 │   ├── SearchBarWidget.h/.cpp    # Real-time search query input and match navigation
 │   ├── SqueezeRenderHelper.h/.cpp# Cairo slice decomposition, crease shadows, margin fold pins
 │   └── DamageRect.h              # Scoped bounding-box invalidation math
+├── export/                   # Export dialogs & progress tracking
+│   ├── ExportDialog.h/.cpp       # Multi-format modal selector (.pdf, .md) with page range options
+│   └── ExportProgressDialog.h/.cpp# Asynchronous export progress tracking with cancel handle
 ├── services/                 # Background workers and subsystem services
 │   ├── DocumentSearchService.h/.cpp # Async multi-page search worker
 │   ├── ExcerptTileCache.h/.cpp      # 128 MB LRU excerpt raster cache across discrete LoD tiers
 │   ├── PageTileCache.h/.cpp         # 256 MB LRU page surface cache with visible-page pinning
 │   ├── PdfDocumentService.h/.cpp    # Thread-safe Poppler document handle lifecycle
+│   ├── PdfExportService.h/.cpp      # Asynchronous Cairo vector PDF flattening worker with atomic swap
 │   ├── StrokeStabilizer.h/.cpp      # Centripetal Catmull-Rom spline filter with deadzone
 │   └── TextSelectionService.h/.cpp  # Reading-order glyph layout extraction & clipboard
 ├── workspace/                # Infinite 2D synthesis canvas
@@ -31,6 +35,7 @@ app/
     ├── DamageRectTest.cpp
     ├── ExcerptTileCacheTest.cpp
     ├── PageTileCacheTest.cpp
+    ├── PdfExportServiceTest.cpp
     ├── ReturnAnchorPillTest.cpp
     ├── SearchSqueezePlannerTest.cpp
     ├── SqueezeRenderTest.cpp

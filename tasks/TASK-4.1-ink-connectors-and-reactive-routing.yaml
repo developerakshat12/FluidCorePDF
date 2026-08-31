@@ -1,0 +1,25 @@
+id: TASK-4.1
+title: "Ink Connectors & Reactive Bezier Routing (Graph Links)"
+milestone: M4-links-stacks-search
+workspace: src
+specs:
+  - specs/features.md#42-ink-links-visual-hyperlinks--relational-connectors
+  - specs/system-architecture.md#4-relational-graph-subsystem
+dependencies:
+  - TASK-3.1
+  - TASK-3.2
+deliverables:
+  - src/libfluidcore/graph/GraphTopology.h
+  - src/libfluidcore/graph/GraphTopology.cpp
+  - src/libfluidcore/graph/GraphEdge.h
+  - src/app/workspace/WorkspaceRenderer.cpp
+  - src/app/workspace/WorkspaceInteraction.cpp
+  - src/libfluidcore/tests/GraphTopologyTest.cpp
+acceptance_checks:
+  - Drawing an ink stroke connecting two cards (or pressing connector tool) creates a live `GraphEdge` in `libfluidcore`.
+  - Moving either card dynamically updates and reroutes the cubic Bezier spline with continuous tangent continuity.
+  - Tapping connector line highlights both connected nodes; right-clicking allows connector deletion.
+  - Connector creation & mutation are fully reversible via `UndoStack`.
+  - All tests in `GraphTopologyTest` pass with 100% assertions.
+constraints:
+  - GraphTopology and edge routing logic must remain pure C++20 with zero GTK dependencies (ADR-0001).

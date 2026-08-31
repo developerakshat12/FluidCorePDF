@@ -26,9 +26,12 @@ libfluidcore/
 │   ├── ProjectStore.h/.cpp       # SQLite WAL project bundle manager (.ltproj)
 │   ├── AnnotationStore.h/.cpp    # High-level stroke and annotation persistence
 │   └── XoppDocument.h/.cpp       # Clean-room .xopp XML/gzip reader and writer
-├── search/                   # Squeeze planning algorithms
-│   ├── AnchorSqueezePlanner.h/.cpp # Multi-anchor interval union & context padding
-│   └── SearchSqueezePlanner.h/.cpp # Search hit interval expansion & page folding
+├── search/                   # Search and squeeze planning algorithms
+│   ├── WorkspaceSearchEngine.h/.cpp # In-memory text, title, and tag search (#tag, tag:xyz)
+│   ├── AnchorSqueezePlanner.h/.cpp  # Multi-anchor interval union & context padding
+│   └── SearchSqueezePlanner.h/.cpp  # Search hit interval expansion & page folding
+├── export/                   # Synthesis export engines
+│   └── WorkspaceExportEngine.h/.cpp # Pure C++20 Markdown outline & Mermaid graph serializer
 ├── text/                     # Text selection domain logic
 │   └── TextSelection.h/.cpp      # Glyph layout intervals, line strip coalescing
 ├── undo/                     # Transactional undo/redo subsystem
@@ -48,7 +51,9 @@ libfluidcore/
     ├── SqueezeEngineTest.cpp
     ├── SqueezeRenderTest.cpp
     ├── TextSelectionTest.cpp
-    └── UndoStackTest.cpp
+    ├── UndoStackTest.cpp
+    ├── WorkspaceExportEngineTest.cpp
+    └── WorkspaceSearchEngineTest.cpp
 ```
 
 Rules: every module ships with headless unit tests; perf-gated paths (squeeze, spatial index, rendering math) require benchmark validation.

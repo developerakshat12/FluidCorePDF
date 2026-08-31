@@ -24,7 +24,7 @@ Start at **[CLAUDE.md](CLAUDE.md)** — it routes every task to the right worksp
 Machine-readable state: [project.yaml](project.yaml) · [planning/roadmap.yaml](planning/roadmap.yaml) · [planning/backlog.yaml](planning/backlog.yaml)
 
 ## Status
-Pre-alpha — Milestones M0–M3 complete (Reader core, Squeeze engine, Infinite workspace & excerpts, Bi-directional anchors); M4 (Links, Stacks & Search) in progress. See [planning/ROADMAP.md](planning/ROADMAP.md).
+Pre-alpha — Milestones M0–M4 complete (Reader core, Squeeze engine, Infinite workspace & excerpts, Bi-directional anchors, Links, Stacks, Search & Export); M5 (Hardening) in progress. See [planning/ROADMAP.md](planning/ROADMAP.md).
 
 ## License
 GPL-2.0-or-later (inherited from Xournal++); `libfluidcore` relicensing tracked in [GOVERNANCE.md §3](GOVERNANCE.md). Contributions: see [CONTRIBUTING.md](CONTRIBUTING.md).

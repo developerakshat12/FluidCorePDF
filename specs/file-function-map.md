@@ -60,7 +60,7 @@ graph TD
 
 ### 2.1 Decoupled Core Engine (`src/libfluidcore/`)
 
-> Current status: Milestones M0–M3 complete, M4 (Links, Stacks & Search) in progress.
+> Current status: Milestones M0–M4 complete (Reader core, Squeeze engine, Infinite workspace, Bi-directional anchors, Links, Stacks, Search & Export); M5 (Hardening) in progress.
 > All engine modules are pure C++20 with zero GUI/Cairo/GTK dependencies (ADR-0001) and ship with headless CTest test suites.
 
 | File / Path | Key Symbols & Classes | Primary Responsibilities & Connectivity |
@@ -78,6 +78,8 @@ graph TD
 | `libfluidcore/squeeze/SqueezeEngine.h/.cpp` | `class SqueezeEngine` | Evaluates the continuous piecewise deformation function $\mathcal{T}(Y_{doc})$ to map document coordinates to screen coordinates with multi-segment compression and layered folds. |
 | `libfluidcore/graph/GraphTopology.h/.cpp` | `class GraphTopology` | Maintains the bi-directional relational multigraph $G=(V, E)$ between excerpt cards, notes, and document source anchors. |
 | `libfluidcore/graph/GraphEdge.h` | `struct GraphEdge`, `enum EdgeDirection` | Directed relational link edge representation connecting source and target nodes with cubic Bezier control points. |
+| `libfluidcore/search/WorkspaceSearchEngine.h/.cpp` | `class WorkspaceSearchEngine`, `struct WorkspaceMatch` | In-memory full-text, stack title, explicit tag, and inline hashtag (`#tag`, `tag:xyz`) search engine resolving world coordinates and root card IDs for canvas find. |
+| `libfluidcore/export/WorkspaceExportEngine.h/.cpp` | `class WorkspaceExportEngine`, `struct MarkdownExportOptions` | Pure C++20 serializer converting card stacks into Markdown headings, excerpts into blockquotes with citations, free notes, and relational graph links into Mermaid flowcharts. |
 | `libfluidcore/search/AnchorSqueezePlanner.h/.cpp` | `class AnchorSqueezePlanner` | Computes interval unions with context padding around active workspace anchor points for automated document unfolding. |
 | `libfluidcore/search/SearchSqueezePlanner.h/.cpp` | `class SearchSqueezePlanner` | Computes uncollapsed search hit intervals with context margin expansion for search-driven squeeze modes. |
 | `libfluidcore/text/TextSelection.h/.cpp` | `struct SelectionRect`, `struct PageTextSelection`, `class TextSelection` | Pure C++20 domain model and algorithms for text selection bounding boxes, multi-line glyph coalescing into continuous line strips, multi-page selection intervals, and clipboard formatting. |
@@ -92,21 +94,23 @@ graph TD
 
 ---
 
-### 2.2 Desktop Frontend Viewports & Widgets (`src/app/document/` & `src/app/workspace/`)
+### 2.2 Desktop Frontend Viewports & Widgets (`src/app/document/`, `src/app/export/`, & `src/app/workspace/`)
 
 | File / Path | Key Symbols & Classes | Primary Responsibilities & Connectivity |
 |---|---|---|
-| `src/app/main.cpp` | `main()` | Application entry point. Instantiates `GtkPaned` dual-viewport layout hosting `DocumentPane` (left) and `WorkspaceView` (right). |
+| `src/app/main.cpp` | `main()` | Application entry point. Instantiates `GtkPaned` dual-viewport layout hosting `DocumentPane` (left) and `WorkspaceView` (right), and wires global accelerators (`Ctrl+E` for Export). |
 | `src/app/document/DocumentPane.h/.cpp` | `class DocumentPane` | Standalone left-pane document viewport: `GtkScrolledWindow` hosting Poppler PDF drawing area, `SearchBarWidget`, and interactive `InkOverlay`. Hosts `UndoStack` and `PageTileCache`. Auto-loads/saves `.xopp` companion files. |
 | `src/app/document/DamageRect.h` | `class DamageRect` | Pure C++20 geometry helper calculating pixel-rounded damage bounding boxes for point clicks, stroke segments, and cubic Bezier convex hulls during vector inking. |
 | `src/app/document/InkOverlay.h/.cpp` | `class InkOverlay` | Transparent `GtkDrawingArea` overlay on `DocumentPane` capturing stylus/pointer input, streaming through `StrokeStabilizer`, rendering live wet leading edge, eraser hit-testing, marquee crop selection, and text selection highlights. |
 | `src/app/document/ReturnAnchorPill.h/.cpp` | `class ReturnAnchorPill`, `struct ReturnAnchorPillGeometry` | Interactive floating viewport overlay component in `DocumentPane` rendering dark glassmorphic capsule with return icon `↶`, excerpt badge, close button `✕`, and return navigation dispatch. |
-| `src/app/document/SearchBarWidget.h/.cpp` | `class SearchBarWidget` | Search query entry widget with real-time match counters, navigation buttons, and integration with `DocumentSearchService`. |
+| `src/app/document/SearchBarWidget.h/.cpp` | `class SearchBarWidget` | Search query entry widget with real-time match counters, navigation buttons, dual-scope document vs canvas selector (`Doc`, `Canvas`, `All`), and integration with `DocumentSearchService` / `WorkspaceSearchEngine`. |
 | `src/app/document/SqueezeRenderHelper.h/.cpp` | `class SqueezeRenderHelper` | Cairo rendering helper for squeeze margin bands, fold lines, and deformation grid overlays. |
-| `src/app/workspace/WorkspaceView.h/.cpp` | `class WorkspaceView` | Slim GTK3 drawing area coordinator owning `WorkspaceState`, routing input signals to `WorkspaceInteraction`, delegating draw passes to `WorkspaceRenderer`, and managing GLib animation timers. |
-| `src/app/workspace/WorkspaceRenderer.h/.cpp` | `class WorkspaceRenderer` | Pure Cairo rendering passes for infinite canvas: background dot grid, cards, collapsible stacks, Bezier graph links, snapping guides, ghost merge preview, active ink strokes, and minimap HUD. |
-| `src/app/workspace/WorkspaceInteraction.h/.cpp` | `class WorkspaceInteraction` | Hit-testing routines (nodes, child stack items, Bezier splines, minimap), context menus, stack rename dialogs, and GTK drag-and-drop excerpt ingestion. |
-| `src/app/workspace/WorkspaceState.h` | `struct WorkspaceState`, `struct ViewportTransform`, `struct DragSnapState`, `struct InkingState` | Authoritative state container decoupling viewport matrix, in-progress drag/snapping/ghost bounds, stroke stabilization, selection, and animations. |
+| `src/app/export/ExportDialog.h/.cpp` | `class ExportDialog` | Multi-format export dialog (`.pdf` flattened vector, `.md` synthesis outline) with page-range and annotation filters. |
+| `src/app/export/ExportProgressDialog.h/.cpp` | `class ExportProgressDialog` | Modal background task progress dialog displaying percentage bar and cancel controls for asynchronous PDF exports. |
+| `src/app/workspace/WorkspaceView.h/.cpp` | `class WorkspaceView` | Slim GTK3 drawing area coordinator owning `WorkspaceState`, routing input signals to `WorkspaceInteraction`, delegating draw passes to `WorkspaceRenderer`, and managing GLib animation timers & popover stack rename. |
+| `src/app/workspace/WorkspaceRenderer.h/.cpp` | `class WorkspaceRenderer` | Pure Cairo rendering passes for infinite canvas: background dot grid, cards, collapsible stacks, Bezier graph links, snapping guides, ghost merge preview, active ink strokes, search highlight halos, and minimap HUD. |
+| `src/app/workspace/WorkspaceInteraction.h/.cpp` | `class WorkspaceInteraction` | Hit-testing routines (nodes, child stack items, Bezier splines, minimap), context menus, popover rename routing, and GTK drag-and-drop excerpt ingestion. |
+| `src/app/workspace/WorkspaceState.h` | `struct WorkspaceState`, `struct ViewportTransform`, `struct DragSnapState`, `struct InkingState` | Authoritative state container decoupling viewport matrix, in-progress drag/snapping/ghost bounds, stroke stabilization, search results, selection, and animations. |
 
 ---
 
@@ -115,6 +119,7 @@ graph TD
 | File / Path | Key Symbols & Classes | Primary Responsibilities & Connectivity |
 |---|---|---|
 | `src/app/services/DocumentSearchService.h/.cpp` | `class DocumentSearchService` | Background thread document search worker with match caching and regex/case-insensitive scanning. |
+| `src/app/services/PdfExportService.h/.cpp` | `class PdfExportService`, `struct PdfExportOptions`, `class ExportWorkerHandle` | High-performance asynchronous background PDF export service with snapshot cloning, worker thread isolation, progress callbacks, and atomic temp-file swap. |
 | `src/app/services/ExcerptTileCache.h/.cpp` | `class ExcerptTileCache`, `struct CropCacheKey`, `class CairoSurfaceHandle` | 128 MB byte-bounded LRU surface cache rasterizing cropped high-DPI PDF document excerpts across discrete LoD zoom tiers using `GThreadPool` background workers. |
 | `src/app/services/PageTileCache.h/.cpp` | `class PageTileCache`, `class CairoSurfaceHandle` | Byte-bounded LRU page raster cache (default 256 MB budget) with RAII refcounted surface handles and visible-page pinning for smooth continuous scrolling. |
 | `src/app/services/PdfDocumentService.h/.cpp` | `class PdfDocumentService` | Multi-document resolution and concurrency isolation service managing RAII Poppler handles with dedicated worker synchronization. |
