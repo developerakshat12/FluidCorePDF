@@ -704,12 +704,7 @@ void serializeNodeRecursive(sqlite3* db, const std::string& projectId, const Wor
                            static_cast<sqlite3_int64>(
                                card->creationTimestamp() ? card->creationTimestamp() : now));
         sqlite3_bind_int64(insertNodeStmt.get(), 14, static_cast<sqlite3_int64>(now));
-        int rc = insertNodeStmt.execute();
-        if (rc != SQLITE_DONE) {
-            std::cout << "      [serializeNode] ExcerptCardNode insertNodeStmt failed: "
-                      << sqlite3_errmsg(db) << " (rc=" << rc << ")\n"
-                      << std::flush;
-        }
+        insertNodeStmt.execute();
 
         // Source Anchor
         insertAnchorStmt.reset();
@@ -732,12 +727,7 @@ void serializeNodeRecursive(sqlite3* db, const std::string& projectId, const Wor
             sqlite3_bind_null(insertAnchorStmt.get(), 9);
         }
         sqlite3_bind_null(insertAnchorStmt.get(), 10);
-        int arc = insertAnchorStmt.execute();
-        if (arc != SQLITE_DONE) {
-            std::cout << "      [serializeNode] insertAnchorStmt failed: " << sqlite3_errmsg(db)
-                      << " (rc=" << arc << ")\n"
-                      << std::flush;
-        }
+        insertAnchorStmt.execute();
 
         // Tags
         for (const std::string& tag : card->tags()) {
@@ -791,12 +781,7 @@ void serializeNodeRecursive(sqlite3* db, const std::string& projectId, const Wor
         sqlite3_bind_int64(insertNodeStmt.get(), 12, 4294967295ULL);
         sqlite3_bind_int64(insertNodeStmt.get(), 13, static_cast<sqlite3_int64>(now));
         sqlite3_bind_int64(insertNodeStmt.get(), 14, static_cast<sqlite3_int64>(now));
-        int rc = insertNodeStmt.execute();
-        if (rc != SQLITE_DONE) {
-            std::cout << "      [serializeNode] STACK_HEADER insertNodeStmt failed: "
-                      << sqlite3_errmsg(db) << " (rc=" << rc << ")\n"
-                      << std::flush;
-        }
+        insertNodeStmt.execute();
 
         // Stack Tags
         for (const std::string& tag : stack->tags()) {
@@ -853,12 +838,7 @@ void serializeNodeRecursive(sqlite3* db, const std::string& projectId, const Wor
         sqlite3_bind_int64(insertNodeStmt.get(), 12, 4294967295ULL);
         sqlite3_bind_int64(insertNodeStmt.get(), 13, static_cast<sqlite3_int64>(now));
         sqlite3_bind_int64(insertNodeStmt.get(), 14, static_cast<sqlite3_int64>(now));
-        int rc = insertNodeStmt.execute();
-        if (rc != SQLITE_DONE) {
-            std::cout << "      [serializeNode] STICKY_NOTE insertNodeStmt failed: "
-                      << sqlite3_errmsg(db) << " (rc=" << rc << ")\n"
-                      << std::flush;
-        }
+        insertNodeStmt.execute();
     }
 }
 
