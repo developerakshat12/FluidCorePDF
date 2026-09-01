@@ -604,10 +604,18 @@ std::vector<DocumentRecord> ProjectStore::listDocuments() const {
     sqlite3_bind_text(stmt.get(), 1, m_metadata.projectId.c_str(), -1, SQLITE_STATIC);
     while (stmt.step()) {
         DocumentRecord rec;
-        rec.docId = reinterpret_cast<const char*>(sqlite3_column_text(stmt.get(), 0));
-        rec.filename = reinterpret_cast<const char*>(sqlite3_column_text(stmt.get(), 1));
-        rec.relativePath = reinterpret_cast<const char*>(sqlite3_column_text(stmt.get(), 2));
-        rec.sha256 = reinterpret_cast<const char*>(sqlite3_column_text(stmt.get(), 3));
+        const char* dId = reinterpret_cast<const char*>(sqlite3_column_text(stmt.get(), 0));
+        if (dId)
+            rec.docId = dId;
+        const char* fn = reinterpret_cast<const char*>(sqlite3_column_text(stmt.get(), 1));
+        if (fn)
+            rec.filename = fn;
+        const char* rp = reinterpret_cast<const char*>(sqlite3_column_text(stmt.get(), 2));
+        if (rp)
+            rec.relativePath = rp;
+        const char* sha = reinterpret_cast<const char*>(sqlite3_column_text(stmt.get(), 3));
+        if (sha)
+            rec.sha256 = sha;
         rec.pageCount = static_cast<size_t>(sqlite3_column_int64(stmt.get(), 4));
         rec.fileSizeBytes = static_cast<size_t>(sqlite3_column_int64(stmt.get(), 5));
         rec.createdAt = static_cast<uint64_t>(sqlite3_column_int64(stmt.get(), 6));
@@ -629,10 +637,18 @@ std::optional<DocumentRecord> ProjectStore::getDocument(const std::string& docId
     sqlite3_bind_text(stmt.get(), 1, docId.c_str(), -1, SQLITE_STATIC);
     if (stmt.step()) {
         DocumentRecord rec;
-        rec.docId = reinterpret_cast<const char*>(sqlite3_column_text(stmt.get(), 0));
-        rec.filename = reinterpret_cast<const char*>(sqlite3_column_text(stmt.get(), 1));
-        rec.relativePath = reinterpret_cast<const char*>(sqlite3_column_text(stmt.get(), 2));
-        rec.sha256 = reinterpret_cast<const char*>(sqlite3_column_text(stmt.get(), 3));
+        const char* dId = reinterpret_cast<const char*>(sqlite3_column_text(stmt.get(), 0));
+        if (dId)
+            rec.docId = dId;
+        const char* fn = reinterpret_cast<const char*>(sqlite3_column_text(stmt.get(), 1));
+        if (fn)
+            rec.filename = fn;
+        const char* rp = reinterpret_cast<const char*>(sqlite3_column_text(stmt.get(), 2));
+        if (rp)
+            rec.relativePath = rp;
+        const char* sha = reinterpret_cast<const char*>(sqlite3_column_text(stmt.get(), 3));
+        if (sha)
+            rec.sha256 = sha;
         rec.pageCount = static_cast<size_t>(sqlite3_column_int64(stmt.get(), 4));
         rec.fileSizeBytes = static_cast<size_t>(sqlite3_column_int64(stmt.get(), 5));
         rec.createdAt = static_cast<uint64_t>(sqlite3_column_int64(stmt.get(), 6));
@@ -969,11 +985,13 @@ bool ProjectStore::rehydrate(WorkspaceModel& outModel, GraphTopology& outGraph,
         "SELECT et.entity_id, t.tag_name FROM entity_tags et JOIN tags t ON et.tag_id = t.tag_id;");
     if (tagStmt.isValid()) {
         while (tagStmt.step()) {
-            std::string entityId =
-                reinterpret_cast<const char*>(sqlite3_column_text(tagStmt.get(), 0));
-            std::string tagName =
-                reinterpret_cast<const char*>(sqlite3_column_text(tagStmt.get(), 1));
-            entityTags[entityId].push_back(tagName);
+            const char* eId = reinterpret_cast<const char*>(sqlite3_column_text(tagStmt.get(), 0));
+            const char* tName = reinterpret_cast<const char*>(sqlite3_column_text(tagStmt.get(), 1));
+            std::string entityId = eId ? eId : "";
+            std::string tagName = tName ? tName : "";
+            if (!entityId.empty() && !tagName.empty()) {
+                entityTags[entityId].push_back(tagName);
+            }
         }
     }
 
@@ -990,10 +1008,12 @@ bool ProjectStore::rehydrate(WorkspaceModel& outModel, GraphTopology& outGraph,
                                      "rect_x1, rect_y1, raw_text_content FROM source_anchors;");
     if (anchorStmt.isValid()) {
         while (anchorStmt.step()) {
-            std::string nodeId =
-                reinterpret_cast<const char*>(sqlite3_column_text(anchorStmt.get(), 0));
+            const char* nId = reinterpret_cast<const char*>(sqlite3_column_text(anchorStmt.get(), 0));
+            std::string nodeId = nId ? nId : "";
             AnchorData ad;
-            ad.docId = reinterpret_cast<const char*>(sqlite3_column_text(anchorStmt.get(), 1));
+            const char* dId = reinterpret_cast<const char*>(sqlite3_column_text(anchorStmt.get(), 1));
+            if (dId)
+                ad.docId = dId;
             ad.pageIndex = static_cast<size_t>(sqlite3_column_int64(anchorStmt.get(), 2));
             ad.normRect.x = sqlite3_column_double(anchorStmt.get(), 3);
             ad.normRect.y = sqlite3_column_double(anchorStmt.get(), 4);
@@ -1003,7 +1023,9 @@ bool ProjectStore::rehydrate(WorkspaceModel& outModel, GraphTopology& outGraph,
                 reinterpret_cast<const char*>(sqlite3_column_text(anchorStmt.get(), 7));
             if (txt)
                 ad.textSnippet = txt;
-            anchors[nodeId] = std::move(ad);
+            if (!nodeId.empty()) {
+                anchors[nodeId] = std::move(ad);
+            }
         }
     }
 
@@ -1028,8 +1050,12 @@ bool ProjectStore::rehydrate(WorkspaceModel& outModel, GraphTopology& outGraph,
     if (nodeStmt.isValid()) {
         while (nodeStmt.step()) {
             NodeRecord nr;
-            nr.nodeId = reinterpret_cast<const char*>(sqlite3_column_text(nodeStmt.get(), 0));
-            nr.nodeType = reinterpret_cast<const char*>(sqlite3_column_text(nodeStmt.get(), 1));
+            const char* nId = reinterpret_cast<const char*>(sqlite3_column_text(nodeStmt.get(), 0));
+            if (nId)
+                nr.nodeId = nId;
+            const char* nt = reinterpret_cast<const char*>(sqlite3_column_text(nodeStmt.get(), 1));
+            if (nt)
+                nr.nodeType = nt;
             nr.bounds.x = sqlite3_column_double(nodeStmt.get(), 2);
             nr.bounds.y = sqlite3_column_double(nodeStmt.get(), 3);
             nr.bounds.w = sqlite3_column_double(nodeStmt.get(), 4);
@@ -1132,11 +1158,17 @@ bool ProjectStore::rehydrate(WorkspaceModel& outModel, GraphTopology& outGraph,
     if (edgeStmt.isValid()) {
         while (edgeStmt.step()) {
             GraphEdge edge;
-            edge.id = reinterpret_cast<const char*>(sqlite3_column_text(edgeStmt.get(), 0));
-            edge.sourceNodeId =
+            const char* eId = reinterpret_cast<const char*>(sqlite3_column_text(edgeStmt.get(), 0));
+            if (eId)
+                edge.id = eId;
+            const char* srcId =
                 reinterpret_cast<const char*>(sqlite3_column_text(edgeStmt.get(), 1));
-            edge.targetNodeId =
+            if (srcId)
+                edge.sourceNodeId = srcId;
+            const char* tgtId =
                 reinterpret_cast<const char*>(sqlite3_column_text(edgeStmt.get(), 2));
+            if (tgtId)
+                edge.targetNodeId = tgtId;
             edge.direction = static_cast<EdgeDirection>(sqlite3_column_int(edgeStmt.get(), 3));
             uint32_t colorU32 = static_cast<uint32_t>(sqlite3_column_int64(edgeStmt.get(), 4));
             edge.color.r = static_cast<unsigned char>((colorU32 >> 24) & 0xFF);
@@ -1168,8 +1200,12 @@ std::vector<SearchResult> ProjectStore::executeSearch(const std::string& query) 
     sqlite3_bind_text(stmt.get(), 1, query.c_str(), -1, SQLITE_STATIC);
     while (stmt.step()) {
         SearchResult sr;
-        sr.entityId = reinterpret_cast<const char*>(sqlite3_column_text(stmt.get(), 0));
-        sr.entityType = reinterpret_cast<const char*>(sqlite3_column_text(stmt.get(), 1));
+        const char* eId = reinterpret_cast<const char*>(sqlite3_column_text(stmt.get(), 0));
+        if (eId)
+            sr.entityId = eId;
+        const char* eType = reinterpret_cast<const char*>(sqlite3_column_text(stmt.get(), 1));
+        if (eType)
+            sr.entityType = eType;
         if (sqlite3_column_type(stmt.get(), 2) != SQLITE_NULL) {
             sr.pageIndex = sqlite3_column_int(stmt.get(), 2);
         } else {
