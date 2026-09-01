@@ -993,12 +993,15 @@ bool ProjectStore::saveProject(const WorkspaceModel& model, const GraphTopology&
     }
 
     if (sqlite3_exec(m_db, "COMMIT;", nullptr, nullptr, &errMsg) != SQLITE_OK) {
+        std::cout << "    [saveProject] COMMIT failed: " << (errMsg ? errMsg : "unknown") << "\n"
+                  << std::flush;
         if (error)
             *error = (errMsg ? std::string(errMsg) : "Failed to commit transaction");
         if (errMsg)
             sqlite3_free(errMsg);
         return false;
     }
+    std::cout << "    [saveProject] COMMIT succeeded\n" << std::flush;
 
     // Write atomic metadata.json
     writeMetadataJson(nullptr);
@@ -1008,9 +1011,20 @@ bool ProjectStore::saveProject(const WorkspaceModel& model, const GraphTopology&
 bool ProjectStore::rehydrate(WorkspaceModel& outModel, GraphTopology& outGraph,
                              std::vector<DocumentRecord>& outDocs, std::string* error) const {
     if (!m_db) {
+        std::cout << "    [rehydrate] m_db is null!\n" << std::flush;
         if (error)
             *error = "Database not open";
         return false;
+    }
+
+    // Diagnostic: count rows in workspace_nodes
+    SqliteStatement countStmt(m_db, "SELECT count(*) FROM workspace_nodes;");
+    if (countStmt.isValid() && countStmt.step()) {
+        int count = sqlite3_column_int(countStmt.get(), 0);
+        std::cout << "    [rehydrate] SELECT count(*) FROM workspace_nodes = " << count << "\n"
+                  << std::flush;
+    } else {
+        std::cout << "    [rehydrate] countStmt failed to step or invalid!\n" << std::flush;
     }
 
     // 1. Documents
