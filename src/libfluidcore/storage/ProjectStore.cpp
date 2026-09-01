@@ -986,7 +986,8 @@ bool ProjectStore::rehydrate(WorkspaceModel& outModel, GraphTopology& outGraph,
     if (tagStmt.isValid()) {
         while (tagStmt.step()) {
             const char* eId = reinterpret_cast<const char*>(sqlite3_column_text(tagStmt.get(), 0));
-            const char* tName = reinterpret_cast<const char*>(sqlite3_column_text(tagStmt.get(), 1));
+            const char* tName =
+                reinterpret_cast<const char*>(sqlite3_column_text(tagStmt.get(), 1));
             std::string entityId = eId ? eId : "";
             std::string tagName = tName ? tName : "";
             if (!entityId.empty() && !tagName.empty()) {
@@ -1008,10 +1009,12 @@ bool ProjectStore::rehydrate(WorkspaceModel& outModel, GraphTopology& outGraph,
                                      "rect_x1, rect_y1, raw_text_content FROM source_anchors;");
     if (anchorStmt.isValid()) {
         while (anchorStmt.step()) {
-            const char* nId = reinterpret_cast<const char*>(sqlite3_column_text(anchorStmt.get(), 0));
+            const char* nId =
+                reinterpret_cast<const char*>(sqlite3_column_text(anchorStmt.get(), 0));
             std::string nodeId = nId ? nId : "";
             AnchorData ad;
-            const char* dId = reinterpret_cast<const char*>(sqlite3_column_text(anchorStmt.get(), 1));
+            const char* dId =
+                reinterpret_cast<const char*>(sqlite3_column_text(anchorStmt.get(), 1));
             if (dId)
                 ad.docId = dId;
             ad.pageIndex = static_cast<size_t>(sqlite3_column_int64(anchorStmt.get(), 2));
