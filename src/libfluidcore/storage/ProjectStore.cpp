@@ -37,7 +37,13 @@ class SqliteStatement {
   public:
     SqliteStatement(sqlite3* db, const std::string& sql) {
         if (db) {
-            sqlite3_prepare_v2(db, sql.c_str(), static_cast<int>(sql.size()), &m_stmt, nullptr);
+            int rc = sqlite3_prepare_v2(db, sql.c_str(), static_cast<int>(sql.size()), &m_stmt,
+                                        nullptr);
+            if (rc != SQLITE_OK) {
+                std::cout << "      [SqliteStatement] prepare failed: " << sqlite3_errmsg(db)
+                          << " for SQL: " << sql << "\n"
+                          << std::flush;
+            }
         }
     }
 
