@@ -7,11 +7,13 @@
 namespace FluidCore {
 
 CardStackNode::CardStackNode(std::string id, Rectangle bounds, std::string title, bool isCollapsed)
-    : m_id(std::move(id)), m_title(std::move(title)), m_isCollapsed(isCollapsed), m_bounds(bounds) {
-    if (!m_title.empty()) {
+    : m_id(std::move(id)), m_isCollapsed(isCollapsed), m_bounds(bounds) {
+    if (!title.empty()) {
+        m_title = std::move(title);
         m_customTitle = true;
     } else {
         m_title = "Topic Stack";
+        m_customTitle = false;
     }
 }
 

@@ -168,8 +168,15 @@ void testNodeAndGraphRehydration() {
     assert(loadedDocs.size() == 1);
     assert(loadedDocs[0].docId == "doc-1");
 
-    std::cout << "  Checking loadedModel nodeCount...\n" << std::flush;
+    std::cout << "  Checking loadedModel nodeCount = " << loadedModel.nodeCount() << "\n"
+              << std::flush;
+    for (const auto& nid : loadedModel.allNodeIds()) {
+        auto* n = loadedModel.find(nid);
+        std::cout << "    Found node: " << nid << ", ptr=" << static_cast<void*>(n) << "\n"
+                  << std::flush;
+    }
     assert(loadedModel.nodeCount() == 3);
+
     std::cout << "  Checking card-1...\n" << std::flush;
     auto* loadedCard1 = dynamic_cast<ExcerptCardNode*>(loadedModel.find("card-1"));
     assert(loadedCard1 != nullptr);
@@ -184,12 +191,14 @@ void testNodeAndGraphRehydration() {
 
     std::cout << "  Checking stack-1...\n" << std::flush;
     auto* loadedStack = dynamic_cast<CardStackNode*>(loadedModel.find("stack-1"));
+    std::cout << "  loadedStack ptr = " << static_cast<void*>(loadedStack) << "\n" << std::flush;
     assert(loadedStack != nullptr);
     assert(loadedStack->title() == "Quantum Stack");
     assert(loadedStack->childCount() == 1);
     assert(loadedStack->hasTag("summary"));
 
     std::cout << "  Checking card-3...\n" << std::flush;
+    assert(loadedStack != nullptr);
     auto* loadedChild = dynamic_cast<ExcerptCardNode*>(loadedStack->findChild("card-3"));
     assert(loadedChild != nullptr);
     assert(loadedChild->textSnippet() == "Lattice depth modulation snippet");

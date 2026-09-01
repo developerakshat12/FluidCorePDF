@@ -1147,7 +1147,8 @@ bool ProjectStore::rehydrate(WorkspaceModel& outModel, GraphTopology& outGraph,
     // Insert only root nodes into outModel
     for (const auto& nr : allNodes) {
         if (nr.parentStackId.empty()) {
-            auto nodePtr = instantiateNode(instantiateNode, nr.nodeId);
+            std::string rootId = nr.nodeId;
+            auto nodePtr = instantiateNode(instantiateNode, rootId);
             if (nodePtr) {
                 outModel.insert(std::move(nodePtr));
             }
