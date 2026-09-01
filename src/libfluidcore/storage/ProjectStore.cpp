@@ -699,7 +699,12 @@ void serializeNodeRecursive(sqlite3* db, const std::string& projectId, const Wor
                            static_cast<sqlite3_int64>(
                                card->creationTimestamp() ? card->creationTimestamp() : now));
         sqlite3_bind_int64(insertNodeStmt.get(), 14, static_cast<sqlite3_int64>(now));
-        insertNodeStmt.execute();
+        int rc = insertNodeStmt.execute();
+        if (rc != SQLITE_DONE) {
+            std::cout << "      [serializeNode] ExcerptCardNode insertNodeStmt failed: "
+                      << sqlite3_errmsg(db) << " (rc=" << rc << ")\n"
+                      << std::flush;
+        }
 
         // Source Anchor
         insertAnchorStmt.reset();
@@ -722,7 +727,12 @@ void serializeNodeRecursive(sqlite3* db, const std::string& projectId, const Wor
             sqlite3_bind_null(insertAnchorStmt.get(), 9);
         }
         sqlite3_bind_null(insertAnchorStmt.get(), 10);
-        insertAnchorStmt.execute();
+        int arc = insertAnchorStmt.execute();
+        if (arc != SQLITE_DONE) {
+            std::cout << "      [serializeNode] insertAnchorStmt failed: " << sqlite3_errmsg(db)
+                      << " (rc=" << arc << ")\n"
+                      << std::flush;
+        }
 
         // Tags
         for (const std::string& tag : card->tags()) {
@@ -776,7 +786,12 @@ void serializeNodeRecursive(sqlite3* db, const std::string& projectId, const Wor
         sqlite3_bind_int64(insertNodeStmt.get(), 12, 4294967295ULL);
         sqlite3_bind_int64(insertNodeStmt.get(), 13, static_cast<sqlite3_int64>(now));
         sqlite3_bind_int64(insertNodeStmt.get(), 14, static_cast<sqlite3_int64>(now));
-        insertNodeStmt.execute();
+        int rc = insertNodeStmt.execute();
+        if (rc != SQLITE_DONE) {
+            std::cout << "      [serializeNode] STACK_HEADER insertNodeStmt failed: "
+                      << sqlite3_errmsg(db) << " (rc=" << rc << ")\n"
+                      << std::flush;
+        }
 
         // Stack Tags
         for (const std::string& tag : stack->tags()) {
@@ -833,7 +848,12 @@ void serializeNodeRecursive(sqlite3* db, const std::string& projectId, const Wor
         sqlite3_bind_int64(insertNodeStmt.get(), 12, 4294967295ULL);
         sqlite3_bind_int64(insertNodeStmt.get(), 13, static_cast<sqlite3_int64>(now));
         sqlite3_bind_int64(insertNodeStmt.get(), 14, static_cast<sqlite3_int64>(now));
-        insertNodeStmt.execute();
+        int rc = insertNodeStmt.execute();
+        if (rc != SQLITE_DONE) {
+            std::cout << "      [serializeNode] STICKY_NOTE insertNodeStmt failed: "
+                      << sqlite3_errmsg(db) << " (rc=" << rc << ")\n"
+                      << std::flush;
+        }
     }
 }
 
@@ -905,8 +925,14 @@ bool ProjectStore::saveProject(const WorkspaceModel& model, const GraphTopology&
 
     // Serialize top-level nodes and their hierarchy
     int rootZ = 1;
+    std::cout << "    [saveProject] model.allNodeIds().size() = " << model.allNodeIds().size()
+              << ", projectId = " << m_metadata.projectId << "\n"
+              << std::flush;
     for (const std::string& nodeId : model.allNodeIds()) {
         const WorkspaceNode* node = model.find(nodeId);
+        std::cout << "      [saveProject] node: " << nodeId << ", ptr: " << static_cast<const void*>(node)
+                  << "\n"
+                  << std::flush;
         if (node) {
             serializeNodeRecursive(m_db, m_metadata.projectId, node, "", rootZ++, insertNodeStmt,
                                    insertAnchorStmt, insertTagStmt, insertEntityTagStmt,
@@ -1143,6 +1169,13 @@ bool ProjectStore::rehydrate(WorkspaceModel& outModel, GraphTopology& outGraph,
             return card;
         }
     };
+
+    std::cout << "    [rehydrate] total allNodes = " << allNodes.size() << "\n" << std::flush;
+    for (const auto& nr : allNodes) {
+        std::cout << "      node: " << nr.nodeId << ", type: " << nr.nodeType
+                  << ", parent: " << nr.parentStackId << "\n"
+                  << std::flush;
+    }
 
     // Insert only root nodes into outModel
     for (const auto& nr : allNodes) {
