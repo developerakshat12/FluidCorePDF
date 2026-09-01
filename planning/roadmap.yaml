@@ -1,7 +1,7 @@
 # Machine-readable milestone state. Update alongside planning/ROADMAP.md.
 # status values: pending | in_progress | demo_gate_pending | complete
 project: fluidcore-platform
-updated: 2026-08-31
+updated: 2026-09-01
 
 milestones:
   - id: M0
@@ -51,6 +51,7 @@ milestones:
       - unified inking & real-time continuous eraser across panes       # complete: InkOverlay & WorkspaceView pen/highlighter/eraser tool switching w/ P/H/E/S hotkeys, live stabilizer curve rendering, real-time spatial hit erasure, and undo/redo
       - ExcerptCardNode live re-render                                  # complete: PdfDocumentService multi-document handle isolation and thread-safe Poppler lifecycle, ExcerptTileCache 128 MB byte-bounded LRU tile cache with discrete 0.5x-8.0x LoD tiers clamped to 1536px, asynchronous GThreadPool rasterization with generational cancellation, WorkspaceView 150ms zoom-settling debounce and high-DPI bilinear crop rendering, InkOverlay visual crop tool mode with marquee drag-and-drop, and ExcerptTileCacheTest (TASK-3.4)
       - bi-directional anchors + ReturnAnchorPill                       # complete: WorkspaceView [ ↗ Anchor ] hit-testing, SqueezeEngine auto-expansion, docYToScreen zoom contract, Cairo luminous pulse highlight with cancel-and-replace decay timer, floating glassmorphic ReturnAnchorPill overlay, smooth cubic ease-out camera gliding (glideToWorldCoord), active card focus aura, and 19/19 passing CTest suites (TASK-3.3)
+      - workspace undo/redo & top toolbar                               # complete: ToolManager central dispatch, TopToolbarWidget floating glassmorphic pill with tool switching/undo/redo/zoom/minimap/search/export, UndoStack macro transactions (beginMacro/endMacro/abortMacro), CreateInkLinkCommand, RemoveEdgeCommand, strict pane-isolated undo routing, Esc key pointer reset
 
   - id: M4
     name: links-stacks-search

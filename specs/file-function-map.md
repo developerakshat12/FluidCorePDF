@@ -9,8 +9,14 @@ This document provides a comprehensive map of the FluidCore platform codebase, d
 ```mermaid
 graph TD
     subgraph Frontend Application Shell (src/app/)
-        MAIN["src/app/main.cpp"] --> DOC_PANE["src/app/document/DocumentPane.cpp"]
+        MAIN["src/app/main.cpp"] --> TOP_TOOLBAR["src/app/workspace/TopToolbarWidget.cpp"]
+        MAIN --> TOOL_MGR["src/app/services/ToolManager.cpp"]
+        MAIN --> DOC_PANE["src/app/document/DocumentPane.cpp"]
         MAIN --> WS_VIEW["src/app/workspace/WorkspaceView.cpp"]
+        
+        TOP_TOOLBAR --> TOOL_MGR
+        DOC_PANE --> TOOL_MGR
+        WS_VIEW --> TOOL_MGR
         
         DOC_PANE --> INK_OVL["src/app/document/InkOverlay.cpp"]
         DOC_PANE --> SEARCH_BAR["src/app/document/SearchBarWidget.cpp"]
@@ -87,10 +93,10 @@ graph TD
 | `libfluidcore/storage/AnnotationStore.h/.cpp` | `struct Stroke`, `class AnnotationStore` | Thin C++20 persistence wrapper around `XoppDocument` mapping FluidCore workspace strokes ↔ XoppPage strokes. Auto-resolves companion `<file>.xopp` files. |
 | `libfluidcore/storage/XoppDocument.h/.cpp` | `structs XoppPoint / XoppStroke / XoppLayer / XoppPage`, `class XoppDocument` | Clean-room C++20 model of pages/layers/strokes plus reader/writer over gzipped `<xournal>` XML using zlib (`parse()`, `load()`, `save()`). |
 | `libfluidcore/undo/Command.h` | `class Command`, `class CompoundCommand` | Pure C++20 transactional command interfaces for undo/redo state mutations with automatic rollback on failure. |
-| `libfluidcore/undo/UndoStack.h/.cpp` | `class UndoStack` | Bounded-capacity Undo/Redo manager (default 100 depth, 64MB memory budget guard) with FIFO trimming and UI notification callbacks. |
+| `libfluidcore/undo/UndoStack.h/.cpp` | `class UndoStack` | Bounded-capacity Undo/Redo manager (default 100 depth, 64MB memory budget guard) with FIFO trimming, macro transaction lifecycle (`beginMacro`, `endMacro`, `abortMacro`), empty macro discard, and UI notification callbacks. |
 | `libfluidcore/undo/AnnotationCommands.h/.cpp` | `class AddStrokeCommand`, `class RemoveStrokeCommand`, `class ClearPageStrokesCommand` | Concrete annotation commands mutating `AnnotationStore` pages with preserved stroke IDs and geometry. |
 | `libfluidcore/undo/SqueezeCommands.h/.cpp` | `class SqueezeCommand` | Squeeze state mutation commands for undo/redo integration. |
-| `libfluidcore/undo/WorkspaceCommands.h/.cpp` | `class MoveNodeCommand`, `class InsertNodeCommand`, `class RemoveNodeCommand` | Concrete spatial commands mutating `WorkspaceModel` node positions and scene graph membership. |
+| `libfluidcore/undo/WorkspaceCommands.h/.cpp` | `class MoveNodeCommand`, `class InsertNodeCommand`, `class RemoveNodeCommand`, `class CreateInkLinkCommand`, `class RemoveEdgeCommand`, `class StackMergeCommand`, `class ToggleStackCollapseCommand` | Concrete spatial and topological commands mutating `WorkspaceModel` node positions, stack groupings, and `GraphTopology` relational link edges. |
 
 ---
 
@@ -98,7 +104,7 @@ graph TD
 
 | File / Path | Key Symbols & Classes | Primary Responsibilities & Connectivity |
 |---|---|---|
-| `src/app/main.cpp` | `main()` | Application entry point. Instantiates `GtkPaned` dual-viewport layout hosting `DocumentPane` (left) and `WorkspaceView` (right), and wires global accelerators (`Ctrl+E` for Export). |
+| `src/app/main.cpp` | `main()` | Application entry point. Instantiates root `GtkBox` container hosting `TopToolbarWidget` (top center) and `GtkPaned` dual-viewport layout hosting `DocumentPane` (left) and `WorkspaceView` (right); manages `ToolManager` synchronization, global window event routing, and global accelerators (`Ctrl+S`, `Ctrl+Z`, `Ctrl+Shift+Z`/`Ctrl+Y`, `Ctrl+C`, `Ctrl+E`). |
 | `src/app/document/DocumentPane.h/.cpp` | `class DocumentPane` | Standalone left-pane document viewport: `GtkScrolledWindow` hosting Poppler PDF drawing area, `SearchBarWidget`, and interactive `InkOverlay`. Hosts `UndoStack` and `PageTileCache`. Auto-loads/saves `.xopp` companion files. |
 | `src/app/document/DamageRect.h` | `class DamageRect` | Pure C++20 geometry helper calculating pixel-rounded damage bounding boxes for point clicks, stroke segments, and cubic Bezier convex hulls during vector inking. |
 | `src/app/document/InkOverlay.h/.cpp` | `class InkOverlay` | Transparent `GtkDrawingArea` overlay on `DocumentPane` capturing stylus/pointer input, streaming through `StrokeStabilizer`, rendering live wet leading edge, eraser hit-testing, marquee crop selection, and text selection highlights. |
@@ -107,7 +113,9 @@ graph TD
 | `src/app/document/SqueezeRenderHelper.h/.cpp` | `class SqueezeRenderHelper` | Cairo rendering helper for squeeze margin bands, fold lines, and deformation grid overlays. |
 | `src/app/export/ExportDialog.h/.cpp` | `class ExportDialog` | Multi-format export dialog (`.pdf` flattened vector, `.md` synthesis outline) with page-range and annotation filters. |
 | `src/app/export/ExportProgressDialog.h/.cpp` | `class ExportProgressDialog` | Modal background task progress dialog displaying percentage bar and cancel controls for asynchronous PDF exports. |
-| `src/app/workspace/WorkspaceView.h/.cpp` | `class WorkspaceView` | Slim GTK3 drawing area coordinator owning `WorkspaceState`, routing input signals to `WorkspaceInteraction`, delegating draw passes to `WorkspaceRenderer`, and managing GLib animation timers & popover stack rename. |
+| `src/app/services/ToolManager.h/.cpp` | `class ToolManager`, `enum class Tool` | Single-source-of-truth tool management service dispatching active tool mutations across `TopToolbarWidget`, `DocumentPane`, and `WorkspaceView` with bidirectional string helpers. |
+| `src/app/workspace/TopToolbarWidget.h/.cpp` | `class TopToolbarWidget` | Modern top-centered dark glassmorphism floating pill toolbar hosting tool toggles (Select, Pen, Highlighter, Eraser, Crop, Connector), Undo/Redo actions with live sensitivity sync, navigation controls (Zoom In/Out, Reset View, Minimap Toggle), Search, and Export. |
+| `src/app/workspace/WorkspaceView.h/.cpp` | `class WorkspaceView` | Slim GTK3 drawing area coordinator owning `WorkspaceState`, `UndoStack`, routing input signals to `WorkspaceInteraction`, delegating draw passes to `WorkspaceRenderer`, handling transient gesture cancellation (`cancelCurrentInteraction` on `Esc`), and managing GLib animation timers & popover stack rename. |
 | `src/app/workspace/WorkspaceRenderer.h/.cpp` | `class WorkspaceRenderer` | Pure Cairo rendering passes for infinite canvas: background dot grid, cards, collapsible stacks, Bezier graph links, snapping guides, ghost merge preview, active ink strokes, search highlight halos, and minimap HUD. |
 | `src/app/workspace/WorkspaceInteraction.h/.cpp` | `class WorkspaceInteraction` | Hit-testing routines (nodes, child stack items, Bezier splines, minimap), context menus, popover rename routing, and GTK drag-and-drop excerpt ingestion. |
 | `src/app/workspace/WorkspaceState.h` | `struct WorkspaceState`, `struct ViewportTransform`, `struct DragSnapState`, `struct InkingState` | Authoritative state container decoupling viewport matrix, in-progress drag/snapping/ghost bounds, stroke stabilization, search results, selection, and animations. |

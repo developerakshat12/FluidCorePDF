@@ -53,7 +53,7 @@ gantt
 > stripped `fluidcore-integration` branch is step one of whichever future task first compiles
 > or modifies the Xournal++ stack. Until then nothing reads the submodule, so this is a no-op.
 
-### M1 — Reader Core (Weeks 5–14)
+### M1 — Reader Core (Weeks 5–14) — EXITED ✅
 - [x] Poppler-GLib document loading, page thumbnails, continuous scroll *(complete via TASK-2.1, TASK-2.6: continuous DocumentPane + GtkPaned resizable ThumbnailSidebar with Cairo surface caching and ThumbnailLayoutTest; follow-up logged: off-thread worker pool for 200+ page background thumbnail rasterization)*
 - [x] Cairo dirty-rect rendering pipeline with LRU tile cache *(complete via TASK-2.7: 256MB byte-budgeted PageTileCache with RAII CairoSurfaceHandle, visible-page pinning, and GTK3 partial invalidation; zoom/resize handled via explicit cache clear)*
 - [x] `.xopp` companion persistence (`AnnotationStore`) *(complete: XoppDocument + AnnotationStore round-trip, coord mapping, stroke add/remove via TASK-2.4, TASK-2.5)*
@@ -70,7 +70,7 @@ gantt
 - [x] HighlightView Squeeze: un-highlighted passages collapse into continuous montage *(complete: Ctrl+Shift+H accelerator, AnnotationStore stroke extraction, excerpt source interval synchronization)*
 - **Perf gate**: ≥ 30 FPS during interactive squeeze on 1080p, mid-range hardware (i5-8th-gen class). *(gated & verified)*
 
-### M3 — Workspace & Excerpts (Weeks 25–38) — IN PROGRESS 🟡
+### M3 — Workspace & Excerpts (Weeks 25–38) — EXITED ✅
 - [x] Infinite workspace canvas: pan/zoom, R*-tree spatial index, grid/minimap *(complete via TASK-3.1: 2D affine transform matrix [M_view], smooth focal zoom [5% to 1000%], pan gestures, zoom-adaptive infinite dot-grid, interactive minimap HUD with glowing viewport frame, O(log N) viewport culling, and 100k items benchmark with p99 <= 0.05ms << 1.0ms budget)*
 - [x] Drag-out excerpts: text clips, image regions; normalized source bbox capture *(complete via TASK-3.2: ExcerptCardNode pure domain model, binary/string ExcerptPayload serialization, InsertNodeCommand / RemoveNodeCommand undo/redo, InkOverlay drag source with SqueezeEngine document space unprojection, WorkspaceView drag destination, and rich Cairo card rendering with elevated shadow, header badge, return pill, and wrapped text)*
 - [x] Unified inking, highlighting, and real-time continuous eraser across document pane and infinite canvas *(complete: InkOverlay & WorkspaceView pen/highlighter/eraser tool switching w/ P/H/E/S hotkeys, live stabilizer curve rendering, real-time spatial hit erasure, and undo/redo)*

@@ -93,10 +93,9 @@ graph TD
 
 ```mermaid
 graph TB
-    subgraph Top Menubar & Dynamic Toolbars
-        MENUS["Menu Bar: File | Edit | View | Workspace | Tools | Help"]
-        MAIN_BAR["Main Toolbar: Undo, Redo, Save, Export, Split Presets (50-50 / Doc / WS)"]
-        TOOL_BAR["Tool Palette: Pen, Highlighter, Eraser, Select, Text, Link, Sticky"]
+    subgraph Top Menubar & Dynamic Pill Toolbar
+        MENUS["Menu Bar / Accelerators: File | Edit | View | Export | Search"]
+        TOP_TOOLBAR["Top Floating Pill Toolbar: Select, Pen, Highlighter, Eraser, Crop, Connector | Undo, Redo | Zoom, Reset, Minimap | Search, Export"]
     end
 
     subgraph Central Dual-Pane GtkPaned Container
@@ -114,8 +113,8 @@ graph TB
 
     MENUS --> DOC_PANE
     MENUS --> WS_CANVAS
-    TOOL_BAR --> DOC_PANE
-    TOOL_BAR --> WS_CANVAS
+    TOP_TOOLBAR --> DOC_PANE
+    TOP_TOOLBAR --> WS_CANVAS
     DOC_PANE --- SPLITTER --- WS_CANVAS
     SEARCH_SLICES_TAB -->|Click Search Hit| DOC_PANE
 ```

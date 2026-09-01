@@ -24,9 +24,11 @@ app/
 │   ├── PdfDocumentService.h/.cpp    # Thread-safe Poppler document handle lifecycle
 │   ├── PdfExportService.h/.cpp      # Asynchronous Cairo vector PDF flattening worker with atomic swap
 │   ├── StrokeStabilizer.h/.cpp      # Centripetal Catmull-Rom spline filter with deadzone
-│   └── TextSelectionService.h/.cpp  # Reading-order glyph layout extraction & clipboard
-├── workspace/                # Infinite 2D synthesis canvas
-│   ├── WorkspaceView.h/.cpp         # GTK3 drawing area coordinator & input router
+│   ├── TextSelectionService.h/.cpp  # Reading-order glyph layout extraction & clipboard
+│   └── ToolManager.h/.cpp           # Single-source-of-truth tool state synchronization service
+├── workspace/                # Infinite 2D synthesis canvas & toolbar
+│   ├── TopToolbarWidget.h/.cpp      # Floating pill toolbar (tools, undo/redo, zoom, minimap, search, export)
+│   ├── WorkspaceView.h/.cpp         # GTK3 drawing area coordinator, undo routing & input router
 │   ├── WorkspaceRenderer.h/.cpp     # Cairo rendering passes (cards, stacks, Bezier links, minimap)
 │   ├── WorkspaceInteraction.h/.cpp  # Spatial hit-testing, drag-and-drop, context menus
 │   └── WorkspaceState.h             # Authoritative viewport transform and interaction state

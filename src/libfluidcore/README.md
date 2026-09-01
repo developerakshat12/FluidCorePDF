@@ -35,11 +35,11 @@ libfluidcore/
 ├── text/                     # Text selection domain logic
 │   └── TextSelection.h/.cpp      # Glyph layout intervals, line strip coalescing
 ├── undo/                     # Transactional undo/redo subsystem
-│   ├── UndoStack.h/.cpp          # Capacity-bounded undo/redo stack
+│   ├── UndoStack.h/.cpp          # Capacity-bounded undo/redo stack w/ macro transaction lifecycle
 │   ├── Command.h                 # Pure virtual Command and CompoundCommand base classes
 │   ├── AnnotationCommands.h/.cpp # Add/remove stroke commands
 │   ├── SqueezeCommands.h/.cpp    # Squeeze state mutation commands
-│   └── WorkspaceCommands.h/.cpp  # Node insertion, movement, deletion commands
+│   └── WorkspaceCommands.h/.cpp  # Node insertion, movement, deletion, edge links, stack merge commands
 └── tests/                    # Headless CTest suites (zero GUI deps)
     ├── storage/                  # AnnotationStoreTest, XoppDocumentTest
     ├── workspace/                # CardLayoutEngineTest, CardStackNodeTest, ExcerptCardNodeTest, PhysicsSolverTest, RTreeBenchmarkTest, RTreeIndexTest, WorkspaceModelTest
