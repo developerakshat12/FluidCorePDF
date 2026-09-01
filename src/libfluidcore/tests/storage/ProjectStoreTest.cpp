@@ -168,8 +168,9 @@ void testNodeAndGraphRehydration() {
     assert(loadedDocs.size() == 1);
     assert(loadedDocs[0].docId == "doc-1");
 
-    // Check top level nodes
+    std::cout << "  Checking loadedModel nodeCount...\n" << std::flush;
     assert(loadedModel.nodeCount() == 3);
+    std::cout << "  Checking card-1...\n" << std::flush;
     auto* loadedCard1 = dynamic_cast<ExcerptCardNode*>(loadedModel.find("card-1"));
     assert(loadedCard1 != nullptr);
     assert(loadedCard1->bounds().x == 100);
@@ -181,12 +182,14 @@ void testNodeAndGraphRehydration() {
     assert(loadedCard1->hasTag("physics"));
     assert(loadedCard1->hasTag("quantum"));
 
+    std::cout << "  Checking stack-1...\n" << std::flush;
     auto* loadedStack = dynamic_cast<CardStackNode*>(loadedModel.find("stack-1"));
     assert(loadedStack != nullptr);
     assert(loadedStack->title() == "Quantum Stack");
     assert(loadedStack->childCount() == 1);
     assert(loadedStack->hasTag("summary"));
 
+    std::cout << "  Checking card-3...\n" << std::flush;
     auto* loadedChild = dynamic_cast<ExcerptCardNode*>(loadedStack->findChild("card-3"));
     assert(loadedChild != nullptr);
     assert(loadedChild->textSnippet() == "Lattice depth modulation snippet");
@@ -203,18 +206,20 @@ void testNodeAndGraphRehydration() {
     assert(loadedEdge->color.g == 69);
     assert(loadedEdge->strokeWidth == 3.0);
 
-    std::cout << "  Checking FTS search...\n" << std::flush;
+    std::cout << "  Checking FTS search coherence...\n" << std::flush;
     // Check FTS search
     auto results = loadStore.executeSearch("coherence");
     assert(!results.empty());
     assert(results[0].entityId == "card-1");
 
+    std::cout << "  Checking FTS search Quantum Stack...\n" << std::flush;
     auto stackResults = loadStore.executeSearch("Quantum Stack");
     assert(!stackResults.empty());
 
+    std::cout << "  Closing loadStore...\n" << std::flush;
     loadStore.closeProject();
     std::filesystem::remove_all(testDir, ec);
-    std::cout << "  Passed!\n";
+    std::cout << "  Passed!\n" << std::flush;
 }
 
 } // namespace
