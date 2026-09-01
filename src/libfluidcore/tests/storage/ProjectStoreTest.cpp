@@ -148,22 +148,33 @@ void testNodeAndGraphRehydration() {
     std::string err;
     DocumentRecord docRecord{"doc-1", "Quantum.pdf", "documents/doc-1.pdf", "sha-1", 10,
                              50000,   1000};
-    std::cout << "  Save project...\n" << std::flush;
+    std::cerr << "  [TEST] Save project...\n" << std::flush;
     bool saved = store.saveProject(model, graph, {docRecord}, &err);
+    if (!saved) {
+        std::cerr << "  [TEST] saveProject failed: " << err << "\n" << std::flush;
+    }
     assert(saved && "saveProject should succeed");
 
     store.closeProject();
-    std::cout << "  Reopening for rehydration...\n" << std::flush;
+    std::cerr << "  [TEST] Reopening for rehydration...\n" << std::flush;
 
     // Reopen and rehydrate
     ProjectStore loadStore;
-    assert(loadStore.openProject(testDir, &err));
+    bool opened = loadStore.openProject(testDir, &err);
+    if (!opened) {
+        std::cerr << "  [TEST] openProject failed: " << err << "\n" << std::flush;
+    }
+    assert(opened);
 
     WorkspaceModel loadedModel("proj-rehydrate");
     GraphTopology loadedGraph;
     std::vector<DocumentRecord> loadedDocs;
-    assert(loadStore.rehydrate(loadedModel, loadedGraph, loadedDocs, &err));
-    std::cout << "  Rehydration done, checking docs and nodes...\n" << std::flush;
+    bool rehydrated = loadStore.rehydrate(loadedModel, loadedGraph, loadedDocs, &err);
+    if (!rehydrated) {
+        std::cerr << "  [TEST] rehydrate failed: " << err << "\n" << std::flush;
+    }
+    assert(rehydrated);
+    std::cerr << "  [TEST] Rehydration done, checking docs and nodes...\n" << std::flush;
 
     assert(loadedDocs.size() == 1);
     assert(loadedDocs[0].docId == "doc-1");
