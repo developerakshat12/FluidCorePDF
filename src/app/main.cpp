@@ -82,10 +82,7 @@ void seedDemoContent(FluidCoreAPI& api, const std::string& docPath) {
         std::make_unique<SampleNode>("summary-conclusion", Rectangle{540.0, 680.0, 300.0, 160.0}));
 }
 
-enum class ActivePane {
-    Workspace,
-    Document
-};
+enum class ActivePane { Workspace, Document };
 
 struct AppContext {
     FluidCoreAPI* api = nullptr;
@@ -255,16 +252,17 @@ void onActivate(GtkApplication* app, gpointer userData) {
         ActivePane* lastActivePane = nullptr;
         std::function<void()> updateUndoRedoUI;
     };
-    auto* viewCtx = new AppViewContext{documentPane, workspace, toolManager, context->api,
-                                       GTK_WINDOW(window), lastActivePane, updateUndoRedoUI};
+    auto* viewCtx =
+        new AppViewContext{documentPane,       workspace,      toolManager,     context->api,
+                           GTK_WINDOW(window), lastActivePane, updateUndoRedoUI};
     g_object_set_data_full(
         G_OBJECT(app), "app-view-context", viewCtx,
         +[](gpointer data) { delete static_cast<AppViewContext*>(data); });
 
-    // Global window-level event capture to immediately detect clicks/scrolls across Document vs Workspace
+    // Global window-level event capture to immediately detect clicks/scrolls across Document vs
+    // Workspace
     g_signal_connect(
-        window, "event",
-        G_CALLBACK(+[](GtkWidget*, GdkEvent* event, gpointer data) -> gboolean {
+        window, "event", G_CALLBACK(+[](GtkWidget*, GdkEvent* event, gpointer data) -> gboolean {
             auto* ctx = static_cast<AppViewContext*>(data);
             if (!ctx || !event || !ctx->lastActivePane) {
                 return FALSE;
@@ -282,8 +280,9 @@ void onActivate(GtkApplication* app, gpointer userData) {
                                 ctx->updateUndoRedoUI();
                             }
                         }
-                    } else if (ctx->workspace && (eventWidget == ctx->workspace->widget() ||
-                                                  gtk_widget_is_ancestor(eventWidget, ctx->workspace->widget()))) {
+                    } else if (ctx->workspace &&
+                               (eventWidget == ctx->workspace->widget() ||
+                                gtk_widget_is_ancestor(eventWidget, ctx->workspace->widget()))) {
                         if (*ctx->lastActivePane != ActivePane::Workspace) {
                             *ctx->lastActivePane = ActivePane::Workspace;
                             if (ctx->updateUndoRedoUI) {
@@ -545,7 +544,7 @@ void onActivate(GtkApplication* app, gpointer userData) {
     g_action_map_add_action(G_ACTION_MAP(window), G_ACTION(connectorAction));
     const gchar* connectorAccels[] = {"<Alt>6", "F6", nullptr};
     gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.tool_connector",
-                                           connectorAccels);
+                                          connectorAccels);
 
     // Wire Ctrl+Shift+0 (Reset Squeeze) action
     GSimpleAction* resetSqueezeAction = g_simple_action_new("reset_squeeze", nullptr);
@@ -674,7 +673,7 @@ void onActivate(GtkApplication* app, gpointer userData) {
                      G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
                          auto* ws = static_cast<FluidCoreApp::WorkspaceView*>(data);
                          if (ws) {
-                              ws->resetView();
+                             ws->resetView();
                          }
                      }),
                      workspace);

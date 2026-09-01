@@ -145,8 +145,7 @@ class CreateInkLinkCommand : public Command {
   public:
     CreateInkLinkCommand(GraphTopology& graph, std::string sourceId, std::string targetId,
                          Color color = {30, 144, 255, 255}, double strokeWidth = 2.0,
-                         ArrowStyle arrowStyle = ArrowStyle::SharpTriangle,
-                         std::string label = "");
+                         ArrowStyle arrowStyle = ArrowStyle::SharpTriangle, std::string label = "");
     CreateInkLinkCommand(GraphTopology& graph, GraphEdge edge);
 
     bool execute() override;

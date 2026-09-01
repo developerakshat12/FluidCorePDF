@@ -886,8 +886,9 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
                     event->y >= chevRect.y && event->y <= chevRect.y + chevRect.h) {
                     if (auto* engine = dynamic_cast<FluidCore::FluidCoreEngine*>(&m_api)) {
                         const bool currentCollapsed = m_api.isStackCollapsed(stack->id());
-                        m_undoStack.pushAndExecute(std::make_unique<FluidCore::ToggleStackCollapseCommand>(
-                            engine->workspaceModel(), stack->id(), !currentCollapsed));
+                        m_undoStack.pushAndExecute(
+                            std::make_unique<FluidCore::ToggleStackCollapseCommand>(
+                                engine->workspaceModel(), stack->id(), !currentCollapsed));
                     } else {
                         m_api.toggleStackCollapsed(stack->id());
                     }
@@ -964,8 +965,9 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
                             event->y >= chevRect.y && event->y <= chevRect.y + chevRect.h) {
                             if (auto* engine = dynamic_cast<FluidCore::FluidCoreEngine*>(&m_api)) {
                                 const bool currentCollapsed = m_api.isStackCollapsed(stack->id());
-                                m_undoStack.pushAndExecute(std::make_unique<FluidCore::ToggleStackCollapseCommand>(
-                                    engine->workspaceModel(), stack->id(), !currentCollapsed));
+                                m_undoStack.pushAndExecute(
+                                    std::make_unique<FluidCore::ToggleStackCollapseCommand>(
+                                        engine->workspaceModel(), stack->id(), !currentCollapsed));
                             } else {
                                 m_api.toggleStackCollapsed(stack->id());
                             }
@@ -1233,8 +1235,8 @@ gboolean WorkspaceView::onButtonRelease(GdkEventButton* event) {
             }
             if (auto* engine = dynamic_cast<FluidCore::FluidCoreEngine*>(&m_api)) {
                 m_undoStack.pushAndExecute(std::make_unique<FluidCore::CreateInkLinkCommand>(
-                    engine->graphTopology(), m_state.connector.connectorSourceNodeId, targetNode->id(),
-                    edgeColor));
+                    engine->graphTopology(), m_state.connector.connectorSourceNodeId,
+                    targetNode->id(), edgeColor));
             } else {
                 m_api.createInkLink(m_state.connector.connectorSourceNodeId, targetNode->id(),
                                     edgeColor);
@@ -1254,7 +1256,8 @@ gboolean WorkspaceView::onButtonRelease(GdkEventButton* event) {
             if (m_undoStack.isRecordingMacro()) {
                 m_undoStack.endMacro();
             }
-        } else if (m_state.inking.currentTool == "pen" || m_state.inking.currentTool == "highlighter") {
+        } else if (m_state.inking.currentTool == "pen" ||
+                   m_state.inking.currentTool == "highlighter") {
             m_state.inking.stabilizer.endStroke();
             m_state.inking.hasWetSegment = false;
 
@@ -1320,14 +1323,12 @@ gboolean WorkspaceView::onButtonRelease(GdkEventButton* event) {
 
                 if (!convertedToConnector) {
                     if (engine) {
-                        m_undoStack.pushAndExecute(
-                            std::make_unique<FluidCore::InsertNodeCommand>(
-                                engine->workspaceModel(),
-                                std::make_unique<FluidCore::CanvasStrokeNode>(
-                                    m_state.inking.activeStroke)));
+                        m_undoStack.pushAndExecute(std::make_unique<FluidCore::InsertNodeCommand>(
+                            engine->workspaceModel(), std::make_unique<FluidCore::CanvasStrokeNode>(
+                                                          m_state.inking.activeStroke)));
                     } else {
-                        m_api.insertNode(
-                            std::make_unique<FluidCore::CanvasStrokeNode>(m_state.inking.activeStroke));
+                        m_api.insertNode(std::make_unique<FluidCore::CanvasStrokeNode>(
+                            m_state.inking.activeStroke));
                     }
                 }
             }

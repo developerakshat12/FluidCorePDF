@@ -459,9 +459,8 @@ void testCreateInkLinkAndRemoveEdgeCommands() {
     UndoStack stack;
 
     FluidCore::CreateInkLinkCommand createCmd(graph, "node-A", "node-B", {255, 0, 0, 255}, 2.5);
-    stack.pushAndExecute(std::make_unique<FluidCore::CreateInkLinkCommand>(graph, "node-A", "node-B",
-                                                                           FluidCore::Color{255, 0, 0, 255},
-                                                                           2.5));
+    stack.pushAndExecute(std::make_unique<FluidCore::CreateInkLinkCommand>(
+        graph, "node-A", "node-B", FluidCore::Color{255, 0, 0, 255}, 2.5));
     expect(graph.edgeCount() == 1, "edge created in graph");
     const auto edgeOpt = graph.findEdgeBetween("node-A", "node-B");
     expect(edgeOpt.has_value(), "edge exists between node-A and node-B");

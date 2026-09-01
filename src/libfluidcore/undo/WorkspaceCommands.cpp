@@ -286,9 +286,8 @@ std::size_t ToggleStackCollapseCommand::estimatedSizeBytes() const {
 // --- CreateInkLinkCommand ---
 
 CreateInkLinkCommand::CreateInkLinkCommand(GraphTopology& graph, std::string sourceId,
-                                           std::string targetId, Color color,
-                                           double strokeWidth, ArrowStyle arrowStyle,
-                                           std::string label)
+                                           std::string targetId, Color color, double strokeWidth,
+                                           ArrowStyle arrowStyle, std::string label)
     : m_graph(graph) {
     m_edge.sourceNodeId = std::move(sourceId);
     m_edge.targetNodeId = std::move(targetId);

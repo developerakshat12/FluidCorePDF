@@ -6,14 +6,7 @@
 
 namespace FluidCoreApp {
 
-enum class Tool {
-    Select,
-    Pen,
-    Highlighter,
-    Eraser,
-    Crop,
-    Connector
-};
+enum class Tool { Select, Pen, Highlighter, Eraser, Crop, Connector };
 
 class ToolManager {
   public:
