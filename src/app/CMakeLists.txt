@@ -20,6 +20,8 @@ add_executable(fluidcore_app
     services/PdfExportService.cpp
     services/StrokeStabilizer.cpp
     services/TextSelectionService.cpp
+    services/ToolManager.cpp
+    workspace/TopToolbarWidget.cpp
     workspace/WorkspaceInteraction.cpp
     workspace/WorkspaceRenderer.cpp
     workspace/WorkspaceView.cpp
@@ -116,7 +118,7 @@ if(BUILD_TESTING)
 
     add_executable(workspace_interaction_test tests/WorkspaceInteractionTest.cpp workspace/WorkspaceInteraction.cpp services/StrokeStabilizer.cpp)
     target_include_directories(workspace_interaction_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-    target_link_libraries(workspace_interaction_test PRIVATE fluidcore PkgConfig::GTK3 PkgConfig::CAIRO)
+    target_link_libraries(workspace_interaction_test PRIVATE fluidcore PkgConfig::GTK3 PkgConfig::CAIRO PkgConfig::POPPLER_GLIB)
     if(MSVC)
         target_compile_options(workspace_interaction_test PRIVATE /W4 /permissive-)
     else()

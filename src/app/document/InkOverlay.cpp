@@ -313,6 +313,8 @@ gboolean InkOverlay::buttonReleaseCallback(GtkWidget*, GdkEventButton* event, gp
 }
 
 gboolean InkOverlay::onButtonPress(GdkEventButton* event) {
+    m_pane.notifyActivated();
+
     if (event->button != GDK_BUTTON_PRIMARY) {
         return FALSE;
     }

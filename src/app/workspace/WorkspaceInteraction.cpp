@@ -1,10 +1,13 @@
 #include "workspace/WorkspaceInteraction.h"
+#include "FluidCoreEngine.h"
 #include "graph/GraphTopology.h"
+#include "undo/WorkspaceCommands.h"
 #include "workspace/CanvasStrokeNode.h"
 #include "workspace/CardLayoutEngine.h"
 #include "workspace/CardStackNode.h"
 #include "workspace/ExcerptCardNode.h"
 #include "workspace/ExcerptPayload.h"
+#include "workspace/WorkspaceView.h"
 
 #include <algorithm>
 #include <cmath>
@@ -161,7 +164,16 @@ void WorkspaceInteraction::showEdgeContextMenu(WorkspaceState& state, FluidCore:
         deleteItem, "activate", G_CALLBACK(+[](GtkMenuItem*, gpointer data) {
             auto* c = static_cast<MenuContext*>(data);
             if (c && c->state && c->state->selectedEdgeId) {
-                c->api->removeEdge(*c->state->selectedEdgeId);
+                auto* engine = dynamic_cast<FluidCore::FluidCoreEngine*>(c->api);
+                WorkspaceView* wsView = (c->area && GTK_IS_WIDGET(c->area))
+                    ? static_cast<WorkspaceView*>(g_object_get_data(G_OBJECT(c->area), "workspace-view-instance"))
+                    : nullptr;
+                if (wsView && engine) {
+                    wsView->undoStack().pushAndExecute(
+                        std::make_unique<FluidCore::RemoveEdgeCommand>(engine->graphTopology(), *c->state->selectedEdgeId));
+                } else {
+                    c->api->removeEdge(*c->state->selectedEdgeId);
+                }
                 c->state->selectedEdgeId.reset();
                 if (c->area && GTK_IS_WIDGET(c->area)) {
                     gtk_widget_queue_draw(c->area);
@@ -229,10 +241,30 @@ void WorkspaceInteraction::showNodeContextMenu(WorkspaceState& state, FluidCore:
         deleteItem, "activate", G_CALLBACK(+[](GtkMenuItem*, gpointer data) {
             auto* c = static_cast<MenuContext*>(data);
             if (c && c->state) {
-                if (!c->parentStackId.empty()) {
-                    c->api->extractChildFromStack(c->parentStackId, c->nodeId, {0, 0});
+                auto* engine = dynamic_cast<FluidCore::FluidCoreEngine*>(c->api);
+                WorkspaceView* wsView = (c->area && GTK_IS_WIDGET(c->area))
+                    ? static_cast<WorkspaceView*>(g_object_get_data(G_OBJECT(c->area), "workspace-view-instance"))
+                    : nullptr;
+                if (wsView && engine) {
+                    wsView->undoStack().beginMacro("Delete Node");
+                    if (!c->parentStackId.empty()) {
+                        wsView->undoStack().pushAndExecute(
+                            std::make_unique<FluidCore::ExtractChildCommand>(
+                                engine->workspaceModel(), c->parentStackId, c->nodeId, FluidCore::Point{0, 0}));
+                    }
+                    for (const auto& edgeId : c->api->getConnectedEdges(c->nodeId)) {
+                        wsView->undoStack().pushAndExecute(
+                            std::make_unique<FluidCore::RemoveEdgeCommand>(engine->graphTopology(), edgeId));
+                    }
+                    wsView->undoStack().pushAndExecute(
+                        std::make_unique<FluidCore::RemoveNodeCommand>(engine->workspaceModel(), c->nodeId));
+                    wsView->undoStack().endMacro();
+                } else {
+                    if (!c->parentStackId.empty()) {
+                        c->api->extractChildFromStack(c->parentStackId, c->nodeId, {0, 0});
+                    }
+                    c->api->removeNode(c->nodeId);
                 }
-                c->api->removeNode(c->nodeId);
                 c->state->selectedNodeId.reset();
                 if (c->area && GTK_IS_WIDGET(c->area)) {
                     gtk_widget_queue_draw(c->area);
@@ -365,7 +397,17 @@ void WorkspaceInteraction::handleExcerptDrop(WorkspaceState& state, FluidCore::F
             excerptAddedCb(*card);
         }
 
-        api.insertNode(std::move(card));
+        auto* engine = dynamic_cast<FluidCore::FluidCoreEngine*>(&api);
+        WorkspaceView* wsView = (area && GTK_IS_WIDGET(area))
+            ? static_cast<WorkspaceView*>(g_object_get_data(G_OBJECT(area), "workspace-view-instance"))
+            : nullptr;
+
+        if (wsView && engine) {
+            wsView->undoStack().pushAndExecute(
+                std::make_unique<FluidCore::InsertNodeCommand>(engine->workspaceModel(), std::move(card)));
+        } else {
+            api.insertNode(std::move(card));
+        }
         if (area && GTK_IS_WIDGET(area)) {
             gtk_widget_queue_draw(area);
         }

@@ -283,4 +283,80 @@ std::size_t ToggleStackCollapseCommand::estimatedSizeBytes() const {
     return sizeof(*this) + m_stackId.capacity();
 }
 
+// --- CreateInkLinkCommand ---
+
+CreateInkLinkCommand::CreateInkLinkCommand(GraphTopology& graph, std::string sourceId,
+                                           std::string targetId, Color color,
+                                           double strokeWidth, ArrowStyle arrowStyle,
+                                           std::string label)
+    : m_graph(graph) {
+    m_edge.sourceNodeId = std::move(sourceId);
+    m_edge.targetNodeId = std::move(targetId);
+    m_edge.color = color;
+    m_edge.strokeWidth = strokeWidth;
+    m_edge.arrowStyle = arrowStyle;
+    m_edge.label = std::move(label);
+}
+
+CreateInkLinkCommand::CreateInkLinkCommand(GraphTopology& graph, GraphEdge edge)
+    : m_graph(graph), m_edge(std::move(edge)), m_edgeId(m_edge.id) {}
+
+bool CreateInkLinkCommand::execute() {
+    if (!m_edgeId.empty() && m_graph.findEdge(m_edgeId).has_value()) {
+        return true;
+    }
+    m_edgeId = m_graph.addEdge(m_edge);
+    m_edge.id = m_edgeId;
+    return !m_edgeId.empty();
+}
+
+bool CreateInkLinkCommand::undo() {
+    if (m_edgeId.empty()) {
+        return false;
+    }
+    return m_graph.removeEdge(m_edgeId);
+}
+
+bool CreateInkLinkCommand::redo() {
+    return execute();
+}
+
+std::size_t CreateInkLinkCommand::estimatedSizeBytes() const {
+    return sizeof(*this) + m_edgeId.capacity() + m_edge.sourceNodeId.capacity() +
+           m_edge.targetNodeId.capacity() + m_edge.label.capacity();
+}
+
+// --- RemoveEdgeCommand ---
+
+RemoveEdgeCommand::RemoveEdgeCommand(GraphTopology& graph, std::string edgeId)
+    : m_graph(graph), m_edgeId(std::move(edgeId)) {}
+
+bool RemoveEdgeCommand::execute() {
+    auto edgeOpt = m_graph.findEdge(m_edgeId);
+    if (edgeOpt.has_value()) {
+        m_savedEdge = edgeOpt;
+    }
+    return m_graph.removeEdge(m_edgeId);
+}
+
+bool RemoveEdgeCommand::undo() {
+    if (!m_savedEdge.has_value()) {
+        return false;
+    }
+    std::string addedId = m_graph.addEdge(*m_savedEdge);
+    if (!addedId.empty()) {
+        m_edgeId = addedId;
+        return true;
+    }
+    return false;
+}
+
+bool RemoveEdgeCommand::redo() {
+    return execute();
+}
+
+std::size_t RemoveEdgeCommand::estimatedSizeBytes() const {
+    return sizeof(*this) + m_edgeId.capacity() + 128;
+}
+
 } // namespace FluidCore

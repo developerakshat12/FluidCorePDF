@@ -40,6 +40,9 @@ class FluidCoreEngine final : public FluidCoreAPI {
     SqueezeEngine& squeezeEngine() { return m_squeezeEngine; }
     const SqueezeEngine& squeezeEngine() const { return m_squeezeEngine; }
 
+    WorkspaceModel& workspaceModel() { return m_model; }
+    const WorkspaceModel& workspaceModel() const { return m_model; }
+
     // Spatial scene graph — live slice backed by WorkspaceModel + RTreeIndex.
     std::string insertNode(std::unique_ptr<WorkspaceNode> node) override;
     void updateNodePosition(const std::string& nodeId, double x, double y) override;

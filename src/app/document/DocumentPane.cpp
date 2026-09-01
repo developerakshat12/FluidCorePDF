@@ -808,6 +808,7 @@ bool DocumentPane::saveAnnotations() {
 }
 
 bool DocumentPane::undo() {
+    notifyActivated();
     if (!m_undoStack.canUndo()) {
         return false;
     }
@@ -831,6 +832,7 @@ bool DocumentPane::undo() {
 }
 
 bool DocumentPane::redo() {
+    notifyActivated();
     if (!m_undoStack.canRedo()) {
         return false;
     }
@@ -862,6 +864,7 @@ gboolean DocumentPane::scrollCallback(GtkWidget*, GdkEventScroll* event, gpointe
 }
 
 gboolean DocumentPane::onScroll(GdkEventScroll* event) {
+    notifyActivated();
     const bool ctrl = (event->state & GDK_CONTROL_MASK) != 0;
     const bool shift = (event->state & GDK_SHIFT_MASK) != 0;
 

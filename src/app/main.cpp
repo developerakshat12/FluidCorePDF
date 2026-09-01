@@ -3,7 +3,9 @@
 #include "export/ExportDialog.h"
 #include "services/ExcerptTileCache.h"
 #include "services/PdfDocumentService.h"
+#include "services/ToolManager.h"
 #include "workspace/ExcerptCardNode.h"
+#include "workspace/TopToolbarWidget.h"
 #include "workspace/WorkspaceView.h"
 
 #include <gtk/gtk.h>
@@ -80,6 +82,11 @@ void seedDemoContent(FluidCoreAPI& api, const std::string& docPath) {
         std::make_unique<SampleNode>("summary-conclusion", Rectangle{540.0, 680.0, 300.0, 160.0}));
 }
 
+enum class ActivePane {
+    Workspace,
+    Document
+};
+
 struct AppContext {
     FluidCoreAPI* api = nullptr;
     const std::string* pdfPath = nullptr;
@@ -99,6 +106,27 @@ void onActivate(GtkApplication* app, gpointer userData) {
     g_object_set_data_full(
         G_OBJECT(app), "workspace-view", workspace,
         +[](gpointer data) { delete static_cast<FluidCoreApp::WorkspaceView*>(data); });
+
+    // Tool synchronization service & Top modern toolbar
+    auto* toolManager = new FluidCoreApp::ToolManager();
+    g_object_set_data_full(
+        G_OBJECT(app), "tool-manager", toolManager,
+        +[](gpointer data) { delete static_cast<FluidCoreApp::ToolManager*>(data); });
+
+    auto* topToolbar = new FluidCoreApp::TopToolbarWidget(*toolManager);
+    g_object_set_data_full(
+        G_OBJECT(app), "top-toolbar", topToolbar,
+        +[](gpointer data) { delete static_cast<FluidCoreApp::TopToolbarWidget*>(data); });
+
+    toolManager->addChangeListener([documentPane, workspace](FluidCoreApp::Tool tool) {
+        const char* toolStr = FluidCoreApp::ToolManager::toolToString(tool);
+        if (documentPane) {
+            documentPane->setTool(toolStr);
+        }
+        if (workspace) {
+            workspace->setTool(toolStr);
+        }
+    });
 
     // Multi-document resolution and high-DPI crop tile cache
     auto* pdfDocService = new FluidCoreApp::PdfDocumentService();
@@ -174,6 +202,195 @@ void onActivate(GtkApplication* app, gpointer userData) {
     gtk_window_set_title(GTK_WINDOW(window), "FluidCore");
     gtk_window_set_default_size(GTK_WINDOW(window), 1200, 800);
 
+    // Track active pane recency for intelligent undo/redo routing
+    auto* lastActivePane = new ActivePane(ActivePane::Workspace);
+    g_object_set_data_full(
+        G_OBJECT(app), "last-active-pane", lastActivePane,
+        +[](gpointer data) { delete static_cast<ActivePane*>(data); });
+
+    auto updateUndoRedoUI = [topToolbar, workspace, documentPane, lastActivePane]() {
+        bool canUndo = false;
+        bool canRedo = false;
+        if (*lastActivePane == ActivePane::Document) {
+            canUndo = documentPane ? documentPane->canUndo() : false;
+            canRedo = documentPane ? documentPane->canRedo() : false;
+        } else {
+            canUndo = workspace ? workspace->canUndo() : false;
+            canRedo = workspace ? workspace->canRedo() : false;
+        }
+        if (topToolbar) {
+            topToolbar->updateUndoRedoState(canUndo, canRedo);
+        }
+    };
+
+    workspace->undoStack().setChangeListener([lastActivePane, updateUndoRedoUI]() {
+        *lastActivePane = ActivePane::Workspace;
+        updateUndoRedoUI();
+    });
+    documentPane->undoStack().setChangeListener([lastActivePane, updateUndoRedoUI]() {
+        *lastActivePane = ActivePane::Document;
+        updateUndoRedoUI();
+    });
+
+    documentPane->setOnActivatedCallback([lastActivePane, updateUndoRedoUI]() {
+        if (*lastActivePane != ActivePane::Document) {
+            *lastActivePane = ActivePane::Document;
+            updateUndoRedoUI();
+        }
+    });
+
+    workspace->setOnActivatedCallback([lastActivePane, updateUndoRedoUI]() {
+        if (*lastActivePane != ActivePane::Workspace) {
+            *lastActivePane = ActivePane::Workspace;
+            updateUndoRedoUI();
+        }
+    });
+
+    struct AppViewContext {
+        FluidCoreApp::DocumentPane* pane = nullptr;
+        FluidCoreApp::WorkspaceView* workspace = nullptr;
+        FluidCoreApp::ToolManager* toolManager = nullptr;
+        FluidCore::FluidCoreAPI* api = nullptr;
+        GtkWindow* window = nullptr;
+        ActivePane* lastActivePane = nullptr;
+        std::function<void()> updateUndoRedoUI;
+    };
+    auto* viewCtx = new AppViewContext{documentPane, workspace, toolManager, context->api,
+                                       GTK_WINDOW(window), lastActivePane, updateUndoRedoUI};
+    g_object_set_data_full(
+        G_OBJECT(app), "app-view-context", viewCtx,
+        +[](gpointer data) { delete static_cast<AppViewContext*>(data); });
+
+    // Global window-level event capture to immediately detect clicks/scrolls across Document vs Workspace
+    g_signal_connect(
+        window, "event",
+        G_CALLBACK(+[](GtkWidget*, GdkEvent* event, gpointer data) -> gboolean {
+            auto* ctx = static_cast<AppViewContext*>(data);
+            if (!ctx || !event || !ctx->lastActivePane) {
+                return FALSE;
+            }
+            if (event->type == GDK_BUTTON_PRESS || event->type == GDK_2BUTTON_PRESS ||
+                event->type == GDK_3BUTTON_PRESS || event->type == GDK_SCROLL ||
+                event->type == GDK_TOUCH_BEGIN) {
+                GtkWidget* eventWidget = gtk_get_event_widget(event);
+                if (eventWidget) {
+                    if (ctx->pane && (eventWidget == ctx->pane->widget() ||
+                                      gtk_widget_is_ancestor(eventWidget, ctx->pane->widget()))) {
+                        if (*ctx->lastActivePane != ActivePane::Document) {
+                            *ctx->lastActivePane = ActivePane::Document;
+                            if (ctx->updateUndoRedoUI) {
+                                ctx->updateUndoRedoUI();
+                            }
+                        }
+                    } else if (ctx->workspace && (eventWidget == ctx->workspace->widget() ||
+                                                  gtk_widget_is_ancestor(eventWidget, ctx->workspace->widget()))) {
+                        if (*ctx->lastActivePane != ActivePane::Workspace) {
+                            *ctx->lastActivePane = ActivePane::Workspace;
+                            if (ctx->updateUndoRedoUI) {
+                                ctx->updateUndoRedoUI();
+                            }
+                        }
+                    }
+                }
+            }
+            return FALSE;
+        }),
+        viewCtx);
+
+    auto performSmartUndo = [documentPane, workspace, lastActivePane, windowWidget = window,
+                             updateUndoRedoUI]() {
+        // 1. If a text entry currently has focus, let GTK handle native entry undo
+        GtkWidget* focusWidget = gtk_window_get_focus(GTK_WINDOW(windowWidget));
+        if (focusWidget && GTK_IS_ENTRY(focusWidget)) {
+            return;
+        }
+
+        // 2. Undo strictly within the active pane only
+        if (*lastActivePane == ActivePane::Document) {
+            if (documentPane && documentPane->canUndo()) {
+                documentPane->undo();
+            }
+        } else {
+            if (workspace && workspace->canUndo()) {
+                workspace->undo();
+            }
+        }
+        updateUndoRedoUI();
+    };
+
+    auto performSmartRedo = [documentPane, workspace, lastActivePane, windowWidget = window,
+                             updateUndoRedoUI]() {
+        // 1. If a text entry currently has focus, let GTK handle native entry redo
+        GtkWidget* focusWidget = gtk_window_get_focus(GTK_WINDOW(windowWidget));
+        if (focusWidget && GTK_IS_ENTRY(focusWidget)) {
+            return;
+        }
+
+        // 2. Redo strictly within the active pane only
+        if (*lastActivePane == ActivePane::Document) {
+            if (documentPane && documentPane->canRedo()) {
+                documentPane->redo();
+            }
+        } else {
+            if (workspace && workspace->canRedo()) {
+                workspace->redo();
+            }
+        }
+        updateUndoRedoUI();
+    };
+
+    // Wire TopToolbar callbacks
+    topToolbar->setOnUndo([performSmartUndo]() { performSmartUndo(); });
+    topToolbar->setOnRedo([performSmartRedo]() { performSmartRedo(); });
+
+    topToolbar->setOnZoomIn([workspace, documentPane, lastActivePane]() {
+        if (*lastActivePane == ActivePane::Workspace) {
+            GtkAllocation alloc;
+            gtk_widget_get_allocation(workspace->widget(), &alloc);
+            const double cx = alloc.width > 0 ? alloc.width / 2.0 : 400.0;
+            const double cy = alloc.height > 0 ? alloc.height / 2.0 : 300.0;
+            workspace->zoomAt(1.2, cx, cy);
+        } else {
+            documentPane->zoomIn();
+        }
+    });
+
+    topToolbar->setOnZoomOut([workspace, documentPane, lastActivePane]() {
+        if (*lastActivePane == ActivePane::Workspace) {
+            GtkAllocation alloc;
+            gtk_widget_get_allocation(workspace->widget(), &alloc);
+            const double cx = alloc.width > 0 ? alloc.width / 2.0 : 400.0;
+            const double cy = alloc.height > 0 ? alloc.height / 2.0 : 300.0;
+            workspace->zoomAt(0.8333, cx, cy);
+        } else {
+            documentPane->zoomOut();
+        }
+    });
+
+    topToolbar->setOnResetView([workspace, documentPane, lastActivePane]() {
+        if (*lastActivePane == ActivePane::Workspace) {
+            workspace->resetView();
+        } else {
+            documentPane->resetZoom();
+        }
+    });
+
+    topToolbar->setOnToggleMinimap([workspace, topToolbar]() {
+        const bool newVisible = !workspace->isMinimapVisible();
+        workspace->setMinimapVisible(newVisible);
+        topToolbar->setMinimapActive(newVisible);
+    });
+
+    topToolbar->setOnSearch([documentPane]() {
+        if (documentPane) {
+            documentPane->openSearch(false, FluidCoreApp::SearchScope::All);
+        }
+    });
+
+    topToolbar->setOnExport([window, documentPane, workspace, api = context->api]() {
+        FluidCoreApp::ExportDialog::show(GTK_WINDOW(window), documentPane, workspace, api);
+    });
+
     // Wire Ctrl+S accelerator to save annotations to companion .xopp file
     GSimpleAction* saveAction = g_simple_action_new("save", nullptr);
     g_signal_connect(saveAction, "activate",
@@ -193,12 +410,12 @@ void onActivate(GtkApplication* app, gpointer userData) {
     GSimpleAction* undoAction = g_simple_action_new("undo", nullptr);
     g_signal_connect(undoAction, "activate",
                      G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
-                         auto* pane = static_cast<FluidCoreApp::DocumentPane*>(data);
-                         if (pane) {
-                             pane->undo();
+                         auto* fn = static_cast<std::function<void()>*>(data);
+                         if (fn && *fn) {
+                             (*fn)();
                          }
                      }),
-                     documentPane);
+                     new std::function<void()>(performSmartUndo));
     g_action_map_add_action(G_ACTION_MAP(window), G_ACTION(undoAction));
 
     const gchar* undoAccels[] = {"<Primary>z", "<Control>z", nullptr};
@@ -208,12 +425,12 @@ void onActivate(GtkApplication* app, gpointer userData) {
     GSimpleAction* redoAction = g_simple_action_new("redo", nullptr);
     g_signal_connect(redoAction, "activate",
                      G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
-                         auto* pane = static_cast<FluidCoreApp::DocumentPane*>(data);
-                         if (pane) {
-                             pane->redo();
+                         auto* fn = static_cast<std::function<void()>*>(data);
+                         if (fn && *fn) {
+                             (*fn)();
                          }
                      }),
-                     documentPane);
+                     new std::function<void()>(performSmartRedo));
     g_action_map_add_action(G_ACTION_MAP(window), G_ACTION(redoAction));
 
     const gchar* redoAccels[] = {"<Primary><Shift>z", "<Control><Shift>z", "<Primary>y",
@@ -235,17 +452,6 @@ void onActivate(GtkApplication* app, gpointer userData) {
     const gchar* copyAccels[] = {"<Primary>c", "<Control>c", nullptr};
     gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.copy", copyAccels);
 
-    struct AppViewContext {
-        FluidCoreApp::DocumentPane* pane;
-        FluidCoreApp::WorkspaceView* workspace;
-        FluidCore::FluidCoreAPI* api;
-        GtkWindow* window;
-    };
-    auto* viewCtx = new AppViewContext{documentPane, workspace, context->api, GTK_WINDOW(window)};
-    g_object_set_data_full(
-        G_OBJECT(app), "app-view-context", viewCtx,
-        +[](gpointer data) { delete static_cast<AppViewContext*>(data); });
-
     // Wire Ctrl+E (Export) action
     GSimpleAction* exportAction = g_simple_action_new("export", nullptr);
     g_signal_connect(
@@ -266,11 +472,8 @@ void onActivate(GtkApplication* app, gpointer userData) {
     g_signal_connect(penAction, "activate",
                      G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
                          auto* ctx = static_cast<AppViewContext*>(data);
-                         if (ctx) {
-                             if (ctx->pane)
-                                 ctx->pane->setTool("pen");
-                             if (ctx->workspace)
-                                 ctx->workspace->setTool("pen");
+                         if (ctx && ctx->toolManager) {
+                             ctx->toolManager->setActiveTool(FluidCoreApp::Tool::Pen);
                          }
                      }),
                      viewCtx);
@@ -282,11 +485,8 @@ void onActivate(GtkApplication* app, gpointer userData) {
     g_signal_connect(highAction, "activate",
                      G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
                          auto* ctx = static_cast<AppViewContext*>(data);
-                         if (ctx) {
-                             if (ctx->pane)
-                                 ctx->pane->setTool("highlighter");
-                             if (ctx->workspace)
-                                 ctx->workspace->setTool("highlighter");
+                         if (ctx && ctx->toolManager) {
+                             ctx->toolManager->setActiveTool(FluidCoreApp::Tool::Highlighter);
                          }
                      }),
                      viewCtx);
@@ -298,11 +498,8 @@ void onActivate(GtkApplication* app, gpointer userData) {
     g_signal_connect(eraserAction, "activate",
                      G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
                          auto* ctx = static_cast<AppViewContext*>(data);
-                         if (ctx) {
-                             if (ctx->pane)
-                                 ctx->pane->setTool("eraser");
-                             if (ctx->workspace)
-                                 ctx->workspace->setTool("eraser");
+                         if (ctx && ctx->toolManager) {
+                             ctx->toolManager->setActiveTool(FluidCoreApp::Tool::Eraser);
                          }
                      }),
                      viewCtx);
@@ -314,11 +511,8 @@ void onActivate(GtkApplication* app, gpointer userData) {
     g_signal_connect(selectAction, "activate",
                      G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
                          auto* ctx = static_cast<AppViewContext*>(data);
-                         if (ctx) {
-                             if (ctx->pane)
-                                 ctx->pane->setTool("select");
-                             if (ctx->workspace)
-                                 ctx->workspace->setTool("select");
+                         if (ctx && ctx->toolManager) {
+                             ctx->toolManager->setActiveTool(FluidCoreApp::Tool::Select);
                          }
                      }),
                      viewCtx);
@@ -330,11 +524,8 @@ void onActivate(GtkApplication* app, gpointer userData) {
     g_signal_connect(cropAction, "activate",
                      G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
                          auto* ctx = static_cast<AppViewContext*>(data);
-                         if (ctx) {
-                             if (ctx->pane)
-                                 ctx->pane->setTool("crop");
-                             if (ctx->workspace)
-                                 ctx->workspace->setTool("crop");
+                         if (ctx && ctx->toolManager) {
+                             ctx->toolManager->setActiveTool(FluidCoreApp::Tool::Crop);
                          }
                      }),
                      viewCtx);
@@ -346,16 +537,15 @@ void onActivate(GtkApplication* app, gpointer userData) {
     g_signal_connect(connectorAction, "activate",
                      G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
                          auto* ctx = static_cast<AppViewContext*>(data);
-                         if (ctx) {
-                             if (ctx->workspace)
-                                 ctx->workspace->setTool("connector");
+                         if (ctx && ctx->toolManager) {
+                             ctx->toolManager->setActiveTool(FluidCoreApp::Tool::Connector);
                          }
                      }),
                      viewCtx);
     g_action_map_add_action(G_ACTION_MAP(window), G_ACTION(connectorAction));
-    const gchar* connectorAccels[] = {"<Alt>6", "F6", "a", "A", nullptr};
+    const gchar* connectorAccels[] = {"<Alt>6", "F6", nullptr};
     gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.tool_connector",
-                                          connectorAccels);
+                                           connectorAccels);
 
     // Wire Ctrl+Shift+0 (Reset Squeeze) action
     GSimpleAction* resetSqueezeAction = g_simple_action_new("reset_squeeze", nullptr);
@@ -484,7 +674,7 @@ void onActivate(GtkApplication* app, gpointer userData) {
                      G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
                          auto* ws = static_cast<FluidCoreApp::WorkspaceView*>(data);
                          if (ws) {
-                             ws->resetView();
+                              ws->resetView();
                          }
                      }),
                      workspace);
@@ -516,6 +706,7 @@ void onActivate(GtkApplication* app, gpointer userData) {
             }
             auto* pane = ctx->pane;
             auto* ws = ctx->workspace;
+            auto* tm = ctx->toolManager;
 
             const bool ctrl = (event->state & GDK_CONTROL_MASK) != 0;
             const bool shift = (event->state & GDK_SHIFT_MASK) != 0;
@@ -538,7 +729,14 @@ void onActivate(GtkApplication* app, gpointer userData) {
                         pane->closeSearch();
                     } else {
                         pane->clearTextSelection();
+                        pane->clearCropSelection();
                     }
+                }
+                if (ws) {
+                    ws->cancelCurrentInteraction();
+                }
+                if (tm) {
+                    tm->setActiveTool(FluidCoreApp::Tool::Select);
                 }
                 return TRUE;
             }
@@ -600,44 +798,34 @@ void onActivate(GtkApplication* app, gpointer userData) {
                     return TRUE;
                 }
                 if (event->keyval == GDK_KEY_s || event->keyval == GDK_KEY_S) {
-                    if (pane)
-                        pane->setTool("select");
-                    if (ws)
-                        ws->setTool("select");
+                    if (tm)
+                        tm->setActiveTool(FluidCoreApp::Tool::Select);
                     return TRUE;
                 }
                 if (event->keyval == GDK_KEY_p || event->keyval == GDK_KEY_P) {
-                    if (pane)
-                        pane->setTool("pen");
-                    if (ws)
-                        ws->setTool("pen");
+                    if (tm)
+                        tm->setActiveTool(FluidCoreApp::Tool::Pen);
                     return TRUE;
                 }
                 if (event->keyval == GDK_KEY_h || event->keyval == GDK_KEY_H) {
-                    if (pane)
-                        pane->setTool("highlighter");
-                    if (ws)
-                        ws->setTool("highlighter");
+                    if (tm)
+                        tm->setActiveTool(FluidCoreApp::Tool::Highlighter);
                     return TRUE;
                 }
                 if (event->keyval == GDK_KEY_e || event->keyval == GDK_KEY_E) {
-                    if (pane)
-                        pane->setTool("eraser");
-                    if (ws)
-                        ws->setTool("eraser");
+                    if (tm)
+                        tm->setActiveTool(FluidCoreApp::Tool::Eraser);
                     return TRUE;
                 }
                 if (event->keyval == GDK_KEY_c || event->keyval == GDK_KEY_C) {
-                    if (pane)
-                        pane->setTool("crop");
-                    if (ws)
-                        ws->setTool("crop");
+                    if (tm)
+                        tm->setActiveTool(FluidCoreApp::Tool::Crop);
                     return TRUE;
                 }
                 if (event->keyval == GDK_KEY_a || event->keyval == GDK_KEY_A ||
                     event->keyval == GDK_KEY_l || event->keyval == GDK_KEY_L) {
-                    if (ws)
-                        ws->setTool("connector");
+                    if (tm)
+                        tm->setActiveTool(FluidCoreApp::Tool::Connector);
                     return TRUE;
                 }
             }
@@ -669,13 +857,19 @@ void onActivate(GtkApplication* app, gpointer userData) {
     // the workspace canvas is visible without a manual drag.
     gtk_paned_set_position(GTK_PANED(paned), 480);
 
-    gtk_container_add(GTK_CONTAINER(window), paned);
+    GtkWidget* rootBox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_box_pack_start(GTK_BOX(rootBox), topToolbar->widget(), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(rootBox), paned, TRUE, TRUE, 0);
+
+    gtk_container_add(GTK_CONTAINER(window), rootBox);
     gtk_window_set_position(GTK_WINDOW(window), GTK_WIN_POS_CENTER);
     gtk_window_set_keep_above(GTK_WINDOW(window), TRUE);
     gtk_window_set_urgency_hint(GTK_WINDOW(window), TRUE);
     gtk_widget_show_all(window);
     gtk_window_deiconify(GTK_WINDOW(window));
     gtk_window_present(GTK_WINDOW(window));
+
+    updateUndoRedoUI();
 
     std::cout << "[FluidCore] Window ready and presented (" << documentPane->pages().size()
               << " pages loaded)." << std::endl;

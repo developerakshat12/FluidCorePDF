@@ -1,5 +1,6 @@
 #pragma once
 
+#include "graph/GraphTopology.h"
 #include "undo/Command.h"
 #include "workspace/CardStackNode.h"
 #include "workspace/WorkspaceModel.h"
@@ -137,6 +138,50 @@ class ToggleStackCollapseCommand : public Command {
     std::string m_stackId;
     bool m_newCollapsed = false;
     bool m_oldCollapsed = false;
+};
+
+// Command representing creating an ink link / connector edge in the graph.
+class CreateInkLinkCommand : public Command {
+  public:
+    CreateInkLinkCommand(GraphTopology& graph, std::string sourceId, std::string targetId,
+                         Color color = {30, 144, 255, 255}, double strokeWidth = 2.0,
+                         ArrowStyle arrowStyle = ArrowStyle::SharpTriangle,
+                         std::string label = "");
+    CreateInkLinkCommand(GraphTopology& graph, GraphEdge edge);
+
+    bool execute() override;
+    bool undo() override;
+    bool redo() override;
+
+    std::string description() const override { return "Create Ink Link"; }
+    std::size_t estimatedSizeBytes() const override;
+
+    const std::string& edgeId() const { return m_edgeId; }
+
+  private:
+    GraphTopology& m_graph;
+    GraphEdge m_edge;
+    std::string m_edgeId;
+};
+
+// Command representing removing an edge from the graph.
+class RemoveEdgeCommand : public Command {
+  public:
+    RemoveEdgeCommand(GraphTopology& graph, std::string edgeId);
+
+    bool execute() override;
+    bool undo() override;
+    bool redo() override;
+
+    std::string description() const override { return "Remove Edge"; }
+    std::size_t estimatedSizeBytes() const override;
+
+    const std::string& edgeId() const { return m_edgeId; }
+
+  private:
+    GraphTopology& m_graph;
+    std::string m_edgeId;
+    std::optional<GraphEdge> m_savedEdge;
 };
 
 } // namespace FluidCore

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "FluidCoreAPI.h"
-#include "services/ExcerptTileCache.h"
+#include "undo/UndoStack.h"
 #include "workspace/WorkspaceState.h"
 
 #include <functional>
@@ -10,6 +10,8 @@
 #include <gtk/gtk.h>
 
 namespace FluidCoreApp {
+
+class ExcerptTileCache;
 
 class WorkspaceView {
   public:
@@ -27,6 +29,25 @@ class WorkspaceView {
 
     GtkWidget* widget() const { return m_area; }
     GtkWidget* drawingArea() const { return m_area; }
+
+    // Undo / Redo manager
+    bool undo();
+    bool redo();
+    bool canUndo() const { return m_undoStack.canUndo(); }
+    bool canRedo() const { return m_undoStack.canRedo(); }
+    FluidCore::UndoStack& undoStack() { return m_undoStack; }
+    const FluidCore::UndoStack& undoStack() const { return m_undoStack; }
+
+    using ActivatedCallback = std::function<void()>;
+    void setOnActivatedCallback(ActivatedCallback cb) { m_onActivated = std::move(cb); }
+    void notifyActivated() {
+        if (m_onActivated) {
+            m_onActivated();
+        }
+    }
+
+    // Transient interaction cancellation (Esc key / gesture discard)
+    void cancelCurrentInteraction();
 
     // Instant Inline In-Place Stack Renaming
     void startInlineStackRename(const std::string& stackId);
@@ -131,9 +152,11 @@ class WorkspaceView {
 
     ExcerptTileCache* m_excerptTileCache = nullptr;
     WorkspaceState m_state;
+    FluidCore::UndoStack m_undoStack;
 
     NavigateToSourceCallback m_onNavigateToSource;
     ExcerptAddedCallback m_onExcerptAdded;
+    ActivatedCallback m_onActivated;
 };
 
 } // namespace FluidCoreApp

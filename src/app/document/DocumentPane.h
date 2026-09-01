@@ -135,6 +135,14 @@ class DocumentPane {
         m_onReturnToWorkspace = std::move(cb);
     }
 
+    using ActivatedCallback = std::function<void()>;
+    void setOnActivatedCallback(ActivatedCallback cb) { m_onActivated = std::move(cb); }
+    void notifyActivated() {
+        if (m_onActivated) {
+            m_onActivated();
+        }
+    }
+
     ReturnAnchorPill* returnAnchorPill() const { return m_returnAnchorPill.get(); }
     const PulseHighlightState& pulseHighlight() const { return m_pulseHighlight; }
 
@@ -202,6 +210,7 @@ class DocumentPane {
     // Bi-directional return pill & luminous pulse highlight state
     std::unique_ptr<ReturnAnchorPill> m_returnAnchorPill;
     ReturnToWorkspaceCallback m_onReturnToWorkspace;
+    ActivatedCallback m_onActivated;
     PulseHighlightState m_pulseHighlight;
     guint m_pulseTimerId = 0;
     double m_savedReadingScrollY = 0.0;

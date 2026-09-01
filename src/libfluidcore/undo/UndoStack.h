@@ -28,6 +28,12 @@ class UndoStack {
     UndoStack(UndoStack&&) noexcept;
     UndoStack& operator=(UndoStack&&) noexcept;
 
+    // Macro management
+    void beginMacro(std::string description);
+    void endMacro();
+    void abortMacro();
+    bool isRecordingMacro() const { return m_macroDepth > 0; }
+
     // Executes the command and records it on the undo stack. Truncates the redo stack.
     bool pushAndExecute(std::unique_ptr<Command> command);
 
@@ -40,8 +46,8 @@ class UndoStack {
     // Re-applies the top command on the redo stack and moves it to the undo stack.
     bool redo();
 
-    bool canUndo() const { return !m_undoStack.empty(); }
-    bool canRedo() const { return !m_redoStack.empty(); }
+    bool canUndo() const { return !m_undoStack.empty() && m_macroDepth == 0; }
+    bool canRedo() const { return !m_redoStack.empty() && m_macroDepth == 0; }
 
     std::size_t undoCount() const { return m_undoStack.size(); }
     std::size_t redoCount() const { return m_redoStack.size(); }
@@ -77,6 +83,9 @@ class UndoStack {
     std::size_t m_maxDepth;
     std::size_t m_maxBytes;
     std::size_t m_currentBytes = 0;
+
+    std::size_t m_macroDepth = 0;
+    std::unique_ptr<CompoundCommand> m_activeMacro;
 
     std::deque<std::unique_ptr<Command>> m_undoStack;
     std::vector<std::unique_ptr<Command>> m_redoStack;

@@ -302,6 +302,193 @@ void testAddStrokeAutoIdRedo() {
     std::cout << "[PASS] testAddStrokeAutoIdRedo\n";
 }
 
+void testMacroNestedAndDepthCounting() {
+    int v1 = 0, v2 = 0;
+    UndoStack stack;
+
+    stack.beginMacro("Outer Macro");
+    expect(stack.isRecordingMacro(), "macro is recording");
+    expect(!stack.canUndo(), "cannot undo while recording");
+
+    stack.pushAndExecute(std::make_unique<TestValueCommand>(v1, 0, 10, "Set v1=10"));
+    expect(v1 == 10, "v1=10");
+
+    stack.beginMacro("Inner Macro");
+    expect(stack.isRecordingMacro(), "nested macro is recording");
+
+    stack.pushAndExecute(std::make_unique<TestValueCommand>(v2, 0, 20, "Set v2=20"));
+    expect(v2 == 20, "v2=20");
+
+    stack.endMacro(); // ends inner
+    expect(stack.isRecordingMacro(), "still recording outer macro");
+    expect(!stack.canUndo(), "cannot undo while outer macro open");
+
+    stack.endMacro(); // ends outer
+    expect(!stack.isRecordingMacro(), "macro completed");
+    expect(stack.canUndo(), "can undo completed macro");
+    expect(stack.undoCount() == 1, "macro stored as 1 atomic history item");
+
+    expect(stack.undo(), "macro undo succeeded");
+    expect(v1 == 0, "v1 reverted to 0");
+    expect(v2 == 0, "v2 reverted to 0");
+
+    expect(stack.redo(), "macro redo succeeded");
+    expect(v1 == 10, "v1 restored to 10");
+    expect(v2 == 20, "v2 restored to 20");
+
+    std::cout << "[PASS] testMacroNestedAndDepthCounting\n";
+}
+
+void testEmptyMacroDiscard() {
+    UndoStack stack;
+    stack.beginMacro("Empty Macro");
+    expect(stack.isRecordingMacro(), "recording empty macro");
+    stack.endMacro();
+
+    expect(!stack.isRecordingMacro(), "not recording");
+    expect(!stack.canUndo(), "empty macro was discarded and not pushed");
+    expect(stack.undoCount() == 0, "undo count is 0");
+
+    std::cout << "[PASS] testEmptyMacroDiscard\n";
+}
+
+void testImmediateRedoTruncationInMacro() {
+    int v = 0;
+    UndoStack stack;
+    stack.pushAndExecute(std::make_unique<TestValueCommand>(v, 0, 100));
+    stack.undo();
+    expect(stack.canRedo(), "can redo after undo");
+
+    stack.beginMacro("New Gesture");
+    expect(stack.canRedo() == false, "canRedo returns false while recording macro");
+
+    stack.pushAndExecute(std::make_unique<TestValueCommand>(v, 0, 50));
+    expect(v == 50, "v set to 50");
+
+    stack.endMacro();
+    expect(!stack.canRedo(), "redo stack was truncated by first mutation in macro");
+
+    std::cout << "[PASS] testImmediateRedoTruncationInMacro\n";
+}
+
+void testMacroAbortRollback() {
+    int v1 = 0, v2 = 0;
+    UndoStack stack;
+
+    stack.beginMacro("Aborted Gesture");
+    stack.pushAndExecute(std::make_unique<TestValueCommand>(v1, 0, 10));
+    stack.pushAndExecute(std::make_unique<TestValueCommand>(v2, 0, 20));
+    expect(v1 == 10 && v2 == 20, "values updated in flight");
+
+    stack.abortMacro();
+    expect(!stack.isRecordingMacro(), "macro aborted");
+    expect(v1 == 0, "v1 rolled back to 0 on abort");
+    expect(v2 == 0, "v2 rolled back to 0 on abort");
+    expect(!stack.canUndo(), "nothing pushed to undo stack on abort");
+
+    std::cout << "[PASS] testMacroAbortRollback\n";
+}
+
+void testClearWithOpenMacro() {
+    int v = 0;
+    UndoStack stack;
+    stack.beginMacro("In flight");
+    stack.pushAndExecute(std::make_unique<TestValueCommand>(v, 0, 99));
+
+    stack.clear();
+    expect(!stack.isRecordingMacro(), "macro cleared");
+    expect(!stack.canUndo(), "stack empty");
+
+    std::cout << "[PASS] testClearWithOpenMacro\n";
+}
+
+void testCompoundCommandStrictReverseOrder() {
+    std::vector<std::string> log;
+
+    class OrderedCommand : public FluidCore::Command {
+      public:
+        OrderedCommand(std::vector<std::string>& trace, std::string name)
+            : m_trace(trace), m_name(std::move(name)) {}
+        bool execute() override {
+            m_trace.push_back("exec:" + m_name);
+            return true;
+        }
+        bool undo() override {
+            m_trace.push_back("undo:" + m_name);
+            return true;
+        }
+        bool redo() override {
+            m_trace.push_back("redo:" + m_name);
+            return true;
+        }
+        std::string description() const override { return m_name; }
+
+      private:
+        std::vector<std::string>& m_trace;
+        std::string m_name;
+    };
+
+    CompoundCommand compound("Order Test");
+    compound.addCommand(std::make_unique<OrderedCommand>(log, "1st"));
+    compound.addCommand(std::make_unique<OrderedCommand>(log, "2nd"));
+    compound.addCommand(std::make_unique<OrderedCommand>(log, "3rd"));
+
+    log.clear();
+    compound.execute();
+    expect(log.size() == 3, "3 executed");
+    expect(log[0] == "exec:1st" && log[1] == "exec:2nd" && log[2] == "exec:3rd",
+           "forward execution order: 1st, 2nd, 3rd");
+
+    log.clear();
+    compound.undo();
+    expect(log.size() == 3, "3 undone");
+    expect(log[0] == "undo:3rd" && log[1] == "undo:2nd" && log[2] == "undo:1st",
+           "strictly reverse undo order: 3rd, 2nd, 1st");
+
+    log.clear();
+    compound.redo();
+    expect(log.size() == 3, "3 redone");
+    expect(log[0] == "redo:1st" && log[1] == "redo:2nd" && log[2] == "redo:3rd",
+           "strictly forward redo order: 1st, 2nd, 3rd");
+
+    std::cout << "[PASS] testCompoundCommandStrictReverseOrder\n";
+}
+
+void testCreateInkLinkAndRemoveEdgeCommands() {
+    FluidCore::GraphTopology graph;
+    UndoStack stack;
+
+    FluidCore::CreateInkLinkCommand createCmd(graph, "node-A", "node-B", {255, 0, 0, 255}, 2.5);
+    stack.pushAndExecute(std::make_unique<FluidCore::CreateInkLinkCommand>(graph, "node-A", "node-B",
+                                                                           FluidCore::Color{255, 0, 0, 255},
+                                                                           2.5));
+    expect(graph.edgeCount() == 1, "edge created in graph");
+    const auto edgeOpt = graph.findEdgeBetween("node-A", "node-B");
+    expect(edgeOpt.has_value(), "edge exists between node-A and node-B");
+    const std::string edgeId = edgeOpt->id;
+
+    stack.undo();
+    expect(graph.edgeCount() == 0, "edge removed on undo");
+    expect(!graph.findEdgeBetween("node-A", "node-B").has_value(), "edge absent after undo");
+
+    stack.redo();
+    expect(graph.edgeCount() == 1, "edge restored on redo");
+    expect(graph.findEdgeBetween("node-A", "node-B").has_value(), "edge present after redo");
+
+    // Test RemoveEdgeCommand
+    stack.pushAndExecute(std::make_unique<FluidCore::RemoveEdgeCommand>(graph, edgeId));
+    expect(graph.edgeCount() == 0, "edge removed via RemoveEdgeCommand");
+
+    stack.undo();
+    expect(graph.edgeCount() == 1, "edge restored on undo RemoveEdgeCommand");
+    expect(graph.findEdgeBetween("node-A", "node-B").has_value(), "restored edge matches");
+
+    stack.redo();
+    expect(graph.edgeCount() == 0, "edge removed again on redo RemoveEdgeCommand");
+
+    std::cout << "[PASS] testCreateInkLinkAndRemoveEdgeCommands\n";
+}
+
 int main() {
     testBasicUndoRedo();
     testRedoTruncationOnNewCommand();
@@ -311,6 +498,13 @@ int main() {
     testWorkspaceMoveNodeCommand();
     testUndoRedoByteTracking();
     testAddStrokeAutoIdRedo();
+    testMacroNestedAndDepthCounting();
+    testEmptyMacroDiscard();
+    testImmediateRedoTruncationInMacro();
+    testMacroAbortRollback();
+    testClearWithOpenMacro();
+    testCompoundCommandStrictReverseOrder();
+    testCreateInkLinkAndRemoveEdgeCommands();
     std::cout << "All UndoStack tests passed successfully!\n";
     return 0;
 }

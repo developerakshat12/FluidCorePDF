@@ -45,6 +45,43 @@ void UndoStack::trimCapacity() {
     }
 }
 
+void UndoStack::beginMacro(std::string description) {
+    if (m_macroDepth == 0) {
+        m_activeMacro = std::make_unique<CompoundCommand>(std::move(description));
+    }
+    m_macroDepth++;
+}
+
+void UndoStack::endMacro() {
+    if (m_macroDepth == 0) {
+        return;
+    }
+    m_macroDepth--;
+    if (m_macroDepth == 0) {
+        if (m_activeMacro && !m_activeMacro->empty()) {
+            auto macro = std::move(m_activeMacro);
+            m_activeMacro = nullptr;
+
+            const std::size_t sz = macro->estimatedSizeBytes();
+            m_currentBytes += sz;
+            m_undoStack.push_back(std::move(macro));
+
+            trimCapacity();
+            notifyListener();
+        } else {
+            m_activeMacro = nullptr;
+        }
+    }
+}
+
+void UndoStack::abortMacro() {
+    if (m_macroDepth > 0 && m_activeMacro) {
+        m_activeMacro->undo();
+        m_activeMacro = nullptr;
+        m_macroDepth = 0;
+    }
+}
+
 bool UndoStack::pushAndExecute(std::unique_ptr<Command> command) {
     if (!command) {
         return false;
@@ -63,6 +100,17 @@ void UndoStack::push(std::unique_ptr<Command> command) {
         return;
     }
 
+    if (isRecordingMacro()) {
+        if (m_activeMacro) {
+            if (m_activeMacro->empty()) {
+                m_redoStack.clear();
+                notifyListener();
+            }
+            m_activeMacro->addCommand(std::move(command));
+        }
+        return;
+    }
+
     // Truncate redo stack on any new mutation
     m_redoStack.clear();
 
@@ -75,7 +123,7 @@ void UndoStack::push(std::unique_ptr<Command> command) {
 }
 
 bool UndoStack::undo() {
-    if (m_undoStack.empty()) {
+    if (m_macroDepth > 0 || m_undoStack.empty()) {
         return false;
     }
 
@@ -91,7 +139,7 @@ bool UndoStack::undo() {
 }
 
 bool UndoStack::redo() {
-    if (m_redoStack.empty()) {
+    if (m_macroDepth > 0 || m_redoStack.empty()) {
         return false;
     }
 
@@ -116,6 +164,8 @@ std::string UndoStack::redoDescription() const {
 }
 
 void UndoStack::clear() {
+    m_activeMacro = nullptr;
+    m_macroDepth = 0;
     m_undoStack.clear();
     m_redoStack.clear();
     m_currentBytes = 0;
