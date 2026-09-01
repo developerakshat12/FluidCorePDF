@@ -56,7 +56,12 @@ class SqliteStatement {
     sqlite3_stmt* get() const { return m_stmt; }
     bool isValid() const { return m_stmt != nullptr; }
 
-    bool step() { return m_stmt && (sqlite3_step(m_stmt) == SQLITE_ROW); }
+    bool step() {
+        if (!m_stmt)
+            return false;
+        int rc = sqlite3_step(m_stmt);
+        return rc == SQLITE_ROW;
+    }
 
     int execute() {
         if (!m_stmt) {
@@ -937,8 +942,8 @@ bool ProjectStore::saveProject(const WorkspaceModel& model, const GraphTopology&
               << std::flush;
     for (const std::string& nodeId : model.allNodeIds()) {
         const WorkspaceNode* node = model.find(nodeId);
-        std::cout << "      [saveProject] node: " << nodeId << ", ptr: " << static_cast<const void*>(node)
-                  << "\n"
+        std::cout << "      [saveProject] node: " << nodeId
+                  << ", ptr: " << static_cast<const void*>(node) << "\n"
                   << std::flush;
         if (node) {
             serializeNodeRecursive(m_db, m_metadata.projectId, node, "", rootZ++, insertNodeStmt,
@@ -1084,7 +1089,9 @@ bool ProjectStore::rehydrate(WorkspaceModel& outModel, GraphTopology& outGraph,
         m_db, "SELECT node_id, node_type, pos_x, pos_y, width, height, parent_stack_id, title, "
               "is_collapsed, color, created_at FROM workspace_nodes ORDER BY z_index ASC;");
     if (nodeStmt.isValid()) {
+        int nodeRowCount = 0;
         while (nodeStmt.step()) {
+            ++nodeRowCount;
             NodeRecord nr;
             const char* nId = reinterpret_cast<const char*>(sqlite3_column_text(nodeStmt.get(), 0));
             if (nId)
@@ -1116,6 +1123,7 @@ bool ProjectStore::rehydrate(WorkspaceModel& outModel, GraphTopology& outGraph,
             }
             allNodes.push_back(std::move(nr));
         }
+        std::cout << "    [rehydrate] nodeStmt stepped " << nodeRowCount << " rows\n" << std::flush;
     }
 
     // Build node map
