@@ -55,10 +55,13 @@ std::string GraphTopology::addEdge(const GraphEdge& edge) {
         if (it != m_edges.end()) {
             if (it->second.sourceNodeId == edge.sourceNodeId &&
                 it->second.targetNodeId == edge.targetNodeId) {
-                // Same direction: refresh color/style without duplicating
+                // Same direction: refresh color/style/label without duplicating
                 it->second.color = edge.color;
                 it->second.strokeWidth = edge.strokeWidth;
                 it->second.arrowStyle = edge.arrowStyle;
+                if (!edge.label.empty()) {
+                    it->second.label = edge.label;
+                }
                 return existingId;
             } else if (it->second.sourceNodeId == edge.targetNodeId &&
                        it->second.targetNodeId == edge.sourceNodeId) {
@@ -66,6 +69,9 @@ std::string GraphTopology::addEdge(const GraphEdge& edge) {
                 it->second.direction = EdgeDirection::Bidirectional;
                 it->second.color = edge.color;
                 it->second.strokeWidth = edge.strokeWidth;
+                if (!edge.label.empty()) {
+                    it->second.label = edge.label;
+                }
                 return existingId;
             }
         }

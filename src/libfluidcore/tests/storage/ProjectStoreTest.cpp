@@ -148,10 +148,12 @@ void testNodeAndGraphRehydration() {
     std::string err;
     DocumentRecord docRecord{"doc-1", "Quantum.pdf", "documents/doc-1.pdf", "sha-1", 10,
                              50000,   1000};
+    std::cout << "  Save project...\n" << std::flush;
     bool saved = store.saveProject(model, graph, {docRecord}, &err);
     assert(saved && "saveProject should succeed");
 
     store.closeProject();
+    std::cout << "  Reopening for rehydration...\n" << std::flush;
 
     // Reopen and rehydrate
     ProjectStore loadStore;
@@ -161,6 +163,7 @@ void testNodeAndGraphRehydration() {
     GraphTopology loadedGraph;
     std::vector<DocumentRecord> loadedDocs;
     assert(loadStore.rehydrate(loadedModel, loadedGraph, loadedDocs, &err));
+    std::cout << "  Rehydration done, checking docs and nodes...\n" << std::flush;
 
     assert(loadedDocs.size() == 1);
     assert(loadedDocs[0].docId == "doc-1");
@@ -188,6 +191,7 @@ void testNodeAndGraphRehydration() {
     assert(loadedChild != nullptr);
     assert(loadedChild->textSnippet() == "Lattice depth modulation snippet");
 
+    std::cout << "  Checking graph edges...\n" << std::flush;
     // Check graph edges
     assert(loadedGraph.edgeCount() == 1);
     auto loadedEdge = loadedGraph.findEdge("edge-1-2");
@@ -199,6 +203,7 @@ void testNodeAndGraphRehydration() {
     assert(loadedEdge->color.g == 69);
     assert(loadedEdge->strokeWidth == 3.0);
 
+    std::cout << "  Checking FTS search...\n" << std::flush;
     // Check FTS search
     auto results = loadStore.executeSearch("coherence");
     assert(!results.empty());
@@ -215,10 +220,10 @@ void testNodeAndGraphRehydration() {
 } // namespace
 
 int main() {
-    std::cout << "Running ProjectStoreTest...\n";
+    std::cout << "Running ProjectStoreTest...\n" << std::flush;
     testBundleCreationAndMetadata();
     testDocumentRegistryAndCleanup();
     testNodeAndGraphRehydration();
-    std::cout << "All ProjectStoreTest cases passed successfully!\n";
+    std::cout << "All ProjectStoreTest cases passed successfully!\n" << std::flush;
     return 0;
 }
