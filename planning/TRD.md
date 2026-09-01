@@ -152,6 +152,12 @@ Where:
 * **Tile-Based Virtual Rasterization**: Divides each visible page into $512 \times 512\text{px}$ tiles rendered asynchronously on worker threads.
 * **Glyph & Text Boundary Extraction**: Computes normalized vector bounding boxes for every character, word, and paragraph upon document load for instantaneous hit-testing and lasso selection.
 
+#### 3.3.1 Per-Document `.xopp` & `project.db` Ink Reconciliation Specification
+To preserve modularity between single-document reading (M1) and multi-document project persistence (M5):
+* **Source Document Ink (.xopp)**: Per-document margin/page annotations saved via `Ctrl+S` remain canonical companion `.xopp` files located alongside documents in the `.ltproj` bundle (`/documents/{doc_uuid}.xopp` or referenced via `documents.file_path_relative + '.xopp'`). When loading a project, `DocumentPane` rehydrates these into `AnnotationStore`.
+* **Workspace & Canvas Ink (project.db)**: Relational ink connectors, elastic graph edges (`graph_edges`), and free-canvas ink strokes (`ink_strokes` where `container_type IN ('WORKSPACE', 'NODE')`) are persisted directly inside SQLite `project.db`.
+* **Reconciliation Rule**: On `.ltproj` save/reopen, `project.db` maintains relational integrity of workspace nodes and graph edges, while document-level strokes are verified and linked to their respective `doc_id` without duplicating vector stroke data into `project.db`. On standalone export, document companion `.xopp` files are bundled into `/documents/`.
+
 ### 3.4 Workspace Canvas & Spatial Indexing Subsystem
 * **Infinite Viewport Coordinate Space**: Maintains a 2D affine transformation matrix:
 $$\mathbf{M}_{view} = \begin{bmatrix} s & 0 & t_x \\ 0 & s & t_y \\ 0 & 0 & 1 \end{bmatrix}$$

@@ -3,15 +3,24 @@
 #include <zlib.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <charconv>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <optional>
 #include <system_error>
 #include <utility>
+
+#if !defined(_WIN32)
+#include <fcntl.h>
+#include <unistd.h>
+#else
+#include <io.h>
+#endif
 
 namespace FluidCore {
 
@@ -872,21 +881,66 @@ bool XoppDocument::save(const std::string& path, std::string* error) const {
         }
         return false;
     }
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+
+    std::filesystem::path targetPath(path);
+    std::filesystem::path parentDir = targetPath.parent_path();
+    if (parentDir.empty()) {
+        parentDir = ".";
+    }
+
+    std::error_code ec;
+    std::filesystem::create_directories(parentDir, ec);
+
+    static std::atomic<uint64_t> s_counter{0};
+    const uint64_t count = ++s_counter;
+    const std::string tmpPath = path + ".tmp." + std::to_string(count);
+
+    std::ofstream out(tmpPath, std::ios::binary | std::ios::trunc);
     if (!out) {
         if (error) {
-            *error = "cannot open '" + path + "' for writing";
+            *error = "cannot open temporary file '" + tmpPath + "' for writing";
         }
         return false;
     }
     out.write(compressed.data(), static_cast<std::streamsize>(compressed.size()));
-    out.close();
+    out.flush();
     if (!out) {
         if (error) {
-            *error = "failed while writing '" + path + "'";
+            *error = "failed while writing '" + tmpPath + "'";
         }
+        std::filesystem::remove(tmpPath, ec);
         return false;
     }
+    out.close();
+
+    // Sync file data to disk before renaming
+#if !defined(_WIN32)
+    int fd = ::open(tmpPath.c_str(), O_RDONLY);
+    if (fd >= 0) {
+        ::fsync(fd);
+        ::close(fd);
+    }
+#endif
+
+    // Atomic filesystem rename
+    std::filesystem::rename(tmpPath, targetPath, ec);
+    if (ec) {
+        if (error) {
+            *error = "failed to rename '" + tmpPath + "' to '" + path + "': " + ec.message();
+        }
+        std::filesystem::remove(tmpPath, ec);
+        return false;
+    }
+
+    // Fsync parent directory descriptor on POSIX to commit directory metadata
+#if !defined(_WIN32)
+    int dirFd = ::open(parentDir.c_str(), O_RDONLY | O_DIRECTORY);
+    if (dirFd >= 0) {
+        ::fsync(dirFd);
+        ::close(dirFd);
+    }
+#endif
+
     return true;
 }
 

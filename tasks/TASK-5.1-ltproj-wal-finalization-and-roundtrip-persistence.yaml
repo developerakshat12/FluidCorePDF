@@ -1,0 +1,34 @@
+id: TASK-5.1-ltproj-wal-finalization-and-roundtrip-persistence
+title: .ltproj SQLite WAL Bundle Finalization, Crash Recovery (SIGKILL Fuzzing), and Full Round-Trip Persistence Acceptance Testing
+milestone: M5
+status: completed
+workspace: D:\FluidCorePDF\fluidcore-platform
+specs:
+  - planning/TRD.md (section 3.3.1, 3.4, 4.1, and 6)
+  - planning/ROADMAP.md (Milestone 5, Task 1 & Full Round-Trip Acceptance Test)
+  - planning/roadmap.yaml (Milestone 5)
+  - skills/cpp-core-dev/SKILL.md
+dependencies:
+  - TASK-4.4-export-flattened-pdf-and-markdown-outline
+deliverables:
+  - src/libfluidcore/storage/ProjectStore.{h,cpp} — production-grade SQLite WAL project storage engine managing .ltproj bundle lifecycle, DDL schemas (projects, documents, workspace_nodes, source_anchors, graph_edges, ink_strokes, tags, entity_tags, and fts_universal_index), atomic directory commits, WAL truncation on close, rehydration of WorkspaceModel and GraphTopology, and FTS5 search.
+  - src/libfluidcore/storage/XoppDocument.{h,cpp} & AnnotationStore.{h,cpp} — atomic write-to-temp-and-rename serialization with directory fsync on POSIX.
+  - src/libfluidcore/FluidCoreAPI.h, FluidCoreEngine.{h,cpp} — openProject(path), saveProject(), and executeSearch(query) integration.
+  - src/libfluidcore/CMakeLists.txt — SQLite3 library linking and test target registrations.
+  - src/libfluidcore/tests/storage/ProjectStoreTest.cpp — comprehensive unit tests for schema, CRUD, transactions, anchors, stacks, graph edges, tags, and FTS5 indexing.
+  - src/libfluidcore/tests/storage/CrashRecoveryFuzzTest.cpp — multi-process SIGKILL fuzzing harness validating SQLite WAL durability and full XoppDocument parsing post-kill.
+  - src/libfluidcore/tests/storage/RoundTripPersistenceTest.cpp — acceptance test executing 6-step round-trip test procedure across relocated bundle directories, asserting all 9 acceptance criteria.
+acceptance_checks:
+  - "clang-format --dry-run --Werror clean on all touched files"
+  - "python3 ops/scripts/check_invariants.py passes (0 GUI includes in libfluidcore)"
+  - "all registered CTest targets pass (100% - 31/31 test suites)"
+  - "Atomic directory commits and SQLite WAL checkpointing maintain zero data loss across restarts"
+  - "Multi-process SIGKILL fuzzing proves uncorrupted recovery of SQLite database and .xopp files"
+  - "Mechanized path relocation round-trip test preserves 100% of workspace nodes, normalized rects, text, stacks, tags, and graph edges"
+constraints:
+  - Zero GUI/Cairo/GTK headers in src/libfluidcore/ (ADR-0001 clean separation)
+  - SQLite3 C API wrapped with clean RAII handles and prepared statements
+  - All bundle relative paths normalized to POSIX forward slashes ('/')
+  - Documents and source anchors unified under canonical doc_id
+  - Companion .xopp files cleaned up from disk on document removal
+  - Torn save behavior is safe from corruption with at most one revision staleness on .xopp

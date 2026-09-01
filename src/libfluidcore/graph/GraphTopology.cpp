@@ -78,7 +78,9 @@ std::string GraphTopology::addEdge(const GraphEdge& edge) {
 
     GraphEdge storedEdge = edge;
     storedEdge.id = edgeId;
-    storedEdge.direction = EdgeDirection::Forward;
+    if (storedEdge.direction != EdgeDirection::Bidirectional) {
+        storedEdge.direction = EdgeDirection::Forward;
+    }
 
     m_edges[edgeId] = storedEdge;
     m_outEdges[storedEdge.sourceNodeId].push_back(edgeId);

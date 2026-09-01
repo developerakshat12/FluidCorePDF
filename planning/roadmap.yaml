@@ -70,6 +70,7 @@ milestones:
     perf_gates: { cold_load_50pdf_s_max: 8, ram_gb_max: 1.2 }
     items:
       - .ltproj WAL finalization + kill -9 recovery suite
+      - full round-trip persistence acceptance test (.ltproj save -> close -> reopen -> diff)
       - palm rejection tuning + stylus matrix
       - keyboard-only accessibility pass
       - i18n framework (EN, DE, ZH)

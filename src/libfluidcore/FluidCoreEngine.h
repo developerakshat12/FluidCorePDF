@@ -4,6 +4,7 @@
 
 #include "graph/GraphTopology.h"
 #include "squeeze/SqueezeEngine.h"
+#include "storage/ProjectStore.h"
 #include "workspace/CardStackNode.h"
 #include "workspace/PhysicsSolver.h"
 #include "workspace/WorkspaceModel.h"
@@ -14,9 +15,7 @@
 
 namespace FluidCore {
 
-// Concrete FluidCoreAPI facade over the engine modules. Wave-1 slice: the
-// spatial scene-graph, graph edge routing (M4), snapping/stacking physics, and squeeze engine
-// methods are live; persistence/search (M5) stay signature-level no-ops at their delegate points.
+// Concrete FluidCoreAPI facade over the engine modules.
 class FluidCoreEngine final : public FluidCoreAPI {
   public:
     explicit FluidCoreEngine(std::string projectId);
@@ -42,6 +41,9 @@ class FluidCoreEngine final : public FluidCoreAPI {
 
     WorkspaceModel& workspaceModel() { return m_model; }
     const WorkspaceModel& workspaceModel() const { return m_model; }
+
+    ProjectStore& projectStore() { return m_store; }
+    const ProjectStore& projectStore() const { return m_store; }
 
     // Spatial scene graph — live slice backed by WorkspaceModel + RTreeIndex.
     std::string insertNode(std::unique_ptr<WorkspaceNode> node) override;
@@ -86,7 +88,7 @@ class FluidCoreEngine final : public FluidCoreAPI {
     bool exportWorkspaceMarkdownToFile(const std::string& filePath,
                                        const WorkspaceExportOptions& options = {}) const override;
 
-    // Persistence & search
+    // Persistence & search (TASK-5.1)
     void openProject(const std::string& ltprojDirectoryPath) override;
     void saveProject() override;
     std::vector<SearchResult> executeSearch(const std::string& query) const override;
@@ -97,6 +99,7 @@ class FluidCoreEngine final : public FluidCoreAPI {
     WorkspaceModel m_model;
     SqueezeEngine m_squeezeEngine;
     GraphTopology m_graph;
+    ProjectStore m_store;
 };
 
 } // namespace FluidCore

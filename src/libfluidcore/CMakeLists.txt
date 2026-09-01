@@ -25,7 +25,8 @@ add_library(fluidcore STATIC
 )
 
 find_package(ZLIB REQUIRED)
-target_link_libraries(fluidcore PRIVATE ZLIB::ZLIB)
+find_package(SQLite3 REQUIRED)
+target_link_libraries(fluidcore PRIVATE ZLIB::ZLIB SQLite::SQLite3)
 
 target_include_directories(fluidcore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_features(fluidcore PUBLIC cxx_std_20)
@@ -113,4 +114,16 @@ if(BUILD_TESTING)
     add_executable(workspace_export_engine_test tests/WorkspaceExportEngineTest.cpp)
     target_link_libraries(workspace_export_engine_test PRIVATE fluidcore)
     add_test(NAME WorkspaceExportEngineTest COMMAND workspace_export_engine_test)
+
+    add_executable(project_store_test tests/storage/ProjectStoreTest.cpp)
+    target_link_libraries(project_store_test PRIVATE fluidcore)
+    add_test(NAME ProjectStoreTest COMMAND project_store_test)
+
+    add_executable(crash_recovery_fuzz_test tests/storage/CrashRecoveryFuzzTest.cpp)
+    target_link_libraries(crash_recovery_fuzz_test PRIVATE fluidcore)
+    add_test(NAME CrashRecoveryFuzzTest COMMAND crash_recovery_fuzz_test)
+
+    add_executable(round_trip_persistence_test tests/storage/RoundTripPersistenceTest.cpp)
+    target_link_libraries(round_trip_persistence_test PRIVATE fluidcore)
+    add_test(NAME RoundTripPersistenceTest COMMAND round_trip_persistence_test)
 endif()

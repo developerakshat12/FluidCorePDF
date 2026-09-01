@@ -248,11 +248,26 @@ bool FluidCoreEngine::removeEdge(const std::string& edgeId) {
     return m_graph.removeEdge(edgeId);
 }
 
-void FluidCoreEngine::openProject(const std::string&) {}
+void FluidCoreEngine::openProject(const std::string& ltprojDirectoryPath) {
+    if (m_store.openProject(ltprojDirectoryPath)) {
+        std::vector<DocumentRecord> docs;
+        m_store.rehydrate(m_model, m_graph, docs);
+    }
+}
 
-void FluidCoreEngine::saveProject() {}
+void FluidCoreEngine::saveProject() {
+    if (m_store.isOpen()) {
+        m_store.saveProject(m_model, m_graph);
+    }
+}
 
 std::vector<SearchResult> FluidCoreEngine::executeSearch(const std::string& query) const {
+    if (m_store.isOpen()) {
+        auto results = m_store.executeSearch(query);
+        if (!results.empty()) {
+            return results;
+        }
+    }
     auto matches = WorkspaceSearchEngine::search(m_model, query);
     return WorkspaceSearchEngine::toSearchResults(matches);
 }
