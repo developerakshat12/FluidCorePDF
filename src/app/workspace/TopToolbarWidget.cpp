@@ -241,26 +241,33 @@ void TopToolbarWidget::createWidgets() {
 
 void TopToolbarWidget::onToolStateChanged(Tool tool) {
     m_updatingToolUI = true;
-    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(m_selectBtn), tool == Tool::Select);
-    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(m_penBtn), tool == Tool::Pen);
-    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(m_highlighterBtn), tool == Tool::Highlighter);
-    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(m_eraserBtn), tool == Tool::Eraser);
-    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(m_cropBtn), tool == Tool::Crop);
-    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(m_connectorBtn), tool == Tool::Connector);
+    if (m_selectBtn && GTK_IS_TOGGLE_BUTTON(m_selectBtn))
+        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(m_selectBtn), tool == Tool::Select);
+    if (m_penBtn && GTK_IS_TOGGLE_BUTTON(m_penBtn))
+        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(m_penBtn), tool == Tool::Pen);
+    if (m_highlighterBtn && GTK_IS_TOGGLE_BUTTON(m_highlighterBtn))
+        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(m_highlighterBtn),
+                                     tool == Tool::Highlighter);
+    if (m_eraserBtn && GTK_IS_TOGGLE_BUTTON(m_eraserBtn))
+        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(m_eraserBtn), tool == Tool::Eraser);
+    if (m_cropBtn && GTK_IS_TOGGLE_BUTTON(m_cropBtn))
+        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(m_cropBtn), tool == Tool::Crop);
+    if (m_connectorBtn && GTK_IS_TOGGLE_BUTTON(m_connectorBtn))
+        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(m_connectorBtn), tool == Tool::Connector);
     m_updatingToolUI = false;
 }
 
 void TopToolbarWidget::updateUndoRedoState(bool canUndo, bool canRedo) {
-    if (m_undoBtn) {
+    if (m_undoBtn && GTK_IS_WIDGET(m_undoBtn)) {
         gtk_widget_set_sensitive(m_undoBtn, canUndo ? TRUE : FALSE);
     }
-    if (m_redoBtn) {
+    if (m_redoBtn && GTK_IS_WIDGET(m_redoBtn)) {
         gtk_widget_set_sensitive(m_redoBtn, canRedo ? TRUE : FALSE);
     }
 }
 
 void TopToolbarWidget::setMinimapActive(bool active) {
-    if (m_minimapBtn) {
+    if (m_minimapBtn && GTK_IS_TOGGLE_BUTTON(m_minimapBtn)) {
         gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(m_minimapBtn), active ? TRUE : FALSE);
     }
 }
