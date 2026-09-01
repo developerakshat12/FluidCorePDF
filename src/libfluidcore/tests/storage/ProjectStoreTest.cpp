@@ -103,7 +103,8 @@ void testNodeAndGraphRehydration() {
     std::filesystem::remove_all(testDir, ec);
 
     ProjectStore store("proj-rehydrate");
-    assert(store.openProject(testDir));
+    bool ok = store.openProject(testDir);
+    assert(ok && "store.openProject should succeed");
 
     WorkspaceModel model("proj-rehydrate");
     GraphTopology graph;
@@ -148,47 +149,27 @@ void testNodeAndGraphRehydration() {
     std::string err;
     DocumentRecord docRecord{"doc-1", "Quantum.pdf", "documents/doc-1.pdf", "sha-1", 10,
                              50000,   1000};
-    std::cerr << "  [TEST] Save project...\n" << std::flush;
     bool saved = store.saveProject(model, graph, {docRecord}, &err);
-    if (!saved) {
-        std::cerr << "  [TEST] saveProject failed: " << err << "\n" << std::flush;
-    }
     assert(saved && "saveProject should succeed");
 
     store.closeProject();
-    std::cerr << "  [TEST] Reopening for rehydration...\n" << std::flush;
 
     // Reopen and rehydrate
     ProjectStore loadStore;
     bool opened = loadStore.openProject(testDir, &err);
-    if (!opened) {
-        std::cerr << "  [TEST] openProject failed: " << err << "\n" << std::flush;
-    }
     assert(opened);
 
     WorkspaceModel loadedModel("proj-rehydrate");
     GraphTopology loadedGraph;
     std::vector<DocumentRecord> loadedDocs;
     bool rehydrated = loadStore.rehydrate(loadedModel, loadedGraph, loadedDocs, &err);
-    if (!rehydrated) {
-        std::cerr << "  [TEST] rehydrate failed: " << err << "\n" << std::flush;
-    }
     assert(rehydrated);
-    std::cerr << "  [TEST] Rehydration done, checking docs and nodes...\n" << std::flush;
 
     assert(loadedDocs.size() == 1);
     assert(loadedDocs[0].docId == "doc-1");
 
-    std::cout << "  Checking loadedModel nodeCount = " << loadedModel.nodeCount() << "\n"
-              << std::flush;
-    for (const auto& nid : loadedModel.allNodeIds()) {
-        auto* n = loadedModel.find(nid);
-        std::cout << "    Found node: " << nid << ", ptr=" << static_cast<void*>(n) << "\n"
-                  << std::flush;
-    }
     assert(loadedModel.nodeCount() == 3);
 
-    std::cout << "  Checking card-1...\n" << std::flush;
     auto* loadedCard1 = dynamic_cast<ExcerptCardNode*>(loadedModel.find("card-1"));
     assert(loadedCard1 != nullptr);
     assert(loadedCard1->bounds().x == 100);
@@ -200,21 +181,16 @@ void testNodeAndGraphRehydration() {
     assert(loadedCard1->hasTag("physics"));
     assert(loadedCard1->hasTag("quantum"));
 
-    std::cout << "  Checking stack-1...\n" << std::flush;
     auto* loadedStack = dynamic_cast<CardStackNode*>(loadedModel.find("stack-1"));
-    std::cout << "  loadedStack ptr = " << static_cast<void*>(loadedStack) << "\n" << std::flush;
     assert(loadedStack != nullptr);
     assert(loadedStack->title() == "Quantum Stack");
     assert(loadedStack->childCount() == 1);
     assert(loadedStack->hasTag("summary"));
 
-    std::cout << "  Checking card-3...\n" << std::flush;
-    assert(loadedStack != nullptr);
     auto* loadedChild = dynamic_cast<ExcerptCardNode*>(loadedStack->findChild("card-3"));
     assert(loadedChild != nullptr);
     assert(loadedChild->textSnippet() == "Lattice depth modulation snippet");
 
-    std::cout << "  Checking graph edges...\n" << std::flush;
     // Check graph edges
     assert(loadedGraph.edgeCount() == 1);
     auto loadedEdge = loadedGraph.findEdge("edge-1-2");
@@ -226,20 +202,17 @@ void testNodeAndGraphRehydration() {
     assert(loadedEdge->color.g == 69);
     assert(loadedEdge->strokeWidth == 3.0);
 
-    std::cout << "  Checking FTS search coherence...\n" << std::flush;
     // Check FTS search
     auto results = loadStore.executeSearch("coherence");
     assert(!results.empty());
     assert(results[0].entityId == "card-1");
 
-    std::cout << "  Checking FTS search Quantum Stack...\n" << std::flush;
     auto stackResults = loadStore.executeSearch("Quantum Stack");
     assert(!stackResults.empty());
 
-    std::cout << "  Closing loadStore...\n" << std::flush;
     loadStore.closeProject();
     std::filesystem::remove_all(testDir, ec);
-    std::cout << "  Passed!\n" << std::flush;
+    std::cout << "  Passed!\n";
 }
 
 } // namespace

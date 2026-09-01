@@ -12,7 +12,6 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
-#include <iostream>
 #include <sstream>
 #include <unordered_map>
 #include <unordered_set>
@@ -37,13 +36,7 @@ class SqliteStatement {
   public:
     SqliteStatement(sqlite3* db, const std::string& sql) {
         if (db) {
-            int rc = sqlite3_prepare_v2(db, sql.c_str(), static_cast<int>(sql.size()), &m_stmt,
-                                        nullptr);
-            if (rc != SQLITE_OK) {
-                std::cout << "      [SqliteStatement] prepare failed: " << sqlite3_errmsg(db)
-                          << " for SQL: " << sql << "\n"
-                          << std::flush;
-            }
+            sqlite3_prepare_v2(db, sql.c_str(), static_cast<int>(sql.size()), &m_stmt, nullptr);
         }
     }
 
@@ -937,14 +930,8 @@ bool ProjectStore::saveProject(const WorkspaceModel& model, const GraphTopology&
 
     // Serialize top-level nodes and their hierarchy
     int rootZ = 1;
-    std::cout << "    [saveProject] model.allNodeIds().size() = " << model.allNodeIds().size()
-              << ", projectId = " << m_metadata.projectId << "\n"
-              << std::flush;
     for (const std::string& nodeId : model.allNodeIds()) {
         const WorkspaceNode* node = model.find(nodeId);
-        std::cout << "      [saveProject] node: " << nodeId
-                  << ", ptr: " << static_cast<const void*>(node) << "\n"
-                  << std::flush;
         if (node) {
             serializeNodeRecursive(m_db, m_metadata.projectId, node, "", rootZ++, insertNodeStmt,
                                    insertAnchorStmt, insertTagStmt, insertEntityTagStmt,
@@ -993,15 +980,12 @@ bool ProjectStore::saveProject(const WorkspaceModel& model, const GraphTopology&
     }
 
     if (sqlite3_exec(m_db, "COMMIT;", nullptr, nullptr, &errMsg) != SQLITE_OK) {
-        std::cout << "    [saveProject] COMMIT failed: " << (errMsg ? errMsg : "unknown") << "\n"
-                  << std::flush;
         if (error)
             *error = (errMsg ? std::string(errMsg) : "Failed to commit transaction");
         if (errMsg)
             sqlite3_free(errMsg);
         return false;
     }
-    std::cout << "    [saveProject] COMMIT succeeded\n" << std::flush;
 
     // Write atomic metadata.json
     writeMetadataJson(nullptr);
@@ -1011,20 +995,9 @@ bool ProjectStore::saveProject(const WorkspaceModel& model, const GraphTopology&
 bool ProjectStore::rehydrate(WorkspaceModel& outModel, GraphTopology& outGraph,
                              std::vector<DocumentRecord>& outDocs, std::string* error) const {
     if (!m_db) {
-        std::cout << "    [rehydrate] m_db is null!\n" << std::flush;
         if (error)
             *error = "Database not open";
         return false;
-    }
-
-    // Diagnostic: count rows in workspace_nodes
-    SqliteStatement countStmt(m_db, "SELECT count(*) FROM workspace_nodes;");
-    if (countStmt.isValid() && countStmt.step()) {
-        int count = sqlite3_column_int(countStmt.get(), 0);
-        std::cout << "    [rehydrate] SELECT count(*) FROM workspace_nodes = " << count << "\n"
-                  << std::flush;
-    } else {
-        std::cout << "    [rehydrate] countStmt failed to step or invalid!\n" << std::flush;
     }
 
     // 1. Documents
@@ -1103,9 +1076,7 @@ bool ProjectStore::rehydrate(WorkspaceModel& outModel, GraphTopology& outGraph,
         m_db, "SELECT node_id, node_type, pos_x, pos_y, width, height, parent_stack_id, title, "
               "is_collapsed, color, created_at FROM workspace_nodes ORDER BY z_index ASC;");
     if (nodeStmt.isValid()) {
-        int nodeRowCount = 0;
         while (nodeStmt.step()) {
-            ++nodeRowCount;
             NodeRecord nr;
             const char* nId = reinterpret_cast<const char*>(sqlite3_column_text(nodeStmt.get(), 0));
             if (nId)
@@ -1137,7 +1108,6 @@ bool ProjectStore::rehydrate(WorkspaceModel& outModel, GraphTopology& outGraph,
             }
             allNodes.push_back(std::move(nr));
         }
-        std::cout << "    [rehydrate] nodeStmt stepped " << nodeRowCount << " rows\n" << std::flush;
     }
 
     // Build node map
@@ -1198,13 +1168,6 @@ bool ProjectStore::rehydrate(WorkspaceModel& outModel, GraphTopology& outGraph,
             return card;
         }
     };
-
-    std::cout << "    [rehydrate] total allNodes = " << allNodes.size() << "\n" << std::flush;
-    for (const auto& nr : allNodes) {
-        std::cout << "      node: " << nr.nodeId << ", type: " << nr.nodeType
-                  << ", parent: " << nr.parentStackId << "\n"
-                  << std::flush;
-    }
 
     // Insert only root nodes into outModel
     for (const auto& nr : allNodes) {
