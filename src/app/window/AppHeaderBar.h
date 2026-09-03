@@ -27,7 +27,7 @@ class AppHeaderBar {
     void setOnOpenPdf(std::function<void()> cb) { m_onOpenPdf = std::move(cb); }
     void setOnOpenProject(std::function<void()> cb) { m_onOpenProject = std::move(cb); }
     void setOnSaveProject(std::function<void()> cb) { m_onSaveProject = std::move(cb); }
-    void setOnSaveProjectAs(std::function<void()> cb) { m_onSaveProjectAs = std::move(cb); }
+    void setOnSaveProjectAs(std::function<void()> cb) { m_onSaveProject = std::move(cb); }
     void setOnExport(std::function<void()> cb) { m_onExport = std::move(cb); }
 
   private:
@@ -45,7 +45,6 @@ class AppHeaderBar {
     GtkWidget* m_openMenuBtn = nullptr;
     GtkWidget* m_openMenu = nullptr;
     GtkWidget* m_saveBtn = nullptr;
-    GtkWidget* m_saveAsBtn = nullptr;
     GtkWidget* m_exportBtn = nullptr;
 
     // Callbacks
@@ -53,7 +52,6 @@ class AppHeaderBar {
     std::function<void()> m_onOpenPdf;
     std::function<void()> m_onOpenProject;
     std::function<void()> m_onSaveProject;
-    std::function<void()> m_onSaveProjectAs;
     std::function<void()> m_onExport;
 };
 

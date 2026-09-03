@@ -9,14 +9,53 @@
 #include "workspace/TopToolbarWidget.h"
 #include "workspace/WorkspaceView.h"
 
+#include <chrono>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <gtk/gtk.h>
 #include <iostream>
 #include <memory>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
+
+#ifndef _WIN32
+#include <csignal>
+#include <execinfo.h>
+#include <unistd.h>
+
+static void crashSignalHandler(int sig) {
+    const char* sigName = (sig == SIGSEGV) ? "SIGSEGV (Segmentation fault)"
+                        : (sig == SIGABRT) ? "SIGABRT (Abort)"
+                        : (sig == SIGBUS)  ? "SIGBUS (Bus error)"
+                        : (sig == SIGFPE)  ? "SIGFPE (Floating point exception)"
+                        : (sig == SIGILL)  ? "SIGILL (Illegal instruction)"
+                        : "UNKNOWN SIGNAL";
+    std::cerr << "\n================ [FluidCore FATAL CRASH] ================\n"
+              << "Caught fatal signal: " << sigName << " (" << sig << ")\n";
+    void* callstack[64];
+    int frames = backtrace(callstack, 64);
+    backtrace_symbols_fd(callstack, frames, STDERR_FILENO);
+    std::cerr << "=========================================================\n" << std::endl;
+    _exit(128 + sig);
+}
+
+static void installCrashHandlers() {
+    struct sigaction sa;
+    std::memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = crashSignalHandler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESETHAND;
+    sigaction(SIGSEGV, &sa, nullptr);
+    sigaction(SIGABRT, &sa, nullptr);
+    sigaction(SIGBUS, &sa, nullptr);
+    sigaction(SIGFPE, &sa, nullptr);
+    sigaction(SIGILL, &sa, nullptr);
+}
+#endif
 
 namespace {
 
@@ -180,6 +219,7 @@ bool validateLtprojBundle(const std::string& path, std::string& errorMsg) {
     return true;
 }
 
+void performSaveProject(AppViewContext* ctx);
 void performSaveProjectAs(AppViewContext* ctx);
 
 void confirmDiscardUnsavedChanges(AppViewContext* ctx, std::function<void()> onProceed) {
@@ -231,7 +271,7 @@ void confirmDiscardUnsavedChanges(AppViewContext* ctx, std::function<void()> onP
             }
         } else {
             ctx->pendingActionProceed = std::move(onProceed);
-            performSaveProjectAs(ctx);
+            performSaveProject(ctx);
         }
     } else if (response == GTK_RESPONSE_REJECT) {
         ctx->isProjectDirty = false;
@@ -244,19 +284,18 @@ void confirmDiscardUnsavedChanges(AppViewContext* ctx, std::function<void()> onP
 void configureNativeFileChooser(GtkFileChooserNative* native, AppViewContext* ctx) {
     if (!native)
         return;
-    if (std::filesystem::exists("/mnt/d")) {
-        gtk_file_chooser_add_shortcut_folder(GTK_FILE_CHOOSER(native), "/mnt/d", nullptr);
-        gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(native), "/mnt/d");
-    }
-    if (std::filesystem::exists("/mnt/c")) {
-        gtk_file_chooser_add_shortcut_folder(GTK_FILE_CHOOSER(native), "/mnt/c", nullptr);
-    }
     if (ctx && ctx->pane && !ctx->pane->pdfPath().empty()) {
         std::error_code ec;
         std::filesystem::path curDir = std::filesystem::path(ctx->pane->pdfPath()).parent_path();
         if (std::filesystem::exists(curDir, ec)) {
             gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(native), curDir.string().c_str());
+            return;
         }
+    }
+    if (std::filesystem::exists("/mnt/d")) {
+        gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(native), "/mnt/d");
+    } else if (std::filesystem::exists("/mnt/c")) {
+        gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(native), "/mnt/c");
     }
 }
 
@@ -266,7 +305,7 @@ void performSaveProjectAs(AppViewContext* ctx) {
 
     GtkFileChooserNative* native =
         gtk_file_chooser_native_new("Save Project As (.ltproj Bundle)", ctx->window,
-                                    GTK_FILE_CHOOSER_ACTION_CREATE_FOLDER, "_Save", "_Cancel");
+                                    GTK_FILE_CHOOSER_ACTION_SAVE, "_Save", "_Cancel");
     configureNativeFileChooser(native, ctx);
 
     const std::string defaultName = (ctx->engine && !ctx->engine->projectTitle().empty() &&
@@ -314,15 +353,31 @@ void performSaveProjectAs(AppViewContext* ctx) {
     std::filesystem::create_directories(bundlePath / "assets" / "clips", ec);
     std::filesystem::create_directories(bundlePath / "assets" / "images", ec);
     std::filesystem::create_directories(bundlePath / "cache" / "thumbnails", ec);
-    ec.clear(); // Reset after non-critical subdirectory creation
+    ec.clear();
 
-    // Copy all registered documents into bundle /documents/
+    // Collect all documents and deduplicate by source file path
+    auto allDocs = ctx->pdfDocService ? ctx->pdfDocService->allDocuments()
+                                      : std::vector<std::pair<std::string, std::string>>{};
+
+    // Ensure pane's active document is present in allDocs
+    if (ctx->pane && !ctx->pane->pdfPath().empty()) {
+        bool found = false;
+        for (const auto& [docId, p] : allDocs) {
+            if (p == ctx->pane->pdfPath()) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            allDocs.emplace_back(ctx->pane->docId(), ctx->pane->pdfPath());
+        }
+    }
+
+    // Map: canonical source path -> destination filename
+    std::unordered_map<std::string, std::string> copiedPathToDstFilename;
     std::vector<std::string> copiedFiles;
     bool copySuccess = true;
     std::string copyError;
-
-    auto allDocs = ctx->pdfDocService ? ctx->pdfDocService->allDocuments()
-                                      : std::vector<std::pair<std::string, std::string>>{};
 
     for (const auto& [docId, origPath] : allDocs) {
         if (origPath.empty())
@@ -331,10 +386,14 @@ void performSaveProjectAs(AppViewContext* ctx) {
         if (!std::filesystem::exists(srcPdf, ec))
             continue;
 
-        std::filesystem::path dstPdf = bundlePath / "documents" / srcPdf.filename();
+        std::string srcKey = srcPdf.string();
+        if (copiedPathToDstFilename.find(srcKey) != copiedPathToDstFilename.end()) {
+            continue; // Already copied this file once
+        }
 
-        // Safe path comparison: canonical() throws/errors on non-existent paths,
-        // so use equivalent() only when dstPdf already exists.
+        std::string filename = srcPdf.filename().string();
+        std::filesystem::path dstPdf = bundlePath / "documents" / filename;
+
         bool sameFile = false;
         if (std::filesystem::exists(dstPdf, ec)) {
             sameFile = std::filesystem::equivalent(srcPdf, dstPdf, ec);
@@ -346,23 +405,37 @@ void performSaveProjectAs(AppViewContext* ctx) {
                                        std::filesystem::copy_options::overwrite_existing, ec);
             if (ec) {
                 copySuccess = false;
-                copyError = "Failed to copy " + srcPdf.filename().string() + ": " + ec.message();
+                copyError = "Failed to copy " + filename + ": " + ec.message();
                 break;
             }
             copiedFiles.push_back(dstPdf.string());
 
-            std::filesystem::path srcXopp = srcPdf;
-            srcXopp += ".xopp";
-            if (std::filesystem::exists(srcXopp, ec)) {
-                std::filesystem::path dstXopp = dstPdf;
-                dstXopp += ".xopp";
-                std::filesystem::copy_file(srcXopp, dstXopp,
+            // Check both standard companion naming schemes:
+            // 1. file.xopp (replace_extension)
+            // 2. file.pdf.xopp (append)
+            std::filesystem::path srcXopp1 = srcPdf;
+            srcXopp1.replace_extension(".xopp");
+            std::filesystem::path srcXopp2 = srcPdf.string() + ".xopp";
+            std::filesystem::path dstXopp = dstPdf;
+            dstXopp.replace_extension(".xopp");
+
+            if (std::filesystem::exists(srcXopp1, ec)) {
+                std::filesystem::copy_file(srcXopp1, dstXopp,
+                                           std::filesystem::copy_options::overwrite_existing, ec);
+                if (!ec) {
+                    copiedFiles.push_back(dstXopp.string());
+                }
+            } else if (std::filesystem::exists(srcXopp2, ec)) {
+                std::filesystem::copy_file(srcXopp2, dstXopp,
                                            std::filesystem::copy_options::overwrite_existing, ec);
                 if (!ec) {
                     copiedFiles.push_back(dstXopp.string());
                 }
             }
+            ec.clear();
         }
+
+        copiedPathToDstFilename[srcKey] = filename;
     }
 
     if (!copySuccess) {
@@ -377,25 +450,7 @@ void performSaveProjectAs(AppViewContext* ctx) {
         return;
     }
 
-    // Canonical source switch: repoint document handles to bundle copies
-    for (const auto& [docId, origPath] : allDocs) {
-        if (origPath.empty())
-            continue;
-        std::filesystem::path srcPdf(origPath);
-        std::filesystem::path dstPdf = bundlePath / "documents" / srcPdf.filename();
-        std::string newPath = dstPdf.string();
-        if (ctx->pdfDocService) {
-            ctx->pdfDocService->repointDocumentPath(docId, newPath);
-        }
-        if (ctx->pane && ctx->pane->docId() == docId) {
-            ctx->pane->repointCompanionPath(newPath);
-        }
-    }
-
-    // Open/initialize bundle database in engine.
-    // Use projectStore().openProject() directly instead of engine->openProjectWithError()
-    // to avoid m_model.clear() + m_graph.clear() which would destroy workspace nodes
-    // while WorkspaceView still holds live pointers to them (use-after-free crash).
+    // Initialize bundle database
     std::string err;
     if (!ctx->engine->projectStore().openProject(chosenPath, &err)) {
         showMessage(ctx->window, GTK_MESSAGE_ERROR, "Database Initialization Failed",
@@ -406,13 +461,112 @@ void performSaveProjectAs(AppViewContext* ctx) {
         return;
     }
 
-    // Save project
+    // Register all active documents in projectStore
+    const uint64_t now = static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch())
+            .count());
+
+    std::unordered_set<std::string> registeredDocIds;
+    for (const auto& [docId, origPath] : allDocs) {
+        if (docId.empty())
+            continue;
+        std::filesystem::path srcPdf(origPath);
+        std::string filename = srcPdf.filename().string();
+        if (filename.empty()) {
+            filename = "document.pdf";
+        }
+        std::string relativePath = "documents/" + filename;
+        size_t pageCount = (ctx->pane && ctx->pane->document() &&
+                            (ctx->pane->docId() == docId || ctx->pane->pdfPath() == origPath))
+                               ? ctx->pane->pages().size()
+                               : 1;
+        size_t fileSizeBytes = 0;
+        std::filesystem::path dstPdf = bundlePath / relativePath;
+        if (std::filesystem::exists(dstPdf, ec)) {
+            fileSizeBytes = std::filesystem::file_size(dstPdf, ec);
+        }
+        ec.clear();
+
+        FluidCore::DocumentRecord rec;
+        rec.docId = docId;
+        rec.filename = filename;
+        rec.relativePath = relativePath;
+        rec.sha256 = "sha256-placeholder";
+        rec.pageCount = pageCount > 0 ? pageCount : 1;
+        rec.fileSizeBytes = fileSizeBytes;
+        rec.createdAt = now;
+
+        ctx->engine->projectStore().registerDocument(rec, nullptr);
+        registeredDocIds.insert(docId);
+    }
+
+    // Ensure every ExcerptCardNode in the workspace has its sourceDocId registered
+    if (ctx->engine) {
+        for (const std::string& nId : ctx->engine->workspaceModel().allNodeIds()) {
+            const auto* node = ctx->engine->workspaceModel().find(nId);
+            if (const auto* card = dynamic_cast<const FluidCore::ExcerptCardNode*>(node)) {
+                const std::string& cardDocId = card->sourceDocId();
+                if (!cardDocId.empty() && registeredDocIds.find(cardDocId) == registeredDocIds.end()) {
+                    std::string resolvedPath;
+                    if (ctx->pdfDocService) {
+                        resolvedPath = ctx->pdfDocService->getFilePath(cardDocId);
+                    }
+                    if (resolvedPath.empty() && ctx->pane) {
+                        resolvedPath = ctx->pane->pdfPath();
+                    }
+                    std::filesystem::path p(resolvedPath.empty() ? cardDocId : resolvedPath);
+                    std::string filename = p.filename().string();
+                    if (filename.empty()) {
+                        filename = "document.pdf";
+                    }
+                    std::string relativePath = "documents/" + filename;
+                    size_t fileSizeBytes = 0;
+                    std::filesystem::path dstPdf = bundlePath / relativePath;
+                    if (std::filesystem::exists(dstPdf, ec)) {
+                        fileSizeBytes = std::filesystem::file_size(dstPdf, ec);
+                    }
+                    ec.clear();
+
+                    FluidCore::DocumentRecord rec;
+                    rec.docId = cardDocId;
+                    rec.filename = filename;
+                    rec.relativePath = relativePath;
+                    rec.sha256 = "sha256-placeholder";
+                    rec.pageCount = card->sourcePageNo() + 1;
+                    rec.fileSizeBytes = fileSizeBytes;
+                    rec.createdAt = now;
+
+                    ctx->engine->projectStore().registerDocument(rec, nullptr);
+                    registeredDocIds.insert(cardDocId);
+                }
+            }
+        }
+    }
+
+    // Execute save
     bool ok = ctx->engine->saveProjectWithError(&err);
     if (ctx->pane) {
         ok = ok && ctx->pane->saveAnnotations();
     }
 
     if (ok) {
+        // Canonical source switch: repoint document handles to bundle copies ONLY after verified save
+        for (const auto& [docId, origPath] : allDocs) {
+            if (origPath.empty())
+                continue;
+            std::filesystem::path srcPdf(origPath);
+            std::filesystem::path dstPdf = bundlePath / "documents" / srcPdf.filename();
+            std::string newPath = dstPdf.string();
+            if (ctx->pdfDocService) {
+                ctx->pdfDocService->repointDocumentPath(docId, newPath);
+                ctx->pdfDocService->registerMainDocument(newPath, ctx->pane ? ctx->pane->document() : nullptr, newPath);
+            }
+            if (ctx->pane && (ctx->pane->docId() == docId || ctx->pane->pdfPath() == origPath)) {
+                ctx->pane->repointCompanionPath(newPath);
+            }
+        }
+
         ctx->isProjectDirty = false;
         if (ctx->workspace)
             ctx->workspace->undoStack().clear();
@@ -447,6 +601,115 @@ void performSaveProject(AppViewContext* ctx) {
     if (!ctx->engine || !ctx->engine->isProjectOpen()) {
         performSaveProjectAs(ctx);
         return;
+    }
+
+    std::filesystem::path bundlePath(ctx->engine->projectPath());
+    std::error_code ec;
+
+    // Incremental document copy: ensure all active and referenced documents exist in bundle/documents/
+    auto allDocs = ctx->pdfDocService ? ctx->pdfDocService->allDocuments()
+                                      : std::vector<std::pair<std::string, std::string>>{};
+    if (ctx->pane && !ctx->pane->pdfPath().empty()) {
+        bool found = false;
+        for (const auto& [docId, p] : allDocs) {
+            if (p == ctx->pane->pdfPath()) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            allDocs.emplace_back(ctx->pane->docId(), ctx->pane->pdfPath());
+        }
+    }
+
+    std::unordered_set<std::string> knownDocIds;
+    for (const auto& d : ctx->engine->projectStore().listDocuments()) {
+        knownDocIds.insert(d.docId);
+    }
+
+    const uint64_t now = static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch())
+            .count());
+
+    for (const auto& [docId, origPath] : allDocs) {
+        if (origPath.empty())
+            continue;
+        std::filesystem::path srcPdf(origPath);
+        if (!std::filesystem::exists(srcPdf, ec))
+            continue;
+
+        std::string filename = srcPdf.filename().string();
+        if (filename.empty()) {
+            filename = "document.pdf";
+        }
+        std::filesystem::path dstPdf = bundlePath / "documents" / filename;
+        bool sameFile = false;
+        if (std::filesystem::exists(dstPdf, ec)) {
+            sameFile = std::filesystem::equivalent(srcPdf, dstPdf, ec);
+        }
+        ec.clear();
+
+        if (!sameFile) {
+            std::filesystem::copy_file(srcPdf, dstPdf,
+                                       std::filesystem::copy_options::overwrite_existing, ec);
+            if (!ec) {
+                std::string newPath = dstPdf.string();
+                if (ctx->pdfDocService) {
+                    ctx->pdfDocService->repointDocumentPath(docId, newPath);
+                    ctx->pdfDocService->registerMainDocument(newPath, ctx->pane ? ctx->pane->document() : nullptr, newPath);
+                }
+                if (ctx->pane && (ctx->pane->docId() == docId || ctx->pane->pdfPath() == origPath)) {
+                    ctx->pane->repointCompanionPath(newPath);
+                }
+            }
+            ec.clear();
+        }
+
+        if (knownDocIds.find(docId) == knownDocIds.end()) {
+            size_t fileSizeBytes = 0;
+            if (std::filesystem::exists(dstPdf, ec)) {
+                fileSizeBytes = std::filesystem::file_size(dstPdf, ec);
+            }
+            ec.clear();
+            FluidCore::DocumentRecord rec;
+            rec.docId = docId;
+            rec.filename = filename;
+            rec.relativePath = "documents/" + filename;
+            rec.sha256 = "sha256-placeholder";
+            rec.pageCount = (ctx->pane && ctx->pane->document() &&
+                             (ctx->pane->docId() == docId || ctx->pane->pdfPath() == origPath))
+                                ? ctx->pane->pages().size()
+                                : 1;
+            rec.fileSizeBytes = fileSizeBytes;
+            rec.createdAt = now;
+            ctx->engine->projectStore().registerDocument(rec, nullptr);
+            knownDocIds.insert(docId);
+        }
+    }
+
+    // Ensure newly created cards have documents registered
+    if (ctx->engine) {
+        for (const std::string& nId : ctx->engine->workspaceModel().allNodeIds()) {
+            const auto* node = ctx->engine->workspaceModel().find(nId);
+            if (const auto* card = dynamic_cast<const FluidCore::ExcerptCardNode*>(node)) {
+                const std::string& cardDocId = card->sourceDocId();
+                if (!cardDocId.empty() && knownDocIds.find(cardDocId) == knownDocIds.end()) {
+                    std::string resPath = ctx->pdfDocService ? ctx->pdfDocService->getFilePath(cardDocId) : "";
+                    if (resPath.empty() && ctx->pane) {
+                        resPath = ctx->pane->pdfPath();
+                    }
+                    std::filesystem::path p(resPath.empty() ? cardDocId : resPath);
+                    std::string filename = p.filename().string();
+                    if (filename.empty())
+                        filename = "document.pdf";
+                    FluidCore::DocumentRecord rec{cardDocId, filename, "documents/" + filename,
+                                                  "sha256-placeholder", card->sourcePageNo() + 1, 0, now};
+                    ctx->engine->projectStore().registerDocument(rec, nullptr);
+                    knownDocIds.insert(cardDocId);
+                }
+            }
+        }
     }
 
     std::string err;
@@ -757,10 +1020,15 @@ void onActivate(GtkApplication* app, gpointer userData) {
         G_OBJECT(app), "last-active-pane", lastActivePane,
         +[](gpointer data) { delete static_cast<ActivePane*>(data); });
 
-    AppViewContext* viewCtx = nullptr;
+    auto* viewCtx = new AppViewContext{documentPane,     workspace,
+                                       toolManager,      context->engine,
+                                       pdfDocService,    excerptTileCache,
+                                       headerBar,        GTK_WINDOW(window),
+                                       lastActivePane,   nullptr,
+                                       false,            nullptr};
 
     auto updateUndoRedoUI = [topToolbar, workspace, documentPane, lastActivePane, headerBar,
-                             &viewCtx]() {
+                             viewCtx]() {
         bool canUndo = false;
         bool canRedo = false;
         if (*lastActivePane == ActivePane::Document) {
@@ -780,6 +1048,7 @@ void onActivate(GtkApplication* app, gpointer userData) {
                                            : FluidCoreApp::SaveStatus::Saved);
         }
     };
+    viewCtx->updateUndoRedoUI = updateUndoRedoUI;
 
     workspace->undoStack().setChangeListener([lastActivePane, updateUndoRedoUI]() {
         *lastActivePane = ActivePane::Workspace;
@@ -804,9 +1073,6 @@ void onActivate(GtkApplication* app, gpointer userData) {
         }
     });
 
-    viewCtx = new AppViewContext{documentPane,   workspace,        toolManager, context->engine,
-                                 pdfDocService,  excerptTileCache, headerBar,   GTK_WINDOW(window),
-                                 lastActivePane, updateUndoRedoUI, false,       nullptr};
     g_object_set_data_full(
         G_OBJECT(app), "app-view-context", viewCtx,
         +[](gpointer data) { delete static_cast<AppViewContext*>(data); });
@@ -816,7 +1082,7 @@ void onActivate(GtkApplication* app, gpointer userData) {
     headerBar->setOnOpenPdf([viewCtx]() { performOpenPdf(viewCtx); });
     headerBar->setOnOpenProject([viewCtx]() { performOpenProject(viewCtx); });
     headerBar->setOnSaveProject([viewCtx]() { performSaveProject(viewCtx); });
-    headerBar->setOnSaveProjectAs([viewCtx]() { performSaveProjectAs(viewCtx); });
+    headerBar->setOnSaveProjectAs([viewCtx]() { performSaveProject(viewCtx); });
     headerBar->setOnExport([viewCtx]() { performExport(viewCtx); });
 
     // Initialize HeaderBar Project Title
@@ -992,11 +1258,11 @@ void onActivate(GtkApplication* app, gpointer userData) {
     const gchar* saveAccels[] = {"<Primary>s", "<Control>s", nullptr};
     gtk_application_set_accels_for_action(GTK_APPLICATION(app), "win.save", saveAccels);
 
-    // Wire Ctrl+Shift+S (Save As) action
+    // Wire Ctrl+Shift+S (Save As) action to unified save
     GSimpleAction* saveAsAction = g_simple_action_new("save_as", nullptr);
     g_signal_connect(saveAsAction, "activate",
                      G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
-                         performSaveProjectAs(static_cast<AppViewContext*>(data));
+                         performSaveProject(static_cast<AppViewContext*>(data));
                      }),
                      viewCtx);
     g_action_map_add_action(G_ACTION_MAP(window), G_ACTION(saveAsAction));
@@ -1229,7 +1495,7 @@ void onActivate(GtkApplication* app, gpointer userData) {
                 return TRUE;
             }
             if (ctrl && shift && (event->keyval == GDK_KEY_s || event->keyval == GDK_KEY_S)) {
-                performSaveProjectAs(ctx);
+                performSaveProject(ctx);
                 return TRUE;
             }
             if (ctrl && !shift && (event->keyval == GDK_KEY_e || event->keyval == GDK_KEY_E)) {
@@ -1369,6 +1635,22 @@ void onActivate(GtkApplication* app, gpointer userData) {
 } // namespace
 
 int main(int argc, char** argv) {
+#ifndef _WIN32
+    installCrashHandlers();
+#endif
+    // Suppress known spurious GLib-GIO critical warnings when enumerating WSL DrvFS mounts (/mnt/c, /mnt/d)
+    g_log_set_handler(
+        "GLib-GIO", static_cast<GLogLevelFlags>(G_LOG_LEVEL_CRITICAL | G_LOG_LEVEL_WARNING),
+        [](const gchar* log_domain, GLogLevelFlags log_level, const gchar* message,
+           gpointer user_data) {
+            if (message && (std::strstr(message, "standard::size") ||
+                            std::strstr(message, "g_file_info_get_size"))) {
+                return; // Silence harmless DrvFS GIO size warning
+            }
+            g_log_default_handler(log_domain, log_level, message, user_data);
+        },
+        nullptr);
+
     const std::string rawArg = argc > 1 ? argv[1] : "";
     const std::string pdfPath = normalizePath(rawArg);
 

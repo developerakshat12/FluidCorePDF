@@ -151,6 +151,7 @@ class ExcerptTileCache {
     std::atomic<uint64_t> m_nextRequestId{1};
     std::unordered_set<uint64_t> m_activeRequestIds;
     std::unordered_set<uint64_t> m_cancelledRequestIds;
+    std::unordered_set<CropCacheKey, CropCacheKeyHash> m_inFlightKeys;
 
     RenderReadyCallback m_onRenderReady;
 };

@@ -1,7 +1,9 @@
 // Headless unit tests for the FluidCoreEngine facade (mirrors FluidCoreEngine.cpp).
 
 #include "FluidCoreEngine.h"
+#include "workspace/ExcerptCardNode.h"
 
+#include <filesystem>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -141,6 +143,35 @@ int main() {
     api.openProject("/tmp/nonexistent.ltproj");
     api.saveProject();
     failures += check(api.executeSearch("query").empty(), "search stub empty (M5)");
+
+    // Verify self-healing document registration on save with ExcerptCardNodes
+    {
+        std::string tempProj = "/tmp/test_excerpt_save.ltproj";
+        std::error_code ec;
+        std::filesystem::remove_all(tempProj, ec);
+
+        FluidCoreEngine saveEngine("test-save-proj");
+        std::string openErr;
+        bool opened = saveEngine.projectStore().openProject(tempProj, &openErr);
+        failures += check(opened, "openProject in tempProj succeeded");
+
+        // Insert an ExcerptCardNode with unregistered docId
+        auto excerptCard = std::make_unique<ExcerptCardNode>(
+            "card-test-1", Rectangle{50.0, 50.0, 200.0, 150.0},
+            "doc-primary.pdf", 42, Rectangle{0.1, 0.2, 0.5, 0.3},
+            "Sample excerpt text");
+        saveEngine.insertNode(std::move(excerptCard));
+
+        std::string saveErr;
+        bool saved = saveEngine.saveProjectWithError(&saveErr);
+        failures += check(saved, ("saveProjectWithError with unregistered ExcerptCardNode succeeded: " + saveErr).c_str());
+
+        // Verify document was automatically registered
+        auto docOpt = saveEngine.projectStore().getDocument("doc-primary.pdf");
+        failures += check(docOpt.has_value(), "doc-primary.pdf was auto-registered in documents table");
+
+        std::filesystem::remove_all(tempProj, ec);
+    }
 
     if (failures == 0) {
         std::cout << "FluidCoreEngineTest: all checks passed\n";

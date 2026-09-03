@@ -10,8 +10,10 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <sstream>
 #include <unordered_map>
 #include <unordered_set>
@@ -29,6 +31,47 @@ uint64_t currentTimestampMs() {
     return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
                                      std::chrono::system_clock::now().time_since_epoch())
                                      .count());
+}
+
+// Portable fixed-width little-endian IEEE-754 double serialization helpers
+inline void writeDoubleLE(std::vector<uint8_t>& buf, double val) {
+    static_assert(sizeof(double) == 8, "double must be 64-bit IEEE-754");
+    uint64_t u;
+    std::memcpy(&u, &val, sizeof(u));
+    for (int i = 0; i < 8; ++i) {
+        buf.push_back(static_cast<uint8_t>((u >> (i * 8)) & 0xFF));
+    }
+}
+
+inline double readDoubleLE(const uint8_t* ptr) {
+    static_assert(sizeof(double) == 8, "double must be 64-bit IEEE-754");
+    uint64_t u = 0;
+    for (int i = 0; i < 8; ++i) {
+        u |= (static_cast<uint64_t>(ptr[i]) << (i * 8));
+    }
+    double val;
+    std::memcpy(&val, &u, sizeof(val));
+    return val;
+}
+
+inline std::vector<uint8_t> encodeBoundingBoxLE(const Rectangle& rect) {
+    std::vector<uint8_t> buf;
+    buf.reserve(32);
+    writeDoubleLE(buf, rect.x);
+    writeDoubleLE(buf, rect.y);
+    writeDoubleLE(buf, rect.w);
+    writeDoubleLE(buf, rect.h);
+    return buf;
+}
+
+inline std::vector<uint8_t> encodePointsLE(const std::vector<XoppPoint>& points) {
+    std::vector<uint8_t> buf;
+    buf.reserve(points.size() * 16);
+    for (const auto& pt : points) {
+        writeDoubleLE(buf, pt.x);
+        writeDoubleLE(buf, pt.y);
+    }
+    return buf;
 }
 
 // Simple RAII wrapper for SQLite statements
@@ -307,6 +350,12 @@ bool ProjectStore::initSchema(std::string* error) {
         CREATE INDEX IF NOT EXISTS idx_graph_edges_source ON graph_edges(source_node_id);
         CREATE INDEX IF NOT EXISTS idx_graph_edges_target ON graph_edges(target_node_id);
 
+        -- Vector Ink Strokes
+        -- Architectural Reconciliation Note: Per-document annotation ink remains canonically
+        -- in companion .xopp files (/documents/{doc_uuid}.xopp) per TRD Section 3.3.1.
+        -- 'DOCUMENT' and 'NODE' container types are reserved and unused here.
+        -- Only 'WORKSPACE' container_type is actively persisted here for freeform infinite-canvas vector ink.
+        -- Coordinates for 'WORKSPACE' are stored in infinite-canvas absolute world points (not normalized [0, 1] page fractions).
         CREATE TABLE IF NOT EXISTS ink_strokes (
             stroke_id TEXT PRIMARY KEY NOT NULL,
             project_id TEXT NOT NULL REFERENCES projects(project_id) ON DELETE CASCADE,
@@ -668,7 +717,10 @@ void serializeNodeRecursive(sqlite3* db, const std::string& projectId, const Wor
                             const std::string& parentStackId, int zIndex,
                             SqliteStatement& insertNodeStmt, SqliteStatement& insertAnchorStmt,
                             SqliteStatement& insertTagStmt, SqliteStatement& insertEntityTagStmt,
-                            SqliteStatement& insertFtsStmt) {
+                            SqliteStatement& insertFtsStmt, SqliteStatement& deleteFtsStmt,
+                            SqliteStatement& insertInkStrokeStmt,
+                            std::unordered_set<std::string>& currentModelNodeIds,
+                            std::unordered_set<std::string>& currentModelStrokeIds) {
     if (!node)
         return;
 
@@ -677,6 +729,7 @@ void serializeNodeRecursive(sqlite3* db, const std::string& projectId, const Wor
     uint64_t now = currentTimestampMs();
 
     if (const auto* card = dynamic_cast<const ExcerptCardNode*>(node)) {
+        currentModelNodeIds.insert(nodeId);
         insertNodeStmt.reset();
         sqlite3_bind_text(insertNodeStmt.get(), 1, nodeId.c_str(), -1, SQLITE_STATIC);
         sqlite3_bind_text(insertNodeStmt.get(), 2, projectId.c_str(), -1, SQLITE_STATIC);
@@ -747,6 +800,9 @@ void serializeNodeRecursive(sqlite3* db, const std::string& projectId, const Wor
         }
 
         // FTS Index
+        deleteFtsStmt.reset();
+        sqlite3_bind_text(deleteFtsStmt.get(), 1, nodeId.c_str(), -1, SQLITE_STATIC);
+        deleteFtsStmt.execute();
         if (!card->textSnippet().empty()) {
             insertFtsStmt.reset();
             sqlite3_bind_text(insertFtsStmt.get(), 1, nodeId.c_str(), -1, SQLITE_STATIC);
@@ -758,6 +814,7 @@ void serializeNodeRecursive(sqlite3* db, const std::string& projectId, const Wor
             insertFtsStmt.execute();
         }
     } else if (const auto* stack = dynamic_cast<const CardStackNode*>(node)) {
+        currentModelNodeIds.insert(nodeId);
         insertNodeStmt.reset();
         sqlite3_bind_text(insertNodeStmt.get(), 1, nodeId.c_str(), -1, SQLITE_STATIC);
         sqlite3_bind_text(insertNodeStmt.get(), 2, projectId.c_str(), -1, SQLITE_STATIC);
@@ -801,6 +858,9 @@ void serializeNodeRecursive(sqlite3* db, const std::string& projectId, const Wor
         }
 
         // Stack FTS
+        deleteFtsStmt.reset();
+        sqlite3_bind_text(deleteFtsStmt.get(), 1, nodeId.c_str(), -1, SQLITE_STATIC);
+        deleteFtsStmt.execute();
         if (!stack->title().empty()) {
             insertFtsStmt.reset();
             sqlite3_bind_text(insertFtsStmt.get(), 1, nodeId.c_str(), -1, SQLITE_STATIC);
@@ -815,30 +875,33 @@ void serializeNodeRecursive(sqlite3* db, const std::string& projectId, const Wor
         for (const auto& child : stack->children()) {
             serializeNodeRecursive(db, projectId, child.get(), nodeId, childZ++, insertNodeStmt,
                                    insertAnchorStmt, insertTagStmt, insertEntityTagStmt,
-                                   insertFtsStmt);
+                                   insertFtsStmt, deleteFtsStmt, insertInkStrokeStmt,
+                                   currentModelNodeIds, currentModelStrokeIds);
         }
+    } else if (const auto* strokeNode = dynamic_cast<const CanvasStrokeNode*>(node)) {
+        currentModelStrokeIds.insert(nodeId);
+        const auto& stroke = strokeNode->stroke();
+        auto bboxBytes = encodeBoundingBoxLE(strokeNode->bounds());
+        auto ptsBytes = encodePointsLE(stroke.points);
+
+        insertInkStrokeStmt.reset();
+        sqlite3_bind_text(insertInkStrokeStmt.get(), 1, stroke.id.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_text(insertInkStrokeStmt.get(), 2, projectId.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_text(insertInkStrokeStmt.get(), 3, projectId.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_blob(insertInkStrokeStmt.get(), 4, bboxBytes.data(),
+                          static_cast<int>(bboxBytes.size()), SQLITE_STATIC);
+        sqlite3_bind_blob(insertInkStrokeStmt.get(), 5, ptsBytes.data(),
+                          static_cast<int>(ptsBytes.size()), SQLITE_STATIC);
+        sqlite3_bind_text(insertInkStrokeStmt.get(), 6, stroke.tool.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_int64(insertInkStrokeStmt.get(), 7,
+                           static_cast<sqlite3_int64>(stroke.color));
+        sqlite3_bind_double(insertInkStrokeStmt.get(), 8, stroke.width);
+        sqlite3_bind_int64(insertInkStrokeStmt.get(), 9,
+                           static_cast<sqlite3_int64>(stroke.timestamp ? stroke.timestamp : now));
+        insertInkStrokeStmt.execute();
     } else {
-        // Generic / Free note
-        insertNodeStmt.reset();
-        sqlite3_bind_text(insertNodeStmt.get(), 1, nodeId.c_str(), -1, SQLITE_STATIC);
-        sqlite3_bind_text(insertNodeStmt.get(), 2, projectId.c_str(), -1, SQLITE_STATIC);
-        sqlite3_bind_text(insertNodeStmt.get(), 3, "STICKY_NOTE", -1, SQLITE_STATIC);
-        sqlite3_bind_double(insertNodeStmt.get(), 4, bounds.x);
-        sqlite3_bind_double(insertNodeStmt.get(), 5, bounds.y);
-        sqlite3_bind_double(insertNodeStmt.get(), 6, bounds.w);
-        sqlite3_bind_double(insertNodeStmt.get(), 7, bounds.h);
-        sqlite3_bind_int(insertNodeStmt.get(), 8, zIndex);
-        if (!parentStackId.empty()) {
-            sqlite3_bind_text(insertNodeStmt.get(), 9, parentStackId.c_str(), -1, SQLITE_STATIC);
-        } else {
-            sqlite3_bind_null(insertNodeStmt.get(), 9);
-        }
-        sqlite3_bind_null(insertNodeStmt.get(), 10);
-        sqlite3_bind_int(insertNodeStmt.get(), 11, 0);
-        sqlite3_bind_int64(insertNodeStmt.get(), 12, 4294967295ULL);
-        sqlite3_bind_int64(insertNodeStmt.get(), 13, static_cast<sqlite3_int64>(now));
-        sqlite3_bind_int64(insertNodeStmt.get(), 14, static_cast<sqlite3_int64>(now));
-        insertNodeStmt.execute();
+        std::cerr << "[ProjectStore] Warning: Unhandled WorkspaceNode subclass for node_id '"
+                  << nodeId << "'. Node not serialized.\n";
     }
 }
 
@@ -882,21 +945,48 @@ bool ProjectStore::saveProject(const WorkspaceModel& model, const GraphTopology&
         registerDocument(doc, nullptr);
     }
 
-    // 3. Clear existing workspace scene graph rows (foreign keys clean up anchors, entity_tags)
-    sqlite3_exec(m_db, "DELETE FROM workspace_nodes;", nullptr, nullptr, nullptr);
-    sqlite3_exec(m_db, "DELETE FROM graph_edges;", nullptr, nullptr, nullptr);
-    sqlite3_exec(m_db, "DELETE FROM fts_universal_index;", nullptr, nullptr, nullptr);
-
+    // 3. Serialize workspace nodes with differential upserts
     SqliteStatement insertNodeStmt(
         m_db,
         "INSERT INTO workspace_nodes (node_id, project_id, node_type, pos_x, pos_y, width, height, "
         "z_index, parent_stack_id, title, is_collapsed, color, created_at, updated_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);");
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(node_id) DO UPDATE SET "
+        "    node_type = excluded.node_type, "
+        "    pos_x = excluded.pos_x, "
+        "    pos_y = excluded.pos_y, "
+        "    width = excluded.width, "
+        "    height = excluded.height, "
+        "    z_index = excluded.z_index, "
+        "    parent_stack_id = excluded.parent_stack_id, "
+        "    title = excluded.title, "
+        "    is_collapsed = excluded.is_collapsed, "
+        "    color = excluded.color, "
+        "    updated_at = excluded.updated_at "
+        "WHERE (node_type != excluded.node_type OR pos_x != excluded.pos_x OR pos_y != excluded.pos_y OR "
+        "       width != excluded.width OR height != excluded.height OR z_index != excluded.z_index OR "
+        "       parent_stack_id IS NOT excluded.parent_stack_id OR title IS NOT excluded.title OR "
+        "       is_collapsed != excluded.is_collapsed OR color != excluded.color);");
 
     SqliteStatement insertAnchorStmt(
-        m_db, "INSERT INTO source_anchors (anchor_id, node_id, doc_id, page_index, rect_x0, "
-              "rect_y0, rect_x1, rect_y1, raw_text_content, highlight_color) "
-              "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);");
+        m_db,
+        "INSERT INTO source_anchors (anchor_id, node_id, doc_id, page_index, rect_x0, "
+        "rect_y0, rect_x1, rect_y1, raw_text_content, highlight_color) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(anchor_id) DO UPDATE SET "
+        "    node_id = excluded.node_id, "
+        "    doc_id = excluded.doc_id, "
+        "    page_index = excluded.page_index, "
+        "    rect_x0 = excluded.rect_x0, "
+        "    rect_y0 = excluded.rect_y0, "
+        "    rect_x1 = excluded.rect_x1, "
+        "    rect_y1 = excluded.rect_y1, "
+        "    raw_text_content = excluded.raw_text_content, "
+        "    highlight_color = excluded.highlight_color "
+        "WHERE (node_id != excluded.node_id OR doc_id != excluded.doc_id OR page_index != excluded.page_index OR "
+        "       rect_x0 != excluded.rect_x0 OR rect_y0 != excluded.rect_y0 OR rect_x1 != excluded.rect_x1 OR "
+        "       rect_y1 != excluded.rect_y1 OR raw_text_content IS NOT excluded.raw_text_content OR "
+        "       highlight_color IS NOT excluded.highlight_color);");
 
     SqliteStatement insertTagStmt(m_db, "INSERT OR IGNORE INTO tags (tag_id, project_id, tag_name, "
                                         "tag_color) VALUES (?, ?, ?, ?);");
@@ -908,25 +998,89 @@ bool ProjectStore::saveProject(const WorkspaceModel& model, const GraphTopology&
     SqliteStatement insertFtsStmt(m_db, "INSERT INTO fts_universal_index (entity_id, entity_type, "
                                         "page_index, text_content) VALUES (?, ?, ?, ?);");
 
-    // Serialize top-level nodes and their hierarchy
+    SqliteStatement deleteFtsStmt(m_db, "DELETE FROM fts_universal_index WHERE entity_id = ?;");
+
+    SqliteStatement insertInkStrokeStmt(
+        m_db,
+        "INSERT INTO ink_strokes (stroke_id, project_id, container_type, container_ref_id, page_index, "
+        "bounding_box_blob, points_blob, tool_type, color, base_width, created_at) "
+        "VALUES (?, ?, 'WORKSPACE', ?, NULL, ?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(stroke_id) DO UPDATE SET "
+        "    bounding_box_blob = excluded.bounding_box_blob, "
+        "    points_blob = excluded.points_blob, "
+        "    tool_type = excluded.tool_type, "
+        "    color = excluded.color, "
+        "    base_width = excluded.base_width "
+        "WHERE (tool_type != excluded.tool_type OR color != excluded.color OR base_width != excluded.base_width OR "
+        "       bounding_box_blob != excluded.bounding_box_blob OR points_blob != excluded.points_blob);");
+
+    // Serialize top-level nodes and their hierarchy while tracking all visited IDs
+    std::unordered_set<std::string> currentModelNodeIds;
+    std::unordered_set<std::string> currentModelStrokeIds;
     int rootZ = 1;
     for (const std::string& nodeId : model.allNodeIds()) {
         const WorkspaceNode* node = model.find(nodeId);
         if (node) {
             serializeNodeRecursive(m_db, m_metadata.projectId, node, "", rootZ++, insertNodeStmt,
                                    insertAnchorStmt, insertTagStmt, insertEntityTagStmt,
-                                   insertFtsStmt);
+                                   insertFtsStmt, deleteFtsStmt, insertInkStrokeStmt,
+                                   currentModelNodeIds, currentModelStrokeIds);
         }
     }
 
-    // 4. Graph Edges
+    // Prune nodes that were removed from the workspace model
+    SqliteStatement selectExistingNodes(
+        m_db, "SELECT node_id FROM workspace_nodes WHERE project_id = ?;");
+    if (selectExistingNodes.isValid()) {
+        sqlite3_bind_text(selectExistingNodes.get(), 1, m_metadata.projectId.c_str(), -1,
+                          SQLITE_STATIC);
+        std::vector<std::string> nodesToDelete;
+        while (selectExistingNodes.step()) {
+            const char* nid = reinterpret_cast<const char*>(
+                sqlite3_column_text(selectExistingNodes.get(), 0));
+            if (nid && currentModelNodeIds.find(nid) == currentModelNodeIds.end()) {
+                nodesToDelete.emplace_back(nid);
+            }
+        }
+        if (!nodesToDelete.empty()) {
+            SqliteStatement deleteNodeStmt(m_db, "DELETE FROM workspace_nodes WHERE node_id = ?;");
+            for (const auto& delId : nodesToDelete) {
+                deleteNodeStmt.reset();
+                sqlite3_bind_text(deleteNodeStmt.get(), 1, delId.c_str(), -1, SQLITE_STATIC);
+                deleteNodeStmt.execute();
+
+                deleteFtsStmt.reset();
+                sqlite3_bind_text(deleteFtsStmt.get(), 1, delId.c_str(), -1, SQLITE_STATIC);
+                deleteFtsStmt.execute();
+            }
+        }
+    }
+
+    // 4. Graph Edges Upsert and Prune
     SqliteStatement insertEdgeStmt(
         m_db,
         "INSERT INTO graph_edges (edge_id, project_id, source_node_id, target_node_id, edge_type, "
         "edge_kind, direction, color, stroke_width, arrow_style, label, created_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);");
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(edge_id) DO UPDATE SET "
+        "    source_node_id = excluded.source_node_id, "
+        "    target_node_id = excluded.target_node_id, "
+        "    edge_type = excluded.edge_type, "
+        "    edge_kind = excluded.edge_kind, "
+        "    direction = excluded.direction, "
+        "    color = excluded.color, "
+        "    stroke_width = excluded.stroke_width, "
+        "    arrow_style = excluded.arrow_style, "
+        "    label = excluded.label "
+        "WHERE (source_node_id != excluded.source_node_id OR target_node_id != excluded.target_node_id OR "
+        "       edge_type != excluded.edge_type OR edge_kind != excluded.edge_kind OR "
+        "       direction != excluded.direction OR color != excluded.color OR "
+        "       stroke_width != excluded.stroke_width OR arrow_style != excluded.arrow_style OR "
+        "       label IS NOT excluded.label);");
 
+    std::unordered_set<std::string> currentModelEdgeIds;
     for (const std::string& edgeId : graph.allEdgeIds()) {
+        currentModelEdgeIds.insert(edgeId);
         auto edgeOpt = graph.findEdge(edgeId);
         if (edgeOpt) {
             const GraphEdge& edge = *edgeOpt;
@@ -956,6 +1110,54 @@ bool ProjectStore::saveProject(const WorkspaceModel& model, const GraphTopology&
             sqlite3_bind_int64(insertEdgeStmt.get(), 12,
                                static_cast<sqlite3_int64>(m_metadata.updatedAt));
             insertEdgeStmt.execute();
+        }
+    }
+
+    // Prune edges that were removed from the graph
+    SqliteStatement selectExistingEdges(
+        m_db, "SELECT edge_id FROM graph_edges WHERE project_id = ?;");
+    if (selectExistingEdges.isValid()) {
+        sqlite3_bind_text(selectExistingEdges.get(), 1, m_metadata.projectId.c_str(), -1,
+                          SQLITE_STATIC);
+        std::vector<std::string> edgesToDelete;
+        while (selectExistingEdges.step()) {
+            const char* eid = reinterpret_cast<const char*>(
+                sqlite3_column_text(selectExistingEdges.get(), 0));
+            if (eid && currentModelEdgeIds.find(eid) == currentModelEdgeIds.end()) {
+                edgesToDelete.emplace_back(eid);
+            }
+        }
+        if (!edgesToDelete.empty()) {
+            SqliteStatement deleteEdgeStmt(m_db, "DELETE FROM graph_edges WHERE edge_id = ?;");
+            for (const auto& delId : edgesToDelete) {
+                deleteEdgeStmt.reset();
+                sqlite3_bind_text(deleteEdgeStmt.get(), 1, delId.c_str(), -1, SQLITE_STATIC);
+                deleteEdgeStmt.execute();
+            }
+        }
+    }
+
+    // 5. Prune workspace ink strokes that were removed from the workspace model
+    SqliteStatement selectExistingStrokes(
+        m_db, "SELECT stroke_id FROM ink_strokes WHERE project_id = ? AND container_type = 'WORKSPACE';");
+    if (selectExistingStrokes.isValid()) {
+        sqlite3_bind_text(selectExistingStrokes.get(), 1, m_metadata.projectId.c_str(), -1,
+                          SQLITE_STATIC);
+        std::vector<std::string> strokesToDelete;
+        while (selectExistingStrokes.step()) {
+            const char* sid = reinterpret_cast<const char*>(
+                sqlite3_column_text(selectExistingStrokes.get(), 0));
+            if (sid && currentModelStrokeIds.find(sid) == currentModelStrokeIds.end()) {
+                strokesToDelete.emplace_back(sid);
+            }
+        }
+        if (!strokesToDelete.empty()) {
+            SqliteStatement deleteStrokeStmt(m_db, "DELETE FROM ink_strokes WHERE stroke_id = ?;");
+            for (const auto& delId : strokesToDelete) {
+                deleteStrokeStmt.reset();
+                sqlite3_bind_text(deleteStrokeStmt.get(), 1, delId.c_str(), -1, SQLITE_STATIC);
+                deleteStrokeStmt.execute();
+            }
         }
     }
 
@@ -1122,7 +1324,7 @@ bool ProjectStore::rehydrate(WorkspaceModel& outModel, GraphTopology& outGraph,
             }
             stack->recalculateLayout();
             return stack;
-        } else {
+        } else if (nr.nodeType == "TEXT_EXCERPT" || nr.nodeType == "IMAGE_CLIP") {
             // Excerpt card
             std::string docId;
             size_t pageNo = 0;
@@ -1146,6 +1348,13 @@ bool ProjectStore::rehydrate(WorkspaceModel& outModel, GraphTopology& outGraph,
                 card->setTags(tagIt->second);
             }
             return card;
+        } else {
+            // Defensive systemic fallback: Log loudly and skip unrecognized/corrupt node types
+            // to prevent constructing a false concrete type or corrupting the workspace model.
+            std::cerr << "[ProjectStore] Warning: Skipping unrecognized or unhandled node_type '"
+                      << nr.nodeType << "' for node_id '" << nr.nodeId
+                      << "' to prevent data misinterpretation.\n";
+            return nullptr;
         }
     };
 
@@ -1160,7 +1369,58 @@ bool ProjectStore::rehydrate(WorkspaceModel& outModel, GraphTopology& outGraph,
         }
     }
 
-    // 5. Rehydrate Graph Edges
+    // 5. Rehydrate Workspace Ink Strokes
+    SqliteStatement strokeStmt(
+        m_db,
+        "SELECT stroke_id, bounding_box_blob, points_blob, tool_type, color, base_width, created_at "
+        "FROM ink_strokes WHERE project_id = ? AND container_type = 'WORKSPACE';");
+    if (strokeStmt.isValid()) {
+        sqlite3_bind_text(strokeStmt.get(), 1, m_metadata.projectId.c_str(), -1, SQLITE_STATIC);
+        while (strokeStmt.step()) {
+            FluidCore::Stroke stroke;
+            const char* sid =
+                reinterpret_cast<const char*>(sqlite3_column_text(strokeStmt.get(), 0));
+            if (sid)
+                stroke.id = sid;
+
+            const void* bboxBlob = sqlite3_column_blob(strokeStmt.get(), 1);
+            int bboxBytes = sqlite3_column_bytes(strokeStmt.get(), 1);
+            const void* ptsBlob = sqlite3_column_blob(strokeStmt.get(), 2);
+            int ptsBytes = sqlite3_column_bytes(strokeStmt.get(), 2);
+
+            // Defensive bounds check: bounding_box_blob must be exactly 32 bytes (4 doubles),
+            // and points_blob must be >= 16 bytes and a multiple of 16 (pairs of doubles).
+            if (!bboxBlob || bboxBytes != 32 || !ptsBlob || ptsBytes < 16 || (ptsBytes % 16 != 0)) {
+                std::cerr << "[ProjectStore] Warning: Corrupt or malformed ink_stroke blobs for stroke_id '"
+                          << (sid ? sid : "unknown") << "'. Expected bbox=32 bytes (got " << bboxBytes
+                          << "), points >= 16 and % 16 == 0 (got " << ptsBytes
+                          << "). Skipping stroke.\n";
+                continue;
+            }
+
+            const uint8_t* ptr = reinterpret_cast<const uint8_t*>(ptsBlob);
+            size_t count = ptsBytes / 16;
+            stroke.points.reserve(count);
+            for (size_t i = 0; i < count; ++i) {
+                double x = readDoubleLE(ptr + (i * 16));
+                double y = readDoubleLE(ptr + (i * 16) + 8);
+                stroke.points.push_back(FluidCore::XoppPoint{x, y});
+            }
+
+            const char* tool =
+                reinterpret_cast<const char*>(sqlite3_column_text(strokeStmt.get(), 3));
+            if (tool)
+                stroke.tool = tool;
+            stroke.color = static_cast<uint32_t>(sqlite3_column_int64(strokeStmt.get(), 4));
+            stroke.width = sqlite3_column_double(strokeStmt.get(), 5);
+            stroke.timestamp = static_cast<uint64_t>(sqlite3_column_int64(strokeStmt.get(), 6));
+
+            auto strokeNode = std::make_unique<FluidCore::CanvasStrokeNode>(std::move(stroke));
+            outModel.insert(std::move(strokeNode));
+        }
+    }
+
+    // 6. Rehydrate Graph Edges with endpoint validation
     outGraph.clear();
     SqliteStatement edgeStmt(m_db, "SELECT edge_id, source_node_id, target_node_id, direction, "
                                    "color, stroke_width, arrow_style, label FROM graph_edges;");
@@ -1190,7 +1450,14 @@ bool ProjectStore::rehydrate(WorkspaceModel& outModel, GraphTopology& outGraph,
             if (lbl)
                 edge.label = lbl;
 
-            outGraph.addEdge(edge);
+            // Defensive check: Only add edge if both endpoints exist in outModel
+            if (outModel.find(edge.sourceNodeId) && outModel.find(edge.targetNodeId)) {
+                outGraph.addEdge(edge);
+            } else {
+                std::cerr << "[ProjectStore] Warning: Skipping edge '" << edge.id
+                          << "' referencing missing node(s): src='" << edge.sourceNodeId
+                          << "', tgt='" << edge.targetNodeId << "'.\n";
+            }
         }
     }
     return true;

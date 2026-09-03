@@ -391,7 +391,9 @@ void WorkspaceInteraction::handleExcerptDrop(WorkspaceState& state, FluidCore::F
 
         const auto [cardW, cardH] =
             FluidCore::CardLayoutEngine::computeExcerptCardDimensions(payload);
-        FluidCore::Rectangle cardBounds{dropWorld.x, dropWorld.y, cardW, cardH};
+        const double safeW = (std::isnan(cardW) || cardW < 60.0) ? 240.0 : std::min(cardW, 2000.0);
+        const double safeH = (std::isnan(cardH) || cardH < 40.0) ? 160.0 : std::min(cardH, 2000.0);
+        FluidCore::Rectangle cardBounds{dropWorld.x, dropWorld.y, safeW, safeH};
         uint64_t timestamp = static_cast<uint64_t>(time);
 
         auto card = std::make_unique<FluidCore::ExcerptCardNode>(

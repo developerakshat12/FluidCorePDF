@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
 
 namespace FluidCoreApp {
 namespace {
@@ -95,6 +96,26 @@ bool strokeIntersectsEraser(const FluidCore::Stroke& stroke,
     return false;
 }
 
+std::optional<std::size_t> findPageIndexAt(const std::vector<DocumentPane::PageLayout>& pages,
+                                           double docY, double screenX, double pageX) {
+    if (pages.empty()) {
+        return std::nullopt;
+    }
+    // Binary search for page where layout.y <= docY in O(log N)
+    auto it = std::upper_bound(
+        pages.begin(), pages.end(), docY,
+        [](double val, const DocumentPane::PageLayout& p) { return val < p.y; });
+    if (it != pages.begin()) {
+        --it;
+    }
+    const auto& layout = *it;
+    if (docY >= layout.y && docY <= layout.y + layout.height && screenX >= pageX &&
+        screenX <= pageX + layout.width) {
+        return static_cast<std::size_t>(std::distance(pages.begin(), it));
+    }
+    return std::nullopt;
+}
+
 } // namespace
 
 InkOverlay::InkOverlay(DocumentPane& pane, FluidCore::AnnotationStore& store)
@@ -104,8 +125,8 @@ InkOverlay::InkOverlay(DocumentPane& pane, FluidCore::AnnotationStore& store)
                                 static_cast<int>(m_pane.layoutHeight()));
 
     gtk_widget_add_events(m_widget, GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK |
-                                        GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK |
-                                        GDK_ENTER_NOTIFY_MASK | GDK_LEAVE_NOTIFY_MASK);
+                                        GDK_POINTER_MOTION_MASK | GDK_ENTER_NOTIFY_MASK |
+                                        GDK_LEAVE_NOTIFY_MASK);
 
     g_signal_connect(m_widget, "draw", G_CALLBACK(InkOverlay::drawCallback), this);
     g_signal_connect(m_widget, "button-press-event", G_CALLBACK(InkOverlay::buttonPressCallback),
@@ -337,77 +358,75 @@ gboolean InkOverlay::onButtonPress(GdkEventButton* event) {
 
     if (m_currentTool == "crop" || m_currentTool == "rect_select") {
         // Visual diagram crop selection mode
-        for (std::size_t i = 0; i < pages.size(); ++i) {
-            const auto& layout = pages[i];
-            if (docY >= layout.y && docY <= layout.y + layout.height && screenX >= pageX &&
-                screenX <= pageX + layout.width) {
-                const double xp = screenX - pageX;
-                const double yp = docY - layout.y;
-
-                if (m_cropSelectionState.hasSelection && isPointInsideCropSelection(i, xp, yp)) {
-                    // Clicked inside existing crop selection -> potential drag-out excerpt
-                    m_isPotentialExcerptDrag = true;
-                    m_pressScreenX = event->x;
-                    m_pressScreenY = event->y;
-                    m_dragSourcePageIndex = i;
-                    return TRUE;
-                }
-
-                clearCropSelection();
-                clearSelection();
-
-                m_isSelectingCrop = true;
-                m_dragStartPageIndex = i;
-                m_cropDragStartPoint = {xp, yp};
-
-                m_cropSelectionState.hasSelection = true;
-                m_cropSelectionState.pageIndex = i;
-                m_cropSelectionState.rectPt = {xp, yp, 0.0, 0.0};
-                m_cropSelectionState.normRect = {xp / layout.width, yp / layout.height, 0.0, 0.0};
-
-                gtk_widget_queue_draw(m_widget);
-                return TRUE;
-            }
+        auto targetIdxOpt = findPageIndexAt(pages, docY, screenX, pageX);
+        if (!targetIdxOpt.has_value()) {
+            return FALSE;
         }
-        return FALSE;
+        const std::size_t i = *targetIdxOpt;
+        const auto& layout = pages[i];
+        const double xp = screenX - pageX;
+        const double yp = docY - layout.y;
+
+        if (m_cropSelectionState.hasSelection && isPointInsideCropSelection(i, xp, yp)) {
+            // Clicked inside existing crop selection -> potential drag-out excerpt
+            m_isPotentialExcerptDrag = true;
+            m_pressScreenX = event->x;
+            m_pressScreenY = event->y;
+            m_dragSourcePageIndex = i;
+            return TRUE;
+        }
+
+        clearCropSelection();
+        clearSelection();
+
+        m_isSelectingCrop = true;
+        m_dragStartPageIndex = i;
+        m_cropDragStartPoint = {xp, yp};
+
+        m_cropSelectionState.hasSelection = true;
+        m_cropSelectionState.pageIndex = i;
+        m_cropSelectionState.rectPt = {xp, yp, 0.0, 0.0};
+        m_cropSelectionState.normRect = {xp / layout.width, yp / layout.height, 0.0, 0.0};
+
+        gtk_widget_queue_draw(m_widget);
+        return TRUE;
     }
 
     if (m_currentTool == "select" || m_currentTool == "text") {
         // Text selection mode
-        for (std::size_t i = 0; i < pages.size(); ++i) {
-            const auto& layout = pages[i];
-            if (docY >= layout.y && docY <= layout.y + layout.height && screenX >= pageX &&
-                screenX <= pageX + layout.width) {
-                const double xp = screenX - pageX;
-                const double yp = docY - layout.y;
-
-                if (m_selectionState.hasSelection && isPointInsideSelection(i, xp, yp)) {
-                    // Clicked inside existing selection -> potential drag-out excerpt
-                    m_isPotentialExcerptDrag = true;
-                    m_pressScreenX = event->x;
-                    m_pressScreenY = event->y;
-                    m_dragSourcePageIndex = i;
-                    return TRUE;
-                }
-
-                if (m_selectionState.hasSelection) {
-                    invalidateSelection(m_selectionState);
-                    m_selectionState.clear();
-                }
-
-                clearCropSelection();
-
-                m_isSelectingText = true;
-                m_dragStartPageIndex = i;
-                m_dragStartPoint = {xp, yp};
-
-                m_textSelectionService.updateLiveDrag(pages, i, m_dragStartPoint, i, {xp, yp},
-                                                      m_selectionState);
-                invalidateSelection(m_selectionState);
-                return TRUE;
-            }
+        auto targetIdxOpt = findPageIndexAt(pages, docY, screenX, pageX);
+        if (!targetIdxOpt.has_value()) {
+            return FALSE;
         }
-        return FALSE;
+        const std::size_t i = *targetIdxOpt;
+        const auto& layout = pages[i];
+        const double xp = screenX - pageX;
+        const double yp = docY - layout.y;
+
+        if (m_selectionState.hasSelection && isPointInsideSelection(i, xp, yp)) {
+            // Clicked inside existing selection -> potential drag-out excerpt
+            m_isPotentialExcerptDrag = true;
+            m_pressScreenX = event->x;
+            m_pressScreenY = event->y;
+            m_dragSourcePageIndex = i;
+            return TRUE;
+        }
+
+        if (m_selectionState.hasSelection) {
+            invalidateSelection(m_selectionState);
+            m_selectionState.clear();
+        }
+
+        clearCropSelection();
+
+        m_isSelectingText = true;
+        m_dragStartPageIndex = i;
+        m_dragStartPoint = {xp, yp};
+
+        m_textSelectionService.updateLiveDrag(pages, i, m_dragStartPoint, i, {xp, yp},
+                                              m_selectionState);
+        invalidateSelection(m_selectionState);
+        return TRUE;
     }
 
     // Inking mode: clear any existing text and crop selections when starting a stroke
@@ -418,55 +437,52 @@ gboolean InkOverlay::onButtonPress(GdkEventButton* event) {
         clearCropSelection();
     }
 
-    for (std::size_t i = 0; i < pages.size(); ++i) {
-        const auto& layout = pages[i];
-        if (docY >= layout.y && docY <= layout.y + layout.height && screenX >= pageX &&
-            screenX <= pageX + layout.width) {
-            m_isDrawing = true;
-            m_activePageIndex = i;
+    auto targetIdxOpt = findPageIndexAt(pages, docY, screenX, pageX);
+    if (!targetIdxOpt.has_value()) {
+        return FALSE;
+    }
+    const std::size_t i = *targetIdxOpt;
+    const auto& layout = pages[i];
+    const double xp = screenX - pageX;
+    const double yp = docY - layout.y;
 
-            gdouble pressure = 1.0;
-            if (!gdk_event_get_axis(reinterpret_cast<GdkEvent*>(event), GDK_AXIS_PRESSURE,
-                                    &pressure) ||
-                pressure <= 0.0) {
-                pressure = 1.0;
+    m_isDrawing = true;
+    m_activePageIndex = i;
+
+    gdouble pressure = 1.0;
+    if (!gdk_event_get_axis(reinterpret_cast<GdkEvent*>(event), GDK_AXIS_PRESSURE,
+                            &pressure) ||
+        pressure <= 0.0) {
+        pressure = 1.0;
+    }
+
+    m_lastPressure = pressure;
+    m_activeStroke = FluidCore::Stroke{};
+    m_activeStroke.tool = (source == GDK_SOURCE_ERASER) ? "eraser" : m_currentTool;
+    m_activeStroke.color = m_currentColor;
+    m_activeStroke.width = m_currentWidth;
+    m_activeStroke.timestamp = static_cast<std::uint64_t>(event->time);
+
+    m_stabilizer.beginStroke({xp, yp}, pressure, static_cast<std::uint64_t>(event->time),
+                             StabilizerMode::Smooth);
+    m_activeBezierSegments.clear();
+    m_wetTip = {xp, yp};
+    m_hasWetSegment = false;
+
+    if (m_activeStroke.tool == "eraser") {
+        const auto existingStrokes = m_annotationStore.strokesForPage(i);
+        const auto& samples = m_stabilizer.rawSamples();
+        for (const auto& s : existingStrokes) {
+            if (strokeIntersectsEraser(s, samples, 24.0)) {
+                invalidateStroke(s);
+                m_pane.undoStack().pushAndExecute(
+                    std::make_unique<FluidCore::RemoveStrokeCommand>(m_annotationStore, i, s));
             }
-
-            m_lastPressure = pressure;
-            m_activeStroke = FluidCore::Stroke{};
-            m_activeStroke.tool = (source == GDK_SOURCE_ERASER) ? "eraser" : m_currentTool;
-            m_activeStroke.color = m_currentColor;
-            m_activeStroke.width = m_currentWidth;
-            m_activeStroke.timestamp = static_cast<std::uint64_t>(event->time);
-
-            const double xp = screenX - pageX;
-            const double yp = docY - layout.y;
-
-            m_stabilizer.beginStroke({xp, yp}, pressure, static_cast<std::uint64_t>(event->time),
-                                     StabilizerMode::Smooth);
-            m_activeBezierSegments.clear();
-            m_wetTip = {xp, yp};
-            m_hasWetSegment = false;
-
-            if (m_activeStroke.tool == "eraser") {
-                const auto existingStrokes = m_annotationStore.strokesForPage(i);
-                const auto& samples = m_stabilizer.rawSamples();
-                for (const auto& s : existingStrokes) {
-                    if (strokeIntersectsEraser(s, samples, 24.0)) {
-                        invalidateStroke(s);
-                        m_pane.undoStack().pushAndExecute(
-                            std::make_unique<FluidCore::RemoveStrokeCommand>(m_annotationStore, i,
-                                                                             s));
-                    }
-                }
-            }
-
-            gtk_widget_queue_draw(m_widget);
-            return TRUE;
         }
     }
 
-    return FALSE;
+    gtk_widget_queue_draw(m_widget);
+    return TRUE;
 }
 
 gboolean InkOverlay::onMotionNotify(GdkEventMotion* event) {
@@ -479,7 +495,7 @@ gboolean InkOverlay::onMotionNotify(GdkEventMotion* event) {
                 {const_cast<gchar*>("text/plain"), 0, 1}};
             GtkTargetList* targetList = gtk_target_list_new(dragTargets, G_N_ELEMENTS(dragTargets));
             GdkDragContext* context = gtk_drag_begin_with_coordinates(
-                m_widget, targetList, GDK_ACTION_COPY, 1, reinterpret_cast<GdkEvent*>(event),
+                m_widget, targetList, GDK_ACTION_COPY, 1, nullptr,
                 static_cast<gint>(event->x), static_cast<gint>(event->y));
             gtk_target_list_unref(targetList);
             if (context) {
@@ -531,12 +547,13 @@ gboolean InkOverlay::onMotionNotify(GdkEventMotion* event) {
         } else if (docY >= pages.back().y + pages.back().height) {
             currPage = pages.size() - 1;
         } else {
-            for (std::size_t i = 0; i < pages.size(); ++i) {
-                if (docY >= pages[i].y && docY <= pages[i].y + pages[i].height + 12.0) {
-                    currPage = i;
-                    break;
-                }
+            auto it = std::upper_bound(
+                pages.begin(), pages.end(), docY,
+                [](double val, const DocumentPane::PageLayout& p) { return val < p.y; });
+            if (it != pages.begin()) {
+                --it;
             }
+            currPage = static_cast<std::size_t>(std::distance(pages.begin(), it));
         }
 
         const auto& layout = pages[currPage];
@@ -893,12 +910,23 @@ void InkOverlay::draw(cairo_t* cr) {
 
     const auto segments = m_pane.squeezeSegments();
 
-    for (std::size_t i = 0; i < pages.size(); ++i) {
+    // Map screen clip bounds to document coordinates for accurate vertical culling
+    const double docY0 = m_pane.screenYToDoc(clipYStart * zoom);
+    const double docY1 = m_pane.screenYToDoc(clipYEnd * zoom);
+    const double cDocMin = std::min(docY0, docY1);
+    const double cDocMax = std::max(docY0, docY1);
+
+    auto startIt = std::lower_bound(
+        pages.begin(), pages.end(), cDocMin - 1000.0,
+        [](const DocumentPane::PageLayout& page, double val) { return (page.y + page.height) < val; });
+    std::size_t startIdx = std::distance(pages.begin(), startIt);
+
+    for (std::size_t i = startIdx; i < pages.size(); ++i) {
         const auto& layout = pages[i];
-        if (layout.y > clipYEnd + 1000.0) {
+        if (layout.y > cDocMax + 1000.0) {
             break; // Sorted by y, stop early
         }
-        if (layout.y + layout.height < clipYStart - 1000.0) {
+        if (layout.y + layout.height < cDocMin - 1000.0) {
             continue; // Skip pages far above the active viewport
         }
 
@@ -1099,7 +1127,7 @@ void InkOverlay::onDragDataGet(GdkDragContext*, GtkSelectionData* data, guint in
         if (info == 0) { // application/x-fluid-excerpt
             std::string serialized = FluidCore::serializeExcerptPayload(payload);
             gtk_selection_data_set(data,
-                                   gdk_atom_intern_static_string("application/x-fluid-excerpt"), 8,
+                                   gtk_selection_data_get_target(data), 8,
                                    reinterpret_cast<const guchar*>(serialized.data()),
                                    static_cast<gint>(serialized.size()));
         } else if (info == 1) { // text/plain
@@ -1132,7 +1160,7 @@ void InkOverlay::onDragDataGet(GdkDragContext*, GtkSelectionData* data, guint in
 
     if (info == 0) { // application/x-fluid-excerpt
         std::string serialized = FluidCore::serializeExcerptPayload(payload);
-        gtk_selection_data_set(data, gdk_atom_intern_static_string("application/x-fluid-excerpt"),
+        gtk_selection_data_set(data, gtk_selection_data_get_target(data),
                                8, reinterpret_cast<const guchar*>(serialized.data()),
                                static_cast<gint>(serialized.size()));
     } else if (info == 1) { // text/plain
@@ -1142,6 +1170,11 @@ void InkOverlay::onDragDataGet(GdkDragContext*, GtkSelectionData* data, guint in
 
 void InkOverlay::onDragEnd(GdkDragContext*) {
     m_isPotentialExcerptDrag = false;
+    m_isSelectingCrop = false;
+    m_isSelectingText = false;
+    if (m_widget && GTK_IS_WIDGET(m_widget)) {
+        gtk_widget_queue_draw(m_widget);
+    }
 }
 
 } // namespace FluidCoreApp

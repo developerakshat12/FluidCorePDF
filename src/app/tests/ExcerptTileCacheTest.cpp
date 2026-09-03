@@ -3,6 +3,7 @@
 
 #include <cassert>
 #include <cmath>
+#include <filesystem>
 #include <iostream>
 
 using namespace FluidCoreApp;
@@ -155,6 +156,37 @@ int testZeroLeakRefcounting() {
     return failures;
 }
 
+int testRealPdfCropRendering() {
+    std::cout << "Running testRealPdfCropRendering...\n";
+    int failures = 0;
+
+    const std::string testPdf = "/mnt/d/study material/FIN F414 - FRAM/FRAMTextBook.pdf";
+    if (!std::filesystem::exists(testPdf)) {
+        std::cout << "  SKIPPED: Real PDF not found\n";
+        return 0;
+    }
+
+    PdfDocumentService docService;
+    docService.registerMainDocument(testPdf, nullptr, testPdf);
+    docService.registerMainDocument("FRAMTextBook.pdf", nullptr, testPdf);
+
+    ExcerptTileCache cache(docService, 128 * 1024 * 1024);
+
+    CairoSurfaceHandle surf = docService.renderBackgroundCrop(
+        testPdf, 0, {0.1, 0.1, 0.5, 0.5}, 400, 300);
+    failures += check(static_cast<bool>(surf), "renderBackgroundCrop rendered surface successfully");
+    if (surf) {
+        failures += check(surf.width() == 400, "surface width is 400");
+        failures += check(surf.height() == 300, "surface height is 300");
+    }
+
+    // Now test asynchronous request
+    uint64_t req = cache.requestCropAsync("card-test", testPdf, 0, {0.1, 0.1, 0.5, 0.5}, 200, 150, 1.0);
+    failures += check(req > 0, "requestCropAsync dispatched request");
+
+    return failures;
+}
+
 } // namespace
 
 int main() {
@@ -166,6 +198,7 @@ int main() {
     totalFailures += testByteBoundedLruEviction();
     totalFailures += testDocumentInvalidationAndCancellation();
     totalFailures += testZeroLeakRefcounting();
+    totalFailures += testRealPdfCropRendering();
 
     if (totalFailures == 0) {
         std::cout << "All ExcerptTileCache tests passed successfully!\n";

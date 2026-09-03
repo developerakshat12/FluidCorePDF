@@ -63,7 +63,12 @@ class PdfDocumentService {
     bool isDocumentCancelled(const std::string& docId) const;
     void cancelDocumentRequests(const std::string& docId);
 
-    std::mutex& workerPopplerMutex() { return m_workerPopplerMutex; }
+    static std::mutex& globalPopplerMutex() {
+        static std::mutex s_mutex;
+        return s_mutex;
+    }
+
+    std::mutex& workerPopplerMutex() { return globalPopplerMutex(); }
 
     void clear();
 
@@ -74,6 +79,9 @@ class PdfDocumentService {
         PopplerDocument* mainDoc = nullptr; // Owned by DocumentPane or non-owning ref
         PopplerDocumentPtr backgroundDoc;   // Dedicated instance for background rendering
     };
+
+    DocEntry* resolveEntryLocked(const std::string& docId);
+    const DocEntry* resolveEntryLocked(const std::string& docId) const;
 
     mutable std::mutex m_registryMutex;
     std::mutex m_workerPopplerMutex;

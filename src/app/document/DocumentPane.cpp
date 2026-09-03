@@ -47,6 +47,19 @@ void drawRoundedRect(cairo_t* cr, double x, double y, double w, double h, double
 DocumentPane::DocumentPane(const std::string& pdfPath) : m_pdfPath(pdfPath) {
     m_viewOverlay = gtk_overlay_new();
     m_scroller = gtk_scrolled_window_new(nullptr, nullptr);
+    g_signal_connect(m_scroller, "destroy", G_CALLBACK(+[](GtkWidget*, gpointer data) {
+        auto* self = static_cast<DocumentPane*>(data);
+        if (self) {
+            self->m_scroller = nullptr;
+        }
+    }), this);
+    g_signal_connect(m_viewOverlay, "destroy", G_CALLBACK(+[](GtkWidget*, gpointer data) {
+        auto* self = static_cast<DocumentPane*>(data);
+        if (self) {
+            self->m_viewOverlay = nullptr;
+            self->m_scroller = nullptr;
+        }
+    }), this);
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(m_scroller), GTK_POLICY_AUTOMATIC,
                                    GTK_POLICY_AUTOMATIC);
     gtk_container_add(GTK_CONTAINER(m_viewOverlay), m_scroller);
@@ -108,7 +121,7 @@ void DocumentPane::closeDocument() {
     m_searchHits.clear();
     m_excerptAnchors.clear();
 
-    if (m_scroller) {
+    if (m_scroller && GTK_IS_WIDGET(m_scroller) && GTK_IS_BIN(m_scroller)) {
         GtkWidget* child = gtk_bin_get_child(GTK_BIN(m_scroller));
         if (child) {
             gtk_container_remove(GTK_CONTAINER(m_scroller), child);
@@ -880,7 +893,7 @@ const std::string& DocumentPane::tool() const {
 
 bool DocumentPane::saveAnnotations() {
     if (m_pdfPath.empty()) {
-        return false;
+        return true; // No active PDF document; saving annotations is a no-op success
     }
     return m_annotationStore.saveAnnotations(m_pdfPath);
 }
@@ -1189,13 +1202,28 @@ void DocumentPane::draw(cairo_t* cr) {
         kPageMargin + std::max(0.0, (allocation.width / m_zoom - m_layoutWidth) / 2.0);
 
     std::vector<std::size_t> visiblePageIndices;
+    if (m_pages.empty()) {
+        return;
+    }
 
-    for (std::size_t i = 0; i < m_pages.size(); ++i) {
+    // Map screen clip bounds to document coordinates for accurate vertical culling
+    const double docY0 = m_squeezeEngine.mapScreenYToDocument(clipYStart, m_docId).screenY;
+    const double docY1 = m_squeezeEngine.mapScreenYToDocument(clipYEnd, m_docId).screenY;
+    const double cDocMin = std::min(docY0, docY1);
+    const double cDocMax = std::max(docY0, docY1);
+
+    // Binary search to find the first page near the visible viewport
+    auto startIt = std::lower_bound(
+        m_pages.begin(), m_pages.end(), cDocMin - 1000.0,
+        [](const PageLayout& page, double val) { return (page.y + page.height) < val; });
+    std::size_t startIdx = std::distance(m_pages.begin(), startIt);
+
+    for (std::size_t i = startIdx; i < m_pages.size(); ++i) {
         const PageLayout& layout = m_pages[i];
-        if (layout.y > clipYEnd + 1000.0) {
+        if (layout.y > cDocMax + 1000.0) {
             break; // Pages are sorted vertically, stop early
         }
-        if (layout.y + layout.height < clipYStart - 1000.0) {
+        if (layout.y + layout.height < cDocMin - 1000.0) {
             continue; // Skip pages far above the active viewport
         }
 

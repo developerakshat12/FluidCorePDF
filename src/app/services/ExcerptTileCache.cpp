@@ -194,7 +194,10 @@ CairoSurfaceHandle ExcerptTileCache::renderCropSync(const std::string& docId, st
     cairo_scale(cr, static_cast<double>(w) / cropW, static_cast<double>(h) / cropH);
     cairo_translate(cr, -cropX, -cropY);
 
-    poppler_page_render(page, cr);
+    {
+        std::lock_guard<std::mutex> popplerLock(PdfDocumentService::globalPopplerMutex());
+        poppler_page_render(page, cr);
+    }
     cairo_destroy(cr);
 
     CairoSurfaceHandle handle(surface, true);
@@ -215,6 +218,10 @@ uint64_t ExcerptTileCache::requestCropAsync(const std::string& excerptId, const 
         return 0; // Already in cache
     }
 
+    if (m_inFlightKeys.find(key) != m_inFlightKeys.end()) {
+        return 0; // Already in-flight in background worker
+    }
+
     if (!m_threadPool) {
         return 0;
     }
@@ -227,6 +234,7 @@ uint64_t ExcerptTileCache::requestCropAsync(const std::string& excerptId, const 
 
     uint64_t requestId = m_nextRequestId.fetch_add(1);
     m_activeRequestIds.insert(requestId);
+    m_inFlightKeys.insert(key);
 
     auto* task = new AsyncRenderTask();
     task->requestId = requestId;
@@ -247,6 +255,7 @@ uint64_t ExcerptTileCache::requestCropAsync(const std::string& excerptId, const 
         g_error_free(error);
         delete task;
         m_activeRequestIds.erase(requestId);
+        m_inFlightKeys.erase(key);
         return 0;
     }
 
@@ -269,11 +278,6 @@ void ExcerptTileCache::asyncWorkerFunc(gpointer data, gpointer /*userData*/) {
     CairoSurfaceHandle surface = cache->m_docService.renderBackgroundCrop(
         task->docId, task->pageNo, task->normRect, task->targetPixelW, task->targetPixelH);
 
-    if (!surface) {
-        delete task;
-        return;
-    }
-
     auto* result = new AsyncRenderResult();
     result->requestId = task->requestId;
     result->excerptId = task->excerptId;
@@ -295,7 +299,9 @@ gboolean ExcerptTileCache::onRenderCompletedIdle(gpointer data) {
 
     ExcerptTileCache* cache = result->cache;
     if (cache) {
-        if (cache->m_cancelledRequestIds.count(result->requestId) == 0 &&
+        cache->m_inFlightKeys.erase(result->cacheKey);
+        if (result->surface &&
+            cache->m_cancelledRequestIds.count(result->requestId) == 0 &&
             !cache->m_docService.isDocumentCancelled(result->docId)) {
             cache->insert(result->cacheKey, result->surface);
             if (cache->m_onRenderReady) {
@@ -337,6 +343,7 @@ void ExcerptTileCache::invalidate(const std::string& docId) {
 void ExcerptTileCache::clear() {
     m_cancelledRequestIds.insert(m_activeRequestIds.begin(), m_activeRequestIds.end());
     m_activeRequestIds.clear();
+    m_inFlightKeys.clear();
     m_lookup.clear();
     m_lruList.clear();
     m_currentBytes = 0;

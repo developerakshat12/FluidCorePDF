@@ -48,7 +48,7 @@ void ReturnAnchorPill::show(const std::string& excerptId, const std::string& sni
     m_originWorldCoord = originWorldCoord;
     m_visible = true;
 
-    if (m_area) {
+    if (m_area && GTK_IS_WIDGET(m_area)) {
         gtk_widget_show(m_area);
         gtk_widget_queue_draw(m_area);
     }
@@ -215,19 +215,23 @@ gboolean ReturnAnchorPill::onMotionNotify(GdkEventMotion* event) {
     m_hoverReturn = ReturnAnchorPillGeometry::isInsideReturnAction(event->x, event->y, w, h);
 
     if (m_hoverReturn != prevReturn || m_hoverClose != prevClose) {
-        gtk_widget_queue_draw(m_area);
+        if (m_area && GTK_IS_WIDGET(m_area)) {
+            gtk_widget_queue_draw(m_area);
+        }
     }
 
-    GdkWindow* win = gtk_widget_get_window(m_area);
-    if (win) {
-        GdkDisplay* display = gdk_window_get_display(win);
-        if (m_hoverReturn || m_hoverClose) {
-            GdkCursor* pointerCursor = gdk_cursor_new_for_display(display, GDK_HAND2);
-            gdk_window_set_cursor(win, pointerCursor);
-            if (pointerCursor)
-                g_object_unref(pointerCursor);
-        } else {
-            gdk_window_set_cursor(win, nullptr);
+    if (m_area && GTK_IS_WIDGET(m_area)) {
+        GdkWindow* win = gtk_widget_get_window(m_area);
+        if (win) {
+            GdkDisplay* display = gdk_window_get_display(win);
+            if (m_hoverReturn || m_hoverClose) {
+                GdkCursor* pointerCursor = gdk_cursor_new_for_display(display, GDK_HAND2);
+                gdk_window_set_cursor(win, pointerCursor);
+                if (pointerCursor)
+                    g_object_unref(pointerCursor);
+            } else {
+                gdk_window_set_cursor(win, nullptr);
+            }
         }
     }
 
@@ -246,11 +250,11 @@ gboolean ReturnAnchorPill::leaveNotifyCallback(GtkWidget* /*widget*/, GdkEventCr
 gboolean ReturnAnchorPill::onLeaveNotify(GdkEventCrossing* /*event*/) {
     m_hoverReturn = false;
     m_hoverClose = false;
-    GdkWindow* win = gtk_widget_get_window(m_area);
-    if (win) {
-        gdk_window_set_cursor(win, nullptr);
-    }
-    if (m_area) {
+    if (m_area && GTK_IS_WIDGET(m_area)) {
+        GdkWindow* win = gtk_widget_get_window(m_area);
+        if (win) {
+            gdk_window_set_cursor(win, nullptr);
+        }
         gtk_widget_queue_draw(m_area);
     }
     return TRUE;

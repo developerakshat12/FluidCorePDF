@@ -1,6 +1,7 @@
 #include "storage/AnnotationStore.h"
 #include "storage/ProjectStore.h"
 #include "storage/XoppDocument.h"
+#include "workspace/CanvasStrokeNode.h"
 #include "workspace/CardStackNode.h"
 #include "workspace/ExcerptCardNode.h"
 #include "workspace/WorkspaceModel.h"
@@ -154,6 +155,26 @@ void testFullRoundTripPersistenceWithRelocation() {
     }
     preModel.insert(std::move(stack2));
 
+    // Add freeform canvas ink strokes (CanvasStrokeNode)
+    Stroke canvasPenStroke;
+    canvasPenStroke.id = "canvas-stroke-pen-1";
+    canvasPenStroke.tool = "pen";
+    canvasPenStroke.color = 0x1E90FF;
+    canvasPenStroke.width = 2.5;
+    canvasPenStroke.points = {
+        {500.125, 600.25}, {510.5, 620.75}, {525.0, 645.125}, {540.25, 670.0}, {555.75, 695.5}};
+    preModel.insert(std::make_unique<CanvasStrokeNode>(canvasPenStroke));
+
+    Stroke canvasHighlighterStroke;
+    canvasHighlighterStroke.id = "canvas-stroke-hl-1";
+    canvasHighlighterStroke.tool = "highlighter";
+    canvasHighlighterStroke.color = 0xFFFF00;
+    canvasHighlighterStroke.width = 16.0;
+    canvasHighlighterStroke.points = {
+        {600.0, 700.0}, {620.0, 705.0}, {640.0, 715.0}, {660.0, 720.0},
+        {680.0, 730.0}, {700.0, 735.0}, {720.0, 745.0}, {740.0, 750.0}};
+    preModel.insert(std::make_unique<CanvasStrokeNode>(canvasHighlighterStroke));
+
     // Build Graph Topology with 12 ink connectors/edges (including multi-node link chains)
     GraphTopology preGraph;
     for (int e = 1; e <= 12; ++e) {
@@ -225,8 +246,8 @@ void testFullRoundTripPersistenceWithRelocation() {
         assert(std::filesystem::exists(relocatedPath + "/" + postDocs[d].relativePath));
     }
 
-    // 3. Top-level nodes count (14 root cards + 2 stacks = 16 root nodes)
-    assert(postModel.nodeCount() == 16);
+    // 3. Top-level nodes count (14 root cards + 2 stacks + 2 freeform canvas strokes = 18 root nodes)
+    assert(postModel.nodeCount() == 18);
 
     // 4. Excerpt card exact match assertions (all 24 cards)
     for (int i = 1; i <= 24; ++i) {
@@ -337,10 +358,35 @@ void testFullRoundTripPersistenceWithRelocation() {
     auto damResults = reopenedStore.executeSearch("Damages Evidence");
     assert(!damResults.empty());
 
+    // 9. Freeform canvas ink strokes (CanvasStrokeNode) verification post-reload
+    auto* loadedPen = dynamic_cast<CanvasStrokeNode*>(postModel.find("canvas-stroke-pen-1"));
+    assert(loadedPen != nullptr && "Canvas pen stroke must be rehydrated as CanvasStrokeNode");
+    assert(loadedPen->stroke().tool == "pen");
+    assert(loadedPen->stroke().color == 0x1E90FF);
+    assert(floatNear(loadedPen->stroke().width, 2.5));
+    assert(loadedPen->stroke().points.size() == 5);
+    assert(floatNear(loadedPen->stroke().points[0].x, 500.125));
+    assert(floatNear(loadedPen->stroke().points[0].y, 600.25));
+    assert(floatNear(loadedPen->stroke().points[4].x, 555.75));
+    assert(floatNear(loadedPen->stroke().points[4].y, 695.5));
+    CanvasStrokeNode expectedPenNode(canvasPenStroke);
+    assert(rectNear(loadedPen->bounds(), expectedPenNode.bounds()));
+
+    auto* loadedHl = dynamic_cast<CanvasStrokeNode*>(postModel.find("canvas-stroke-hl-1"));
+    assert(loadedHl != nullptr && "Canvas highlighter stroke must be rehydrated as CanvasStrokeNode");
+    assert(loadedHl->stroke().tool == "highlighter");
+    assert(loadedHl->stroke().color == 0xFFFF00);
+    assert(floatNear(loadedHl->stroke().width, 16.0));
+    assert(loadedHl->stroke().points.size() == 8);
+    assert(floatNear(loadedHl->stroke().points[0].x, 600.0));
+    assert(floatNear(loadedHl->stroke().points[7].x, 740.0));
+    CanvasStrokeNode expectedHlNode(canvasHighlighterStroke);
+    assert(rectNear(loadedHl->bounds(), expectedHlNode.bounds()));
+
     reopenedStore.closeProject();
     std::filesystem::remove_all(relocatedPath, ec);
 
-    std::cout << "  ALL 9 ACCEPTANCE CRITERIA PASSED 100%!\n";
+    std::cout << "  ALL 10 ACCEPTANCE CRITERIA PASSED 100%!\n";
 }
 
 } // namespace

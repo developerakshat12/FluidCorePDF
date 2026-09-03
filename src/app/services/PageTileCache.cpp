@@ -1,7 +1,9 @@
 #include "PageTileCache.h"
+#include "services/PdfDocumentService.h"
 
 #include <algorithm>
 #include <cmath>
+#include <mutex>
 
 namespace FluidCoreApp {
 
@@ -120,7 +122,10 @@ CairoSurfaceHandle PageTileCache::renderPage(std::size_t pageIndex, PopplerPage*
     const double scaleY = static_cast<double>(height) / pageHeight;
     cairo_scale(cr, scaleX, scaleY);
 
-    poppler_page_render(page, cr);
+    {
+        std::lock_guard<std::mutex> popplerLock(PdfDocumentService::globalPopplerMutex());
+        poppler_page_render(page, cr);
+    }
     cairo_destroy(cr);
 
     CairoSurfaceHandle handle(rawSurface, /*takeOwnership=*/true);

@@ -182,21 +182,13 @@ void AppHeaderBar::createWidgets(GtkWindow* /*parentWindow*/) {
     gtk_menu_button_set_popup(GTK_MENU_BUTTON(m_openMenuBtn), m_openMenu);
     gtk_box_pack_start(GTK_BOX(leftCluster), m_openMenuBtn, FALSE, FALSE, 0);
 
-    m_saveBtn = createHeaderButton("💾 Save", "Save Project & Annotations (Ctrl+S)", true);
+    m_saveBtn = createHeaderButton("💾 Save", "Save Project (.ltproj Bundle) (Ctrl+S)", true);
     g_signal_connect_swapped(m_saveBtn, "clicked", G_CALLBACK(+[](AppHeaderBar* self) {
                                  if (self && self->m_onSaveProject)
                                      self->m_onSaveProject();
                              }),
                              this);
     gtk_box_pack_start(GTK_BOX(leftCluster), m_saveBtn, FALSE, FALSE, 0);
-
-    m_saveAsBtn = createHeaderButton("Save As...", "Save Project As Bundle (Ctrl+Shift+S)");
-    g_signal_connect_swapped(m_saveAsBtn, "clicked", G_CALLBACK(+[](AppHeaderBar* self) {
-                                 if (self && self->m_onSaveProjectAs)
-                                     self->m_onSaveProjectAs();
-                             }),
-                             this);
-    gtk_box_pack_start(GTK_BOX(leftCluster), m_saveAsBtn, FALSE, FALSE, 0);
 
     gtk_header_bar_pack_start(GTK_HEADER_BAR(m_headerBar), leftCluster);
 
@@ -229,10 +221,13 @@ void AppHeaderBar::setProjectTitle(const std::string& title, const std::string& 
 }
 
 void AppHeaderBar::setSaveStatus(SaveStatus status) {
-    if (!m_statusBadge)
+    if (!m_statusBadge || !GTK_IS_WIDGET(m_statusBadge) || !GTK_IS_LABEL(m_statusBadge))
         return;
 
     GtkStyleContext* ctx = gtk_widget_get_style_context(m_statusBadge);
+    if (!ctx || !GTK_IS_STYLE_CONTEXT(ctx))
+        return;
+
     gtk_style_context_remove_class(ctx, "fc-status-saved");
     gtk_style_context_remove_class(ctx, "fc-status-unsaved");
     gtk_style_context_remove_class(ctx, "fc-status-failed");

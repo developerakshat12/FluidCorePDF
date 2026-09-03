@@ -470,21 +470,17 @@ size_t SqueezeEngine::resolvePageIndex(const DocumentState& docState, double doc
         return docState.pages.back().pageIndex;
     }
 
-    for (size_t i = 0; i < docState.pages.size(); ++i) {
-        const auto& page = docState.pages[i];
-        double pageTop = page.unscaledYOffset;
-        double pageBottom = pageTop + page.heightPt;
-        if (docY >= pageTop && docY <= pageBottom) {
-            return page.pageIndex;
-        }
-        if (i + 1 < docState.pages.size()) {
-            double nextTop = docState.pages[i + 1].unscaledYOffset;
-            if (docY > pageBottom && docY < nextTop) {
-                return page.pageIndex;
-            }
-        }
+    // Binary search for O(log N) lookup across hundreds of pages
+    auto it = std::upper_bound(
+        docState.pages.begin(), docState.pages.end(), docY,
+        [](double val, const PageGeometry& page) { return val < page.unscaledYOffset; });
+
+    if (it != docState.pages.begin()) {
+        --it;
+        return it->pageIndex;
     }
-    return docState.pages.back().pageIndex;
+
+    return docState.pages.front().pageIndex;
 }
 
 } // namespace FluidCore
