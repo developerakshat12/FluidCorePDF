@@ -102,7 +102,9 @@ void DocumentPane::closeDocument() {
     }
     m_undoStack.clear();
     m_pageTileCache.clear();
-    m_squeezeEngine.resetSqueeze(m_docId);
+    if (m_squeezeEngine.hasDocument(m_docId)) {
+        m_squeezeEngine.resetSqueeze(m_docId);
+    }
     m_searchHits.clear();
     m_excerptAnchors.clear();
 
@@ -271,22 +273,37 @@ DocumentPane::~DocumentPane() {
 }
 
 double DocumentPane::docYToScreen(double docY) const {
+    if (!m_squeezeEngine.hasDocument(m_docId)) {
+        return docY * m_zoom;
+    }
     return m_squeezeEngine.mapDocumentYToScreen(docY, m_docId).screenY * m_zoom;
 }
 
 double DocumentPane::screenYToDoc(double screenY) const {
+    if (!m_squeezeEngine.hasDocument(m_docId)) {
+        return screenY / m_zoom;
+    }
     return m_squeezeEngine.mapScreenYToDocument(screenY / m_zoom, m_docId).screenY;
 }
 
 std::vector<FluidCore::SqueezeSegment> DocumentPane::squeezeSegments() const {
+    if (!m_squeezeEngine.hasDocument(m_docId)) {
+        return {};
+    }
     return m_squeezeEngine.getSegments(m_docId);
 }
 
 double DocumentPane::totalSqueezedHeight() const {
+    if (!m_squeezeEngine.hasDocument(m_docId)) {
+        return m_layoutHeight;
+    }
     return m_squeezeEngine.totalSqueezedHeight(m_docId);
 }
 
 bool DocumentPane::isSqueezed() const {
+    if (!m_squeezeEngine.hasDocument(m_docId)) {
+        return false;
+    }
     const auto& segs = m_squeezeEngine.getSegments(m_docId);
     for (const auto& s : segs) {
         if (s.alpha < 0.999) {
@@ -297,7 +314,11 @@ bool DocumentPane::isSqueezed() const {
 }
 
 void DocumentPane::updateLayoutDimensions() {
-    const double squeezedH = m_squeezeEngine.totalSqueezedHeight(m_docId) + 24.0;
+    double baseH = m_layoutHeight;
+    if (m_squeezeEngine.hasDocument(m_docId)) {
+        baseH = m_squeezeEngine.totalSqueezedHeight(m_docId);
+    }
+    const double squeezedH = baseH + 24.0;
     m_layoutHeight = squeezedH;
 
     const int scaledWidth = static_cast<int>(m_layoutWidth * m_zoom);
