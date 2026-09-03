@@ -303,9 +303,6 @@ void performSaveProjectAs(AppViewContext* ctx) {
 
     // Create bundle directory and structure
     std::filesystem::create_directories(bundlePath / "documents", ec);
-    std::filesystem::create_directories(bundlePath / "assets" / "clips", ec);
-    std::filesystem::create_directories(bundlePath / "assets" / "images", ec);
-    std::filesystem::create_directories(bundlePath / "cache" / "thumbnails", ec);
     if (ec) {
         showMessage(ctx->window, GTK_MESSAGE_ERROR, "Cannot Create Bundle",
                     "Failed to create project bundle directory:\n" + ec.message());
@@ -314,6 +311,10 @@ void performSaveProjectAs(AppViewContext* ctx) {
         ctx->pendingActionProceed = nullptr;
         return;
     }
+    std::filesystem::create_directories(bundlePath / "assets" / "clips", ec);
+    std::filesystem::create_directories(bundlePath / "assets" / "images", ec);
+    std::filesystem::create_directories(bundlePath / "cache" / "thumbnails", ec);
+    ec.clear(); // Reset after non-critical subdirectory creation
 
     // Copy all registered documents into bundle /documents/
     std::vector<std::string> copiedFiles;
@@ -332,7 +333,15 @@ void performSaveProjectAs(AppViewContext* ctx) {
 
         std::filesystem::path dstPdf = bundlePath / "documents" / srcPdf.filename();
 
-        if (std::filesystem::canonical(srcPdf, ec) != std::filesystem::canonical(dstPdf, ec)) {
+        // Safe path comparison: canonical() throws/errors on non-existent paths,
+        // so use equivalent() only when dstPdf already exists.
+        bool sameFile = false;
+        if (std::filesystem::exists(dstPdf, ec)) {
+            sameFile = std::filesystem::equivalent(srcPdf, dstPdf, ec);
+        }
+        ec.clear();
+
+        if (!sameFile) {
             std::filesystem::copy_file(srcPdf, dstPdf,
                                        std::filesystem::copy_options::overwrite_existing, ec);
             if (ec) {
@@ -383,9 +392,12 @@ void performSaveProjectAs(AppViewContext* ctx) {
         }
     }
 
-    // Open/initialize bundle in engine
+    // Open/initialize bundle database in engine.
+    // Use projectStore().openProject() directly instead of engine->openProjectWithError()
+    // to avoid m_model.clear() + m_graph.clear() which would destroy workspace nodes
+    // while WorkspaceView still holds live pointers to them (use-after-free crash).
     std::string err;
-    if (!ctx->engine->openProjectWithError(chosenPath, &err)) {
+    if (!ctx->engine->projectStore().openProject(chosenPath, &err)) {
         showMessage(ctx->window, GTK_MESSAGE_ERROR, "Database Initialization Failed",
                     "Could not initialize project database: " + err);
         if (ctx->headerBar)
