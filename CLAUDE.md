@@ -35,6 +35,7 @@ Open-source, offline-first alternative to LiquidText: fluid PDF reader + infinit
 - Perf budgets in planning/ROADMAP.md §5 are merge gates
 - Never introduce network calls at runtime (offline-first guarantee)
 - Ask before creating files outside the workspace you were routed to
+- Do not change gitignore you can only suggest the changes to made
 
 ## Common Gotchas & Troubleshooting
 - **GTK Container Lifecycle**: Root widgets returned by `widget()` (such as `m_viewOverlay` in `DocumentPane`) MUST be instantiated at the top of the constructor before any early returns (e.g. on invalid PDF paths). Returning `nullptr` breaks GTK window hierarchy mapping and prevents windows from appearing.
