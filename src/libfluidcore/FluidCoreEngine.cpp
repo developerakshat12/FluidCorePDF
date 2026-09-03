@@ -293,7 +293,8 @@ bool FluidCoreEngine::saveProjectWithError(std::string* error) {
             const auto* node = m_model.find(nId);
             if (const auto* card = dynamic_cast<const ExcerptCardNode*>(node)) {
                 const std::string& cardDocId = card->sourceDocId();
-                if (!cardDocId.empty() && registeredDocIds.find(cardDocId) == registeredDocIds.end()) {
+                if (!cardDocId.empty() &&
+                    registeredDocIds.find(cardDocId) == registeredDocIds.end()) {
                     std::filesystem::path p(cardDocId);
                     std::string filename = p.filename().string();
                     if (filename.empty()) {

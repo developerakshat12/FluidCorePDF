@@ -53,7 +53,8 @@ PdfDocumentService::DocEntry* PdfDocumentService::resolveEntryLocked(const std::
     return nullptr;
 }
 
-const PdfDocumentService::DocEntry* PdfDocumentService::resolveEntryLocked(const std::string& docId) const {
+const PdfDocumentService::DocEntry*
+PdfDocumentService::resolveEntryLocked(const std::string& docId) const {
     if (docId.empty()) {
         return nullptr;
     }

@@ -300,8 +300,7 @@ gboolean ExcerptTileCache::onRenderCompletedIdle(gpointer data) {
     ExcerptTileCache* cache = result->cache;
     if (cache) {
         cache->m_inFlightKeys.erase(result->cacheKey);
-        if (result->surface &&
-            cache->m_cancelledRequestIds.count(result->requestId) == 0 &&
+        if (result->surface && cache->m_cancelledRequestIds.count(result->requestId) == 0 &&
             !cache->m_docService.isDocumentCancelled(result->docId)) {
             cache->insert(result->cacheKey, result->surface);
             if (cache->m_onRenderReady) {

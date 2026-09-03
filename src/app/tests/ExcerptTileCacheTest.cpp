@@ -172,16 +172,18 @@ int testRealPdfCropRendering() {
 
     ExcerptTileCache cache(docService, 128 * 1024 * 1024);
 
-    CairoSurfaceHandle surf = docService.renderBackgroundCrop(
-        testPdf, 0, {0.1, 0.1, 0.5, 0.5}, 400, 300);
-    failures += check(static_cast<bool>(surf), "renderBackgroundCrop rendered surface successfully");
+    CairoSurfaceHandle surf =
+        docService.renderBackgroundCrop(testPdf, 0, {0.1, 0.1, 0.5, 0.5}, 400, 300);
+    failures +=
+        check(static_cast<bool>(surf), "renderBackgroundCrop rendered surface successfully");
     if (surf) {
         failures += check(surf.width() == 400, "surface width is 400");
         failures += check(surf.height() == 300, "surface height is 300");
     }
 
     // Now test asynchronous request
-    uint64_t req = cache.requestCropAsync("card-test", testPdf, 0, {0.1, 0.1, 0.5, 0.5}, 200, 150, 1.0);
+    uint64_t req =
+        cache.requestCropAsync("card-test", testPdf, 0, {0.1, 0.1, 0.5, 0.5}, 200, 150, 1.0);
     failures += check(req > 0, "requestCropAsync dispatched request");
 
     return failures;

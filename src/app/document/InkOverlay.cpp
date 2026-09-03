@@ -102,9 +102,9 @@ std::optional<std::size_t> findPageIndexAt(const std::vector<DocumentPane::PageL
         return std::nullopt;
     }
     // Binary search for page where layout.y <= docY in O(log N)
-    auto it = std::upper_bound(
-        pages.begin(), pages.end(), docY,
-        [](double val, const DocumentPane::PageLayout& p) { return val < p.y; });
+    auto it =
+        std::upper_bound(pages.begin(), pages.end(), docY,
+                         [](double val, const DocumentPane::PageLayout& p) { return val < p.y; });
     if (it != pages.begin()) {
         --it;
     }
@@ -450,8 +450,7 @@ gboolean InkOverlay::onButtonPress(GdkEventButton* event) {
     m_activePageIndex = i;
 
     gdouble pressure = 1.0;
-    if (!gdk_event_get_axis(reinterpret_cast<GdkEvent*>(event), GDK_AXIS_PRESSURE,
-                            &pressure) ||
+    if (!gdk_event_get_axis(reinterpret_cast<GdkEvent*>(event), GDK_AXIS_PRESSURE, &pressure) ||
         pressure <= 0.0) {
         pressure = 1.0;
     }
@@ -495,8 +494,8 @@ gboolean InkOverlay::onMotionNotify(GdkEventMotion* event) {
                 {const_cast<gchar*>("text/plain"), 0, 1}};
             GtkTargetList* targetList = gtk_target_list_new(dragTargets, G_N_ELEMENTS(dragTargets));
             GdkDragContext* context = gtk_drag_begin_with_coordinates(
-                m_widget, targetList, GDK_ACTION_COPY, 1, nullptr,
-                static_cast<gint>(event->x), static_cast<gint>(event->y));
+                m_widget, targetList, GDK_ACTION_COPY, 1, nullptr, static_cast<gint>(event->x),
+                static_cast<gint>(event->y));
             gtk_target_list_unref(targetList);
             if (context) {
                 gtk_drag_set_icon_name(context, "edit-copy", 0, 0);
@@ -916,9 +915,10 @@ void InkOverlay::draw(cairo_t* cr) {
     const double cDocMin = std::min(docY0, docY1);
     const double cDocMax = std::max(docY0, docY1);
 
-    auto startIt = std::lower_bound(
-        pages.begin(), pages.end(), cDocMin - 1000.0,
-        [](const DocumentPane::PageLayout& page, double val) { return (page.y + page.height) < val; });
+    auto startIt = std::lower_bound(pages.begin(), pages.end(), cDocMin - 1000.0,
+                                    [](const DocumentPane::PageLayout& page, double val) {
+                                        return (page.y + page.height) < val;
+                                    });
     std::size_t startIdx = std::distance(pages.begin(), startIt);
 
     for (std::size_t i = startIdx; i < pages.size(); ++i) {
@@ -1126,8 +1126,7 @@ void InkOverlay::onDragDataGet(GdkDragContext*, GtkSelectionData* data, guint in
 
         if (info == 0) { // application/x-fluid-excerpt
             std::string serialized = FluidCore::serializeExcerptPayload(payload);
-            gtk_selection_data_set(data,
-                                   gtk_selection_data_get_target(data), 8,
+            gtk_selection_data_set(data, gtk_selection_data_get_target(data), 8,
                                    reinterpret_cast<const guchar*>(serialized.data()),
                                    static_cast<gint>(serialized.size()));
         } else if (info == 1) { // text/plain
@@ -1160,8 +1159,8 @@ void InkOverlay::onDragDataGet(GdkDragContext*, GtkSelectionData* data, guint in
 
     if (info == 0) { // application/x-fluid-excerpt
         std::string serialized = FluidCore::serializeExcerptPayload(payload);
-        gtk_selection_data_set(data, gtk_selection_data_get_target(data),
-                               8, reinterpret_cast<const guchar*>(serialized.data()),
+        gtk_selection_data_set(data, gtk_selection_data_get_target(data), 8,
+                               reinterpret_cast<const guchar*>(serialized.data()),
                                static_cast<gint>(serialized.size()));
     } else if (info == 1) { // text/plain
         gtk_selection_data_set_text(data, m_selectionState.fullText.c_str(), -1);

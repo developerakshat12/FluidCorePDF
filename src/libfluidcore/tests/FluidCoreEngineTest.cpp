@@ -157,18 +157,20 @@ int main() {
 
         // Insert an ExcerptCardNode with unregistered docId
         auto excerptCard = std::make_unique<ExcerptCardNode>(
-            "card-test-1", Rectangle{50.0, 50.0, 200.0, 150.0},
-            "doc-primary.pdf", 42, Rectangle{0.1, 0.2, 0.5, 0.3},
-            "Sample excerpt text");
+            "card-test-1", Rectangle{50.0, 50.0, 200.0, 150.0}, "doc-primary.pdf", 42,
+            Rectangle{0.1, 0.2, 0.5, 0.3}, "Sample excerpt text");
         saveEngine.insertNode(std::move(excerptCard));
 
         std::string saveErr;
         bool saved = saveEngine.saveProjectWithError(&saveErr);
-        failures += check(saved, ("saveProjectWithError with unregistered ExcerptCardNode succeeded: " + saveErr).c_str());
+        failures += check(
+            saved, ("saveProjectWithError with unregistered ExcerptCardNode succeeded: " + saveErr)
+                       .c_str());
 
         // Verify document was automatically registered
         auto docOpt = saveEngine.projectStore().getDocument("doc-primary.pdf");
-        failures += check(docOpt.has_value(), "doc-primary.pdf was auto-registered in documents table");
+        failures +=
+            check(docOpt.has_value(), "doc-primary.pdf was auto-registered in documents table");
 
         std::filesystem::remove_all(tempProj, ec);
     }

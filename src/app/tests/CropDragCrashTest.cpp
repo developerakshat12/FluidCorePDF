@@ -3,25 +3,55 @@
 #include "document/InkOverlay.h"
 #include "services/ExcerptTileCache.h"
 #include "services/PdfDocumentService.h"
+#include "undo/WorkspaceCommands.h"
 #include "workspace/CardLayoutEngine.h"
 #include "workspace/ExcerptCardNode.h"
 #include "workspace/ExcerptPayload.h"
 #include "workspace/WorkspaceInteraction.h"
 #include "workspace/WorkspaceRenderer.h"
 #include "workspace/WorkspaceState.h"
-#include "undo/WorkspaceCommands.h"
 
+#include <cairo-pdf.h>
+#include <chrono>
+#include <filesystem>
 #include <gtk/gtk.h>
 #include <iostream>
 #include <memory>
 #include <thread>
-#include <chrono>
+
+namespace {
+
+std::string createSyntheticPdf(const std::string& filePath, int numPages = 15) {
+    cairo_surface_t* surface = cairo_pdf_surface_create(filePath.c_str(), 612.0, 792.0);
+    cairo_t* cr = cairo_create(surface);
+
+    for (int i = 0; i < numPages; ++i) {
+        cairo_pdf_surface_set_size(surface, 612.0, 792.0);
+        cairo_set_source_rgb(cr, 0.95, 0.95, 0.95);
+        cairo_paint(cr);
+        cairo_set_source_rgb(cr, 0.1 * ((i % 8) + 1), 0.2, 0.3);
+        cairo_rectangle(cr, 50, 50, 300, 200);
+        cairo_fill(cr);
+        cairo_show_page(cr);
+    }
+
+    cairo_destroy(cr);
+    cairo_surface_finish(surface);
+    cairo_surface_destroy(surface);
+
+    return filePath;
+}
+
+} // namespace
 
 int main(int argc, char** argv) {
     gtk_init_check(&argc, &argv);
     std::cout << "Starting CropDragCrashTest...\n";
 
-    const std::string testPdf = "/mnt/d/study material/FIN F414 - FRAM/FRAMTextBook.pdf";
+    const auto tempDir = std::filesystem::temp_directory_path() / "crop_drag_crash_test";
+    std::filesystem::create_directories(tempDir);
+    const std::string testPdf = (tempDir / "test_doc.pdf").string();
+    createSyntheticPdf(testPdf, 15);
 
     FluidCore::FluidCoreEngine engine("crop_test_project");
     FluidCoreApp::WorkspaceState state;
@@ -29,11 +59,11 @@ int main(int argc, char** argv) {
     FluidCoreApp::PdfDocumentService docService;
     docService.registerMainDocument(testPdf, nullptr, testPdf);
     docService.registerMainDocument("doc-primary.pdf", nullptr, testPdf);
-    docService.registerMainDocument("FRAMTextBook.pdf", nullptr, testPdf);
+    docService.registerMainDocument("test_doc.pdf", nullptr, testPdf);
 
     FluidCoreApp::ExcerptTileCache tileCache(docService, 128 * 1024 * 1024);
 
-    std::cout << "1. Simulating ExcerptDropPayload from crop selection on FRAMTextBook.pdf...\n";
+    std::cout << "1. Simulating ExcerptDropPayload from crop selection on synthetic PDF...\n";
     FluidCore::ExcerptDropPayload payload;
     payload.sourceDocId = testPdf;
     payload.sourcePageNo = 0;
@@ -51,8 +81,8 @@ int main(int argc, char** argv) {
     FluidCore::Rectangle cardBounds{200.0, 150.0, cardW, cardH};
     auto card = std::make_unique<FluidCore::ExcerptCardNode>(
         "excerpt-crop-1", cardBounds, payload.sourceDocId, payload.sourcePageNo,
-        payload.sourceNormalizedRect, payload.textSnippet, payload.isImageExcerpt,
-        payload.color, 1000);
+        payload.sourceNormalizedRect, payload.textSnippet, payload.isImageExcerpt, payload.color,
+        1000);
 
     std::cout << "3. Inserting node into WorkspaceModel via InsertNodeCommand...\n";
     FluidCore::InsertNodeCommand cmd(engine.workspaceModel(), std::move(card));
@@ -77,7 +107,12 @@ int main(int argc, char** argv) {
     std::cout << "Second WorkspaceRenderer::draw completed!\n";
 
     std::cout << "7. Testing bundle repoint and subsequent crop from bundled document path...\n";
-    std::string bundledPath = "/mnt/d/study material/FIN F414 - FRAM/Test/Test1.ltproj/documents/FRAMTextBook.pdf";
+    std::filesystem::path bundledDocsDir = tempDir / "bundle.ltproj" / "documents";
+    std::filesystem::create_directories(bundledDocsDir);
+    std::string bundledPath = (bundledDocsDir / "test_doc.pdf").string();
+    std::filesystem::copy_file(testPdf, bundledPath,
+                               std::filesystem::copy_options::overwrite_existing);
+
     docService.repointDocumentPath(testPdf, bundledPath);
 
     FluidCore::ExcerptDropPayload payload2;
@@ -107,16 +142,25 @@ int main(int argc, char** argv) {
         bundledPath, 10, payload2.sourceNormalizedRect, FluidCoreApp::LodTier::Standard);
     auto renderedSurface = tileCache.get(key2);
     if (!renderedSurface) {
-        renderedSurface = tileCache.getBestAvailableSurface(bundledPath, 10, payload2.sourceNormalizedRect);
+        renderedSurface =
+            tileCache.getBestAvailableSurface(bundledPath, 10, payload2.sourceNormalizedRect);
     }
-    std::cout << "Crop on bundled document path surface valid: " << (renderedSurface ? "YES" : "NO") << "\n";
+    std::cout << "Crop on bundled document path surface valid: " << (renderedSurface ? "YES" : "NO")
+              << "\n";
     if (!renderedSurface) {
         std::cerr << "FAILED to render crop from bundled document path!\n";
+        cairo_destroy(cr);
+        cairo_surface_destroy(surface);
+        std::error_code ec;
+        std::filesystem::remove_all(tempDir, ec);
         return 1;
     }
 
     cairo_destroy(cr);
     cairo_surface_destroy(surface);
+
+    std::error_code ec;
+    std::filesystem::remove_all(tempDir, ec);
 
     std::cout << "All CropDragCrashTest steps completed successfully!\n";
     return 0;

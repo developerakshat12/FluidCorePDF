@@ -893,8 +893,7 @@ void serializeNodeRecursive(sqlite3* db, const std::string& projectId, const Wor
         sqlite3_bind_blob(insertInkStrokeStmt.get(), 5, ptsBytes.data(),
                           static_cast<int>(ptsBytes.size()), SQLITE_STATIC);
         sqlite3_bind_text(insertInkStrokeStmt.get(), 6, stroke.tool.c_str(), -1, SQLITE_STATIC);
-        sqlite3_bind_int64(insertInkStrokeStmt.get(), 7,
-                           static_cast<sqlite3_int64>(stroke.color));
+        sqlite3_bind_int64(insertInkStrokeStmt.get(), 7, static_cast<sqlite3_int64>(stroke.color));
         sqlite3_bind_double(insertInkStrokeStmt.get(), 8, stroke.width);
         sqlite3_bind_int64(insertInkStrokeStmt.get(), 9,
                            static_cast<sqlite3_int64>(stroke.timestamp ? stroke.timestamp : now));
@@ -963,30 +962,34 @@ bool ProjectStore::saveProject(const WorkspaceModel& model, const GraphTopology&
         "    is_collapsed = excluded.is_collapsed, "
         "    color = excluded.color, "
         "    updated_at = excluded.updated_at "
-        "WHERE (node_type != excluded.node_type OR pos_x != excluded.pos_x OR pos_y != excluded.pos_y OR "
-        "       width != excluded.width OR height != excluded.height OR z_index != excluded.z_index OR "
+        "WHERE (node_type != excluded.node_type OR pos_x != excluded.pos_x OR pos_y != "
+        "excluded.pos_y OR "
+        "       width != excluded.width OR height != excluded.height OR z_index != "
+        "excluded.z_index OR "
         "       parent_stack_id IS NOT excluded.parent_stack_id OR title IS NOT excluded.title OR "
         "       is_collapsed != excluded.is_collapsed OR color != excluded.color);");
 
     SqliteStatement insertAnchorStmt(
-        m_db,
-        "INSERT INTO source_anchors (anchor_id, node_id, doc_id, page_index, rect_x0, "
-        "rect_y0, rect_x1, rect_y1, raw_text_content, highlight_color) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
-        "ON CONFLICT(anchor_id) DO UPDATE SET "
-        "    node_id = excluded.node_id, "
-        "    doc_id = excluded.doc_id, "
-        "    page_index = excluded.page_index, "
-        "    rect_x0 = excluded.rect_x0, "
-        "    rect_y0 = excluded.rect_y0, "
-        "    rect_x1 = excluded.rect_x1, "
-        "    rect_y1 = excluded.rect_y1, "
-        "    raw_text_content = excluded.raw_text_content, "
-        "    highlight_color = excluded.highlight_color "
-        "WHERE (node_id != excluded.node_id OR doc_id != excluded.doc_id OR page_index != excluded.page_index OR "
-        "       rect_x0 != excluded.rect_x0 OR rect_y0 != excluded.rect_y0 OR rect_x1 != excluded.rect_x1 OR "
-        "       rect_y1 != excluded.rect_y1 OR raw_text_content IS NOT excluded.raw_text_content OR "
-        "       highlight_color IS NOT excluded.highlight_color);");
+        m_db, "INSERT INTO source_anchors (anchor_id, node_id, doc_id, page_index, rect_x0, "
+              "rect_y0, rect_x1, rect_y1, raw_text_content, highlight_color) "
+              "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+              "ON CONFLICT(anchor_id) DO UPDATE SET "
+              "    node_id = excluded.node_id, "
+              "    doc_id = excluded.doc_id, "
+              "    page_index = excluded.page_index, "
+              "    rect_x0 = excluded.rect_x0, "
+              "    rect_y0 = excluded.rect_y0, "
+              "    rect_x1 = excluded.rect_x1, "
+              "    rect_y1 = excluded.rect_y1, "
+              "    raw_text_content = excluded.raw_text_content, "
+              "    highlight_color = excluded.highlight_color "
+              "WHERE (node_id != excluded.node_id OR doc_id != excluded.doc_id OR page_index != "
+              "excluded.page_index OR "
+              "       rect_x0 != excluded.rect_x0 OR rect_y0 != excluded.rect_y0 OR rect_x1 != "
+              "excluded.rect_x1 OR "
+              "       rect_y1 != excluded.rect_y1 OR raw_text_content IS NOT "
+              "excluded.raw_text_content OR "
+              "       highlight_color IS NOT excluded.highlight_color);");
 
     SqliteStatement insertTagStmt(m_db, "INSERT OR IGNORE INTO tags (tag_id, project_id, tag_name, "
                                         "tag_color) VALUES (?, ?, ?, ?);");
@@ -1001,18 +1004,20 @@ bool ProjectStore::saveProject(const WorkspaceModel& model, const GraphTopology&
     SqliteStatement deleteFtsStmt(m_db, "DELETE FROM fts_universal_index WHERE entity_id = ?;");
 
     SqliteStatement insertInkStrokeStmt(
-        m_db,
-        "INSERT INTO ink_strokes (stroke_id, project_id, container_type, container_ref_id, page_index, "
-        "bounding_box_blob, points_blob, tool_type, color, base_width, created_at) "
-        "VALUES (?, ?, 'WORKSPACE', ?, NULL, ?, ?, ?, ?, ?, ?) "
-        "ON CONFLICT(stroke_id) DO UPDATE SET "
-        "    bounding_box_blob = excluded.bounding_box_blob, "
-        "    points_blob = excluded.points_blob, "
-        "    tool_type = excluded.tool_type, "
-        "    color = excluded.color, "
-        "    base_width = excluded.base_width "
-        "WHERE (tool_type != excluded.tool_type OR color != excluded.color OR base_width != excluded.base_width OR "
-        "       bounding_box_blob != excluded.bounding_box_blob OR points_blob != excluded.points_blob);");
+        m_db, "INSERT INTO ink_strokes (stroke_id, project_id, container_type, container_ref_id, "
+              "page_index, "
+              "bounding_box_blob, points_blob, tool_type, color, base_width, created_at) "
+              "VALUES (?, ?, 'WORKSPACE', ?, NULL, ?, ?, ?, ?, ?, ?) "
+              "ON CONFLICT(stroke_id) DO UPDATE SET "
+              "    bounding_box_blob = excluded.bounding_box_blob, "
+              "    points_blob = excluded.points_blob, "
+              "    tool_type = excluded.tool_type, "
+              "    color = excluded.color, "
+              "    base_width = excluded.base_width "
+              "WHERE (tool_type != excluded.tool_type OR color != excluded.color OR base_width != "
+              "excluded.base_width OR "
+              "       bounding_box_blob != excluded.bounding_box_blob OR points_blob != "
+              "excluded.points_blob);");
 
     // Serialize top-level nodes and their hierarchy while tracking all visited IDs
     std::unordered_set<std::string> currentModelNodeIds;
@@ -1036,8 +1041,8 @@ bool ProjectStore::saveProject(const WorkspaceModel& model, const GraphTopology&
                           SQLITE_STATIC);
         std::vector<std::string> nodesToDelete;
         while (selectExistingNodes.step()) {
-            const char* nid = reinterpret_cast<const char*>(
-                sqlite3_column_text(selectExistingNodes.get(), 0));
+            const char* nid =
+                reinterpret_cast<const char*>(sqlite3_column_text(selectExistingNodes.get(), 0));
             if (nid && currentModelNodeIds.find(nid) == currentModelNodeIds.end()) {
                 nodesToDelete.emplace_back(nid);
             }
@@ -1072,7 +1077,8 @@ bool ProjectStore::saveProject(const WorkspaceModel& model, const GraphTopology&
         "    stroke_width = excluded.stroke_width, "
         "    arrow_style = excluded.arrow_style, "
         "    label = excluded.label "
-        "WHERE (source_node_id != excluded.source_node_id OR target_node_id != excluded.target_node_id OR "
+        "WHERE (source_node_id != excluded.source_node_id OR target_node_id != "
+        "excluded.target_node_id OR "
         "       edge_type != excluded.edge_type OR edge_kind != excluded.edge_kind OR "
         "       direction != excluded.direction OR color != excluded.color OR "
         "       stroke_width != excluded.stroke_width OR arrow_style != excluded.arrow_style OR "
@@ -1114,15 +1120,15 @@ bool ProjectStore::saveProject(const WorkspaceModel& model, const GraphTopology&
     }
 
     // Prune edges that were removed from the graph
-    SqliteStatement selectExistingEdges(
-        m_db, "SELECT edge_id FROM graph_edges WHERE project_id = ?;");
+    SqliteStatement selectExistingEdges(m_db,
+                                        "SELECT edge_id FROM graph_edges WHERE project_id = ?;");
     if (selectExistingEdges.isValid()) {
         sqlite3_bind_text(selectExistingEdges.get(), 1, m_metadata.projectId.c_str(), -1,
                           SQLITE_STATIC);
         std::vector<std::string> edgesToDelete;
         while (selectExistingEdges.step()) {
-            const char* eid = reinterpret_cast<const char*>(
-                sqlite3_column_text(selectExistingEdges.get(), 0));
+            const char* eid =
+                reinterpret_cast<const char*>(sqlite3_column_text(selectExistingEdges.get(), 0));
             if (eid && currentModelEdgeIds.find(eid) == currentModelEdgeIds.end()) {
                 edgesToDelete.emplace_back(eid);
             }
@@ -1139,14 +1145,15 @@ bool ProjectStore::saveProject(const WorkspaceModel& model, const GraphTopology&
 
     // 5. Prune workspace ink strokes that were removed from the workspace model
     SqliteStatement selectExistingStrokes(
-        m_db, "SELECT stroke_id FROM ink_strokes WHERE project_id = ? AND container_type = 'WORKSPACE';");
+        m_db,
+        "SELECT stroke_id FROM ink_strokes WHERE project_id = ? AND container_type = 'WORKSPACE';");
     if (selectExistingStrokes.isValid()) {
         sqlite3_bind_text(selectExistingStrokes.get(), 1, m_metadata.projectId.c_str(), -1,
                           SQLITE_STATIC);
         std::vector<std::string> strokesToDelete;
         while (selectExistingStrokes.step()) {
-            const char* sid = reinterpret_cast<const char*>(
-                sqlite3_column_text(selectExistingStrokes.get(), 0));
+            const char* sid =
+                reinterpret_cast<const char*>(sqlite3_column_text(selectExistingStrokes.get(), 0));
             if (sid && currentModelStrokeIds.find(sid) == currentModelStrokeIds.end()) {
                 strokesToDelete.emplace_back(sid);
             }
@@ -1371,9 +1378,9 @@ bool ProjectStore::rehydrate(WorkspaceModel& outModel, GraphTopology& outGraph,
 
     // 5. Rehydrate Workspace Ink Strokes
     SqliteStatement strokeStmt(
-        m_db,
-        "SELECT stroke_id, bounding_box_blob, points_blob, tool_type, color, base_width, created_at "
-        "FROM ink_strokes WHERE project_id = ? AND container_type = 'WORKSPACE';");
+        m_db, "SELECT stroke_id, bounding_box_blob, points_blob, tool_type, color, base_width, "
+              "created_at "
+              "FROM ink_strokes WHERE project_id = ? AND container_type = 'WORKSPACE';");
     if (strokeStmt.isValid()) {
         sqlite3_bind_text(strokeStmt.get(), 1, m_metadata.projectId.c_str(), -1, SQLITE_STATIC);
         while (strokeStmt.step()) {
@@ -1391,9 +1398,10 @@ bool ProjectStore::rehydrate(WorkspaceModel& outModel, GraphTopology& outGraph,
             // Defensive bounds check: bounding_box_blob must be exactly 32 bytes (4 doubles),
             // and points_blob must be >= 16 bytes and a multiple of 16 (pairs of doubles).
             if (!bboxBlob || bboxBytes != 32 || !ptsBlob || ptsBytes < 16 || (ptsBytes % 16 != 0)) {
-                std::cerr << "[ProjectStore] Warning: Corrupt or malformed ink_stroke blobs for stroke_id '"
-                          << (sid ? sid : "unknown") << "'. Expected bbox=32 bytes (got " << bboxBytes
-                          << "), points >= 16 and % 16 == 0 (got " << ptsBytes
+                std::cerr << "[ProjectStore] Warning: Corrupt or malformed ink_stroke blobs for "
+                             "stroke_id '"
+                          << (sid ? sid : "unknown") << "'. Expected bbox=32 bytes (got "
+                          << bboxBytes << "), points >= 16 and % 16 == 0 (got " << ptsBytes
                           << "). Skipping stroke.\n";
                 continue;
             }

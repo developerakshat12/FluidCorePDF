@@ -5,11 +5,11 @@
 #include "workspace/ExcerptCardNode.h"
 #include "workspace/WorkspaceModel.h"
 
-#include <sqlite3.h>
 #include <cassert>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <sqlite3.h>
 
 using namespace FluidCore;
 
@@ -242,14 +242,14 @@ void testIncrementalSavesAndPruning() {
     GraphTopology graph;
 
     // Add card A and card B, plus workspace stroke
-    auto cardA = std::make_unique<ExcerptCardNode>("card-a", Rectangle{10, 20, 100, 50}, "doc-1",
-                                                   1, Rectangle{0.1, 0.1, 0.2, 0.2},
-                                                   "Original text A", false);
+    auto cardA =
+        std::make_unique<ExcerptCardNode>("card-a", Rectangle{10, 20, 100, 50}, "doc-1", 1,
+                                          Rectangle{0.1, 0.1, 0.2, 0.2}, "Original text A", false);
     model.insert(std::move(cardA));
 
-    auto cardB = std::make_unique<ExcerptCardNode>("card-b", Rectangle{200, 200, 100, 50}, "doc-1",
-                                                   2, Rectangle{0.1, 0.1, 0.2, 0.2},
-                                                   "Original text B", false);
+    auto cardB =
+        std::make_unique<ExcerptCardNode>("card-b", Rectangle{200, 200, 100, 50}, "doc-1", 2,
+                                          Rectangle{0.1, 0.1, 0.2, 0.2}, "Original text B", false);
     model.insert(std::move(cardB));
 
     Stroke strokeData;
@@ -357,18 +357,17 @@ void testUnrecognizedNodeTypeSafety() {
     std::vector<DocumentRecord> docs;
 
     // 1. Valid top-level excerpt card
-    auto validCard = std::make_unique<ExcerptCardNode>("card-valid", Rectangle{10, 20, 100, 50}, "doc-1",
-                                                       1, Rectangle{0.1, 0.1, 0.2, 0.2},
+    auto validCard = std::make_unique<ExcerptCardNode>("card-valid", Rectangle{10, 20, 100, 50},
+                                                       "doc-1", 1, Rectangle{0.1, 0.1, 0.2, 0.2},
                                                        "Valid card snippet", false);
     model.insert(std::move(validCard));
 
     // 2. Valid stack with one valid child
     auto validStack = std::make_unique<CardStackNode>("stack-valid", Rectangle{300, 100, 250, 150},
                                                       "Valid Stack Header", false);
-    auto stackChild = std::make_unique<ExcerptCardNode>("card-stack-child-valid",
-                                                        Rectangle{310, 140, 200, 40}, "doc-1", 1,
-                                                        Rectangle{0.2, 0.2, 0.3, 0.3},
-                                                        "Child snippet", false);
+    auto stackChild = std::make_unique<ExcerptCardNode>(
+        "card-stack-child-valid", Rectangle{310, 140, 200, 40}, "doc-1", 1,
+        Rectangle{0.2, 0.2, 0.3, 0.3}, "Child snippet", false);
     validStack->addChild(std::move(stackChild));
     model.insert(std::move(validStack));
 
@@ -392,21 +391,32 @@ void testUnrecognizedNodeTypeSafety() {
     assert(sqlite3_open((testDir + "/project.db").c_str(), &db) == SQLITE_OK);
 
     const char* injectSql =
-        // Path A: Unhandled root node (STICKY_NOTE is valid in DDL CHECK constraint, but not handled in instantiateNode) & edge
-        "INSERT INTO workspace_nodes (node_id, project_id, node_type, pos_x, pos_y, width, height, created_at, updated_at) "
+        // Path A: Unhandled root node (STICKY_NOTE is valid in DDL CHECK constraint, but not
+        // handled in instantiateNode) & edge
+        "INSERT INTO workspace_nodes (node_id, project_id, node_type, pos_x, pos_y, width, height, "
+        "created_at, updated_at) "
         "VALUES ('corrupt-node-1', 'proj-safety', 'STICKY_NOTE', 100, 100, 200, 200, 1000, 1000);"
-        "INSERT INTO graph_edges (edge_id, project_id, source_node_id, target_node_id, edge_type, edge_kind, direction, color, stroke_width, arrow_style, created_at) "
-        "VALUES ('edge-to-corrupt', 'proj-safety', 'card-valid', 'corrupt-node-1', 'INK_LINK', 'GENERIC', 0, 0, 1.0, 0, 1000);"
-        // Path B: Unhandled child node inside stack-valid (TEXT_BOX is valid in DDL, but unhandled in instantiateNode)
-        "INSERT INTO workspace_nodes (node_id, project_id, node_type, pos_x, pos_y, width, height, parent_stack_id, created_at, updated_at) "
-        "VALUES ('corrupt-child-1', 'proj-safety', 'TEXT_BOX', 310, 190, 200, 40, 'stack-valid', 1000, 1000);"
+        "INSERT INTO graph_edges (edge_id, project_id, source_node_id, target_node_id, edge_type, "
+        "edge_kind, direction, color, stroke_width, arrow_style, created_at) "
+        "VALUES ('edge-to-corrupt', 'proj-safety', 'card-valid', 'corrupt-node-1', 'INK_LINK', "
+        "'GENERIC', 0, 0, 1.0, 0, 1000);"
+        // Path B: Unhandled child node inside stack-valid (TEXT_BOX is valid in DDL, but unhandled
+        // in instantiateNode)
+        "INSERT INTO workspace_nodes (node_id, project_id, node_type, pos_x, pos_y, width, height, "
+        "parent_stack_id, created_at, updated_at) "
+        "VALUES ('corrupt-child-1', 'proj-safety', 'TEXT_BOX', 310, 190, 200, 40, 'stack-valid', "
+        "1000, 1000);"
         // Path C: Malformed ink_strokes rows
         // 1. Truncated bounding_box_blob (only 16 bytes instead of 32)
-        "INSERT INTO ink_strokes (stroke_id, project_id, container_type, container_ref_id, page_index, bounding_box_blob, points_blob, tool_type, color, base_width, created_at) "
-        "VALUES ('stroke-corrupt-bbox', 'proj-safety', 'WORKSPACE', 'proj-safety', NULL, zeroblob(16), zeroblob(32), 'pen', 255, 2.0, 1000);"
+        "INSERT INTO ink_strokes (stroke_id, project_id, container_type, container_ref_id, "
+        "page_index, bounding_box_blob, points_blob, tool_type, color, base_width, created_at) "
+        "VALUES ('stroke-corrupt-bbox', 'proj-safety', 'WORKSPACE', 'proj-safety', NULL, "
+        "zeroblob(16), zeroblob(32), 'pen', 255, 2.0, 1000);"
         // 2. Non-multiple of 16 points_blob (10 bytes)
-        "INSERT INTO ink_strokes (stroke_id, project_id, container_type, container_ref_id, page_index, bounding_box_blob, points_blob, tool_type, color, base_width, created_at) "
-        "VALUES ('stroke-corrupt-pts', 'proj-safety', 'WORKSPACE', 'proj-safety', NULL, zeroblob(32), zeroblob(10), 'pen', 255, 2.0, 1000);";
+        "INSERT INTO ink_strokes (stroke_id, project_id, container_type, container_ref_id, "
+        "page_index, bounding_box_blob, points_blob, tool_type, color, base_width, created_at) "
+        "VALUES ('stroke-corrupt-pts', 'proj-safety', 'WORKSPACE', 'proj-safety', NULL, "
+        "zeroblob(32), zeroblob(10), 'pen', 255, 2.0, 1000);";
 
     char* sqlErr = nullptr;
     assert(sqlite3_exec(db, injectSql, nullptr, nullptr, &sqlErr) == SQLITE_OK);
@@ -419,7 +429,8 @@ void testUnrecognizedNodeTypeSafety() {
     GraphTopology reGraph;
     std::vector<DocumentRecord> reDocs;
 
-    // Must not crash! Must succeed and gracefully skip corrupt entities while preserving valid ones.
+    // Must not crash! Must succeed and gracefully skip corrupt entities while preserving valid
+    // ones.
     assert(verifyStore.rehydrate(reModel, reGraph, reDocs, &err));
 
     // Verify Path A: corrupt top-level node skipped, orphaned edge discarded, valid card intact
@@ -427,7 +438,8 @@ void testUnrecognizedNodeTypeSafety() {
     assert(reModel.find("card-valid") != nullptr);
     assert(reGraph.edgeCount() == 0);
 
-    // Verify Path B: valid stack survived, corrupt child skipped, valid child retained without nulls
+    // Verify Path B: valid stack survived, corrupt child skipped, valid child retained without
+    // nulls
     auto* reStack = dynamic_cast<CardStackNode*>(reModel.find("stack-valid"));
     assert(reStack != nullptr);
     assert(reStack->childCount() == 1);

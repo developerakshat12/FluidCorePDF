@@ -28,12 +28,12 @@
 #include <unistd.h>
 
 static void crashSignalHandler(int sig) {
-    const char* sigName = (sig == SIGSEGV) ? "SIGSEGV (Segmentation fault)"
-                        : (sig == SIGABRT) ? "SIGABRT (Abort)"
-                        : (sig == SIGBUS)  ? "SIGBUS (Bus error)"
-                        : (sig == SIGFPE)  ? "SIGFPE (Floating point exception)"
-                        : (sig == SIGILL)  ? "SIGILL (Illegal instruction)"
-                        : "UNKNOWN SIGNAL";
+    const char* sigName = (sig == SIGSEGV)   ? "SIGSEGV (Segmentation fault)"
+                          : (sig == SIGABRT) ? "SIGABRT (Abort)"
+                          : (sig == SIGBUS)  ? "SIGBUS (Bus error)"
+                          : (sig == SIGFPE)  ? "SIGFPE (Floating point exception)"
+                          : (sig == SIGILL)  ? "SIGILL (Illegal instruction)"
+                                             : "UNKNOWN SIGNAL";
     std::cerr << "\n================ [FluidCore FATAL CRASH] ================\n"
               << "Caught fatal signal: " << sigName << " (" << sig << ")\n";
     void* callstack[64];
@@ -462,10 +462,10 @@ void performSaveProjectAs(AppViewContext* ctx) {
     }
 
     // Register all active documents in projectStore
-    const uint64_t now = static_cast<uint64_t>(
-        std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::system_clock::now().time_since_epoch())
-            .count());
+    const uint64_t now =
+        static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                  std::chrono::system_clock::now().time_since_epoch())
+                                  .count());
 
     std::unordered_set<std::string> registeredDocIds;
     for (const auto& [docId, origPath] : allDocs) {
@@ -507,7 +507,8 @@ void performSaveProjectAs(AppViewContext* ctx) {
             const auto* node = ctx->engine->workspaceModel().find(nId);
             if (const auto* card = dynamic_cast<const FluidCore::ExcerptCardNode*>(node)) {
                 const std::string& cardDocId = card->sourceDocId();
-                if (!cardDocId.empty() && registeredDocIds.find(cardDocId) == registeredDocIds.end()) {
+                if (!cardDocId.empty() &&
+                    registeredDocIds.find(cardDocId) == registeredDocIds.end()) {
                     std::string resolvedPath;
                     if (ctx->pdfDocService) {
                         resolvedPath = ctx->pdfDocService->getFilePath(cardDocId);
@@ -551,7 +552,8 @@ void performSaveProjectAs(AppViewContext* ctx) {
     }
 
     if (ok) {
-        // Canonical source switch: repoint document handles to bundle copies ONLY after verified save
+        // Canonical source switch: repoint document handles to bundle copies ONLY after verified
+        // save
         for (const auto& [docId, origPath] : allDocs) {
             if (origPath.empty())
                 continue;
@@ -560,7 +562,8 @@ void performSaveProjectAs(AppViewContext* ctx) {
             std::string newPath = dstPdf.string();
             if (ctx->pdfDocService) {
                 ctx->pdfDocService->repointDocumentPath(docId, newPath);
-                ctx->pdfDocService->registerMainDocument(newPath, ctx->pane ? ctx->pane->document() : nullptr, newPath);
+                ctx->pdfDocService->registerMainDocument(
+                    newPath, ctx->pane ? ctx->pane->document() : nullptr, newPath);
             }
             if (ctx->pane && (ctx->pane->docId() == docId || ctx->pane->pdfPath() == origPath)) {
                 ctx->pane->repointCompanionPath(newPath);
@@ -606,7 +609,8 @@ void performSaveProject(AppViewContext* ctx) {
     std::filesystem::path bundlePath(ctx->engine->projectPath());
     std::error_code ec;
 
-    // Incremental document copy: ensure all active and referenced documents exist in bundle/documents/
+    // Incremental document copy: ensure all active and referenced documents exist in
+    // bundle/documents/
     auto allDocs = ctx->pdfDocService ? ctx->pdfDocService->allDocuments()
                                       : std::vector<std::pair<std::string, std::string>>{};
     if (ctx->pane && !ctx->pane->pdfPath().empty()) {
@@ -627,10 +631,10 @@ void performSaveProject(AppViewContext* ctx) {
         knownDocIds.insert(d.docId);
     }
 
-    const uint64_t now = static_cast<uint64_t>(
-        std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::system_clock::now().time_since_epoch())
-            .count());
+    const uint64_t now =
+        static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                  std::chrono::system_clock::now().time_since_epoch())
+                                  .count());
 
     for (const auto& [docId, origPath] : allDocs) {
         if (origPath.empty())
@@ -657,9 +661,11 @@ void performSaveProject(AppViewContext* ctx) {
                 std::string newPath = dstPdf.string();
                 if (ctx->pdfDocService) {
                     ctx->pdfDocService->repointDocumentPath(docId, newPath);
-                    ctx->pdfDocService->registerMainDocument(newPath, ctx->pane ? ctx->pane->document() : nullptr, newPath);
+                    ctx->pdfDocService->registerMainDocument(
+                        newPath, ctx->pane ? ctx->pane->document() : nullptr, newPath);
                 }
-                if (ctx->pane && (ctx->pane->docId() == docId || ctx->pane->pdfPath() == origPath)) {
+                if (ctx->pane &&
+                    (ctx->pane->docId() == docId || ctx->pane->pdfPath() == origPath)) {
                     ctx->pane->repointCompanionPath(newPath);
                 }
             }
@@ -695,7 +701,8 @@ void performSaveProject(AppViewContext* ctx) {
             if (const auto* card = dynamic_cast<const FluidCore::ExcerptCardNode*>(node)) {
                 const std::string& cardDocId = card->sourceDocId();
                 if (!cardDocId.empty() && knownDocIds.find(cardDocId) == knownDocIds.end()) {
-                    std::string resPath = ctx->pdfDocService ? ctx->pdfDocService->getFilePath(cardDocId) : "";
+                    std::string resPath =
+                        ctx->pdfDocService ? ctx->pdfDocService->getFilePath(cardDocId) : "";
                     if (resPath.empty() && ctx->pane) {
                         resPath = ctx->pane->pdfPath();
                     }
@@ -703,8 +710,13 @@ void performSaveProject(AppViewContext* ctx) {
                     std::string filename = p.filename().string();
                     if (filename.empty())
                         filename = "document.pdf";
-                    FluidCore::DocumentRecord rec{cardDocId, filename, "documents/" + filename,
-                                                  "sha256-placeholder", card->sourcePageNo() + 1, 0, now};
+                    FluidCore::DocumentRecord rec{cardDocId,
+                                                  filename,
+                                                  "documents/" + filename,
+                                                  "sha256-placeholder",
+                                                  card->sourcePageNo() + 1,
+                                                  0,
+                                                  now};
                     ctx->engine->projectStore().registerDocument(rec, nullptr);
                     knownDocIds.insert(cardDocId);
                 }
@@ -1020,12 +1032,10 @@ void onActivate(GtkApplication* app, gpointer userData) {
         G_OBJECT(app), "last-active-pane", lastActivePane,
         +[](gpointer data) { delete static_cast<ActivePane*>(data); });
 
-    auto* viewCtx = new AppViewContext{documentPane,     workspace,
-                                       toolManager,      context->engine,
-                                       pdfDocService,    excerptTileCache,
-                                       headerBar,        GTK_WINDOW(window),
-                                       lastActivePane,   nullptr,
-                                       false,            nullptr};
+    auto* viewCtx =
+        new AppViewContext{documentPane,   workspace,        toolManager, context->engine,
+                           pdfDocService,  excerptTileCache, headerBar,   GTK_WINDOW(window),
+                           lastActivePane, nullptr,          false,       nullptr};
 
     auto updateUndoRedoUI = [topToolbar, workspace, documentPane, lastActivePane, headerBar,
                              viewCtx]() {
@@ -1638,7 +1648,8 @@ int main(int argc, char** argv) {
 #ifndef _WIN32
     installCrashHandlers();
 #endif
-    // Suppress known spurious GLib-GIO critical warnings when enumerating WSL DrvFS mounts (/mnt/c, /mnt/d)
+    // Suppress known spurious GLib-GIO critical warnings when enumerating WSL DrvFS mounts (/mnt/c,
+    // /mnt/d)
     g_log_set_handler(
         "GLib-GIO", static_cast<GLogLevelFlags>(G_LOG_LEVEL_CRITICAL | G_LOG_LEVEL_WARNING),
         [](const gchar* log_domain, GLogLevelFlags log_level, const gchar* message,

@@ -170,9 +170,9 @@ void testFullRoundTripPersistenceWithRelocation() {
     canvasHighlighterStroke.tool = "highlighter";
     canvasHighlighterStroke.color = 0xFFFF00;
     canvasHighlighterStroke.width = 16.0;
-    canvasHighlighterStroke.points = {
-        {600.0, 700.0}, {620.0, 705.0}, {640.0, 715.0}, {660.0, 720.0},
-        {680.0, 730.0}, {700.0, 735.0}, {720.0, 745.0}, {740.0, 750.0}};
+    canvasHighlighterStroke.points = {{600.0, 700.0}, {620.0, 705.0}, {640.0, 715.0},
+                                      {660.0, 720.0}, {680.0, 730.0}, {700.0, 735.0},
+                                      {720.0, 745.0}, {740.0, 750.0}};
     preModel.insert(std::make_unique<CanvasStrokeNode>(canvasHighlighterStroke));
 
     // Build Graph Topology with 12 ink connectors/edges (including multi-node link chains)
@@ -246,7 +246,8 @@ void testFullRoundTripPersistenceWithRelocation() {
         assert(std::filesystem::exists(relocatedPath + "/" + postDocs[d].relativePath));
     }
 
-    // 3. Top-level nodes count (14 root cards + 2 stacks + 2 freeform canvas strokes = 18 root nodes)
+    // 3. Top-level nodes count (14 root cards + 2 stacks + 2 freeform canvas strokes = 18 root
+    // nodes)
     assert(postModel.nodeCount() == 18);
 
     // 4. Excerpt card exact match assertions (all 24 cards)
@@ -373,7 +374,8 @@ void testFullRoundTripPersistenceWithRelocation() {
     assert(rectNear(loadedPen->bounds(), expectedPenNode.bounds()));
 
     auto* loadedHl = dynamic_cast<CanvasStrokeNode*>(postModel.find("canvas-stroke-hl-1"));
-    assert(loadedHl != nullptr && "Canvas highlighter stroke must be rehydrated as CanvasStrokeNode");
+    assert(loadedHl != nullptr &&
+           "Canvas highlighter stroke must be rehydrated as CanvasStrokeNode");
     assert(loadedHl->stroke().tool == "highlighter");
     assert(loadedHl->stroke().color == 0xFFFF00);
     assert(floatNear(loadedHl->stroke().width, 16.0));

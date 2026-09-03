@@ -48,18 +48,20 @@ DocumentPane::DocumentPane(const std::string& pdfPath) : m_pdfPath(pdfPath) {
     m_viewOverlay = gtk_overlay_new();
     m_scroller = gtk_scrolled_window_new(nullptr, nullptr);
     g_signal_connect(m_scroller, "destroy", G_CALLBACK(+[](GtkWidget*, gpointer data) {
-        auto* self = static_cast<DocumentPane*>(data);
-        if (self) {
-            self->m_scroller = nullptr;
-        }
-    }), this);
+                         auto* self = static_cast<DocumentPane*>(data);
+                         if (self) {
+                             self->m_scroller = nullptr;
+                         }
+                     }),
+                     this);
     g_signal_connect(m_viewOverlay, "destroy", G_CALLBACK(+[](GtkWidget*, gpointer data) {
-        auto* self = static_cast<DocumentPane*>(data);
-        if (self) {
-            self->m_viewOverlay = nullptr;
-            self->m_scroller = nullptr;
-        }
-    }), this);
+                         auto* self = static_cast<DocumentPane*>(data);
+                         if (self) {
+                             self->m_viewOverlay = nullptr;
+                             self->m_scroller = nullptr;
+                         }
+                     }),
+                     this);
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(m_scroller), GTK_POLICY_AUTOMATIC,
                                    GTK_POLICY_AUTOMATIC);
     gtk_container_add(GTK_CONTAINER(m_viewOverlay), m_scroller);
