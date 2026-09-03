@@ -32,6 +32,13 @@ class RTreeIndex {
 
     std::size_t size() const { return m_bounds.size(); }
     bool empty() const { return m_bounds.empty(); }
+    void clear() {
+        m_nodes.clear();
+        m_freeNodes.clear();
+        m_root = kNoneNode;
+        m_nextHandle = 1;
+        m_bounds.clear();
+    }
 
   private:
     static constexpr std::uint32_t kMaxEntries = 8;

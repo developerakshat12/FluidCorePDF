@@ -45,6 +45,27 @@ std::string PdfDocumentService::getFilePath(const std::string& docId) const {
     return "";
 }
 
+std::vector<std::pair<std::string, std::string>> PdfDocumentService::allDocuments() const {
+    std::lock_guard<std::mutex> lock(m_registryMutex);
+    std::vector<std::pair<std::string, std::string>> result;
+    result.reserve(m_documents.size());
+    for (const auto& [docId, entry] : m_documents) {
+        result.emplace_back(docId, entry.filePath);
+    }
+    return result;
+}
+
+bool PdfDocumentService::repointDocumentPath(const std::string& docId, const std::string& newPath) {
+    std::lock_guard<std::mutex> lock(m_registryMutex);
+    auto it = m_documents.find(docId);
+    if (it != m_documents.end()) {
+        it->second.filePath = newPath;
+        it->second.backgroundDoc.reset(); // Re-open background instance on next demand
+        return true;
+    }
+    return false;
+}
+
 PopplerPagePtr PdfDocumentService::getMainPage(const std::string& docId, std::size_t pageNo) const {
     PopplerDocument* doc = getMainDocument(docId);
     if (!doc) {

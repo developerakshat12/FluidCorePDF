@@ -1,0 +1,40 @@
+id: TASK-5.2-ui-project-workspace-persistence-and-file-choosers
+title: UI Project & Workspace Persistence, Native HeaderBar, File Choosers (GtkFileChooserNative), and Live Canvas Save
+milestone: M5
+status: completed
+workspace: D:\FluidCorePDF\fluidcore-platform
+specs:
+  - specs/project_persistence_ui_spec.md
+  - specs/features.md (section 1 & 2)
+  - specs/appflow.md (section 1)
+  - planning/TRD.md (section 4.1 & 6)
+  - planning/ROADMAP.md (Milestone 5)
+  - skills/cpp-core-dev/SKILL.md
+  - skills/gtk-frontend/SKILL.md
+dependencies:
+  - TASK-5.1-ltproj-wal-finalization-and-roundtrip-persistence
+deliverables:
+  - src/libfluidcore/workspace/WorkspaceModel.{h,cpp} — WorkspaceModel::clear() method to safely reset spatial scene graph, node map, and R*-tree indices with zero memory leaks.
+  - src/libfluidcore/FluidCoreAPI.h, FluidCoreEngine.{h,cpp} — newProject(), isProjectOpen(), projectTitle(), and projectPath() API methods, clearing models on openProject(), and error reporting on saveProject().
+  - src/libfluidcore/tests/WorkspaceModelTest.cpp — unit test verifying WorkspaceModel::clear() cleans nodes and R*-tree spatial queries.
+  - src/app/services/PdfDocumentService.{h,cpp} — allDocuments() collection query, repointDocumentPath(docId, newPath), and non-blocking document cancellation checks.
+  - src/app/document/DocumentPane.{h,cpp} — dynamic document loading via loadDocument(path) and closeDocument(), clearing tile caches, resetting SqueezeEngine geometry, reloading companion .xopp annotations, and repointing companion paths post-save.
+  - src/app/window/AppHeaderBar.{h,cpp} — modern GTK3 HeaderBar titlebar featuring project title, save status indicator badge (Saved, Unsaved Changes, Save Failed), New Project button (Ctrl+N), Open Menu (Open PDF Ctrl+O, Open Project Ctrl+Shift+O), Save button (Ctrl+S), Save As button (Ctrl+Shift+S), and Export button (Ctrl+E).
+  - src/app/main.cpp — integration of AppHeaderBar via gtk_window_set_titlebar, GtkFileChooserNative wiring for PDF and .ltproj folder selection, unified single dirty-state confirmation modal on New/Open with pending action resumption, folder content and schema version validation on Open Project, .ltproj extension enforcement on Save As, multi-document bundle ingestion with partial failure rollback, canonical switch to bundle copies, and save failure error dialogs.
+  - src/app/CMakeLists.txt — registration of window/AppHeaderBar.{h,cpp} in application build target.
+acceptance_checks:
+  - "clang-format --dry-run --Werror clean on all touched files"
+  - "python3 ops/scripts/check_invariants.py passes (0 GUI includes in libfluidcore)"
+  - "all registered CTest targets pass (100%)"
+  - "Single unified dirty-state confirmation prompt displays on New Project, Open Project, and Open PDF when workspace or document has uncommitted modifications, preventing silent data loss"
+  - "If user chooses Save on a dirty prompt without an established path, pending action resumes automatically upon Save As completion; cancelled/failed Save As discards pending action"
+  - "Save Project As copies all documents tracked by PdfDocumentService and their .xopp companions into /documents/, rolls back partially copied files on I/O failure, repoints live handles to bundle copies as canonical source, and enforces .ltproj suffix"
+  - "Open Project validates that selected folder contains project.db and compatible schema_version in metadata.json before opening, failing with a clean user-facing error dialog on invalid folders without touching workspace memory"
+  - "DocumentPane hot-reloading cancels in-flight background tile rasterization via non-blocking cancellation flags without main-thread mutex deadlocks before releasing Poppler handles"
+  - "Save failures (e.g. disk full, permission denied) trigger an error dialog and leave status badge at Save Failed rather than falsely reporting Saved"
+  - "Document Tabs UI is explicitly deferred to TASK-5.3"
+constraints:
+  - Zero GUI/Cairo/GTK headers in src/libfluidcore/ (ADR-0001 clean separation)
+  - Use GtkFileChooserNative for robust cross-desktop file dialogs
+  - Path normalization ensures seamless interoperability across WSL and Windows drives
+  - Commit means commit AND push; every commit carries -s (DCO)

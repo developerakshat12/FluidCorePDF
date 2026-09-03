@@ -88,9 +88,16 @@ class FluidCoreEngine final : public FluidCoreAPI {
     bool exportWorkspaceMarkdownToFile(const std::string& filePath,
                                        const WorkspaceExportOptions& options = {}) const override;
 
-    // Persistence & search (TASK-5.1)
+    // Persistence & search (TASK-5.1, TASK-5.2)
+    void newProject(const std::string& title = "Untitled Project") override;
     void openProject(const std::string& ltprojDirectoryPath) override;
+    bool openProjectWithError(const std::string& ltprojDirectoryPath,
+                              std::string* error = nullptr) override;
     void saveProject() override;
+    bool saveProjectWithError(std::string* error = nullptr) override;
+    bool isProjectOpen() const override;
+    std::string projectTitle() const override;
+    std::string projectPath() const override;
     std::vector<SearchResult> executeSearch(const std::string& query) const override;
     std::vector<WorkspaceMatch> searchWorkspace(const std::string& query,
                                                 bool caseSensitive = false) const override;

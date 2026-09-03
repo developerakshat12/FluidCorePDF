@@ -26,6 +26,7 @@ class WorkspaceModel {
     std::string insert(std::unique_ptr<WorkspaceNode> node);
 
     bool remove(const std::string& nodeId);
+    void clear();
 
     // Moves a node's origin (top-left) to (x, y); its size is preserved.
     bool move(const std::string& nodeId, double x, double y);

@@ -25,6 +25,7 @@ add_executable(fluidcore_app
     workspace/WorkspaceInteraction.cpp
     workspace/WorkspaceRenderer.cpp
     workspace/WorkspaceView.cpp
+    window/AppHeaderBar.cpp
 )
 
 target_include_directories(fluidcore_app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

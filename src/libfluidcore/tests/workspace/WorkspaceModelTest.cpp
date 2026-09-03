@@ -150,6 +150,28 @@ int testGlobalBounds() {
     return failures;
 }
 
+int testClearContract() {
+    int failures = 0;
+    WorkspaceModel model("proj-clear");
+    model.insert(std::make_unique<RectNode>("node-1", Rectangle{10.0, 10.0, 50.0, 50.0}));
+    model.insert(std::make_unique<RectNode>("node-2", Rectangle{100.0, 100.0, 50.0, 50.0}));
+    failures += check(model.nodeCount() == 2, "nodes inserted before clear");
+
+    model.clear();
+    failures += check(model.nodeCount() == 0, "clear resets node count to zero");
+    failures += check(model.allNodeIds().empty(), "clear empties allNodeIds");
+    failures += check(model.visibleIn({-1000.0, -1000.0, 2000.0, 2000.0}).empty(),
+                      "clear clears spatial query index");
+    failures += check(rectClose(model.globalBounds(), {0.0, 0.0, 0.0, 0.0}),
+                      "clear resets globalBounds to zero");
+
+    // Insert again after clear to verify index continues to work
+    model.insert(std::make_unique<RectNode>("node-3", Rectangle{20.0, 30.0, 40.0, 50.0}));
+    failures += check(model.nodeCount() == 1, "model accepts nodes after clear");
+    failures += check(model.find("node-3") != nullptr, "new node found after clear");
+    return failures;
+}
+
 } // namespace
 
 int main() {
@@ -158,6 +180,7 @@ int main() {
     failures += testMoveAndVisibility();
     failures += testRemove();
     failures += testGlobalBounds();
+    failures += testClearContract();
 
     if (failures == 0) {
         std::cout << "WorkspaceModelTest: all checks passed\n";

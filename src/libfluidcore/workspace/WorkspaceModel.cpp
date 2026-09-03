@@ -38,6 +38,12 @@ bool WorkspaceModel::remove(const std::string& nodeId) {
     return true;
 }
 
+void WorkspaceModel::clear() {
+    m_nodes.clear();
+    m_idByHandle.clear();
+    m_index.clear();
+}
+
 bool WorkspaceModel::move(const std::string& nodeId, double x, double y) {
     const auto it = m_nodes.find(nodeId);
     if (it == m_nodes.end())

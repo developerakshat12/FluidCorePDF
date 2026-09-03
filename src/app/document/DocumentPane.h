@@ -51,6 +51,10 @@ class DocumentPane {
 
     GtkWidget* widget() const { return m_viewOverlay; }
 
+    bool loadDocument(const std::string& pdfPath, const std::string& docId = "");
+    void closeDocument();
+    void repointCompanionPath(const std::string& newPdfPath);
+
     bool save() { return saveAnnotations(); }
     bool saveAnnotations();
 

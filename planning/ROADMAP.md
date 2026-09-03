@@ -86,32 +86,9 @@ gantt
 - **Demo gate**: full Dr. Aris journey (45-paper synthesis) completes without data loss across 3 sessions. *(gated & verified)*
 
 ### M5 — Hardening (Weeks 49–58)
-- [ ] `.ltproj` SQLite WAL bundle finalization; atomic temp-swap commits; crash-recovery test suite (kill -9 fuzzing)
-- [ ] Full round-trip persistence acceptance test (`.ltproj` save → close → reopen → diff)
-  * **Goal**: Verifies clean saves preserve 100% of workspace state — distinct from crash-recovery fuzzing, which only tests recovery from interrupted writes.
-  * **Test procedure**:
-    1. Construct a reference project containing:
-       - $\ge 3$ source PDFs in `/documents/`
-       - $\ge 20$ excerpt cards (mix of text and image crops) with non-trivial `normalized_rect` values
-       - $\ge 10$ ink connectors/edges between nodes
-       - At least one document with `.xopp` annotation strokes saved via M1's `Ctrl+S` path
-       - Tags, stacks, and at least one multi-node link chain
-       - Canvas positions set to non-default (non-zero, non-origin) coordinates
-    2. Save via the normal `.ltproj` commit path (no kill/interrupt).
-    3. Fully quit the application (not just close window — verify process exit).
-    4. Reopen the `.ltproj` bundle.
-    5. Programmatically diff the reopened `project.db` state against a serialized snapshot of the pre-save state.
-  * **Acceptance criteria** (all must pass):
-    - [ ] Every excerpt card's `doc_id`, `page_number`, and `normalized_rect` match exactly (no floating-point drift beyond a defined epsilon $\epsilon \le 10^{-6}$)
-    - [ ] Extracted text strings on excerpt cards are byte-identical
-    - [ ] All node canvas positions match exactly
-    - [ ] All links/edges (Bezier control points + node UUIDs) resolve to the correct, still-existing nodes — no orphaned or dangling UUIDs
-    - [ ] Tags and stack membership are unchanged
-    - [ ] `.xopp` ink strokes remain correctly associated with their source document after the `.ltproj` reload (per [TRD.md §3.3.1](TRD.md#331-per-document-xopp--projectdb-ink-reconciliation-specification) reconciliation rule)
-    - [ ] `metadata.json` schema version is read correctly and matches what was written
-    - [ ] Reopened excerpts rasterize correctly on zoom (`/documents/` source PDFs are still correctly indexed and linked to their `doc_ids`)
-    - [ ] No data loss when the project is reopened on a different machine/path (verifies no absolute path dependencies)
-  * **Explicit non-goal**: Does not replace `kill -9` fuzzing — runs prior on clean saves to isolate fidelity bugs from durability bugs.
+- [x] `.ltproj` SQLite WAL bundle finalization; atomic temp-swap commits; crash-recovery test suite (kill -9 fuzzing) *(complete via TASK-5.1: ProjectStore SQLite WAL engine, atomic directory commits, WAL truncation on close, multi-process SIGKILL fuzzing harness CrashRecoveryFuzzTest)*
+- [x] Full round-trip persistence acceptance test (`.ltproj` save → close → reopen → diff) *(complete via TASK-5.1: RoundTripPersistenceTest verifying all 9 criteria across relocated bundle paths)*
+- [x] UI Project & Workspace Persistence: Native HeaderBar, File Choosers (`GtkFileChooserNative`), Document Ingestion, and Live Canvas Save *(complete via TASK-5.2: modern GTK3 `AppHeaderBar` with live save badge [Saved/Unsaved/Save Failed], project title, New/Open/Save/Save As/Export buttons; GtkFileChooserNative wiring with .ltproj validation, schema version checks, atomic bundle directory ingestion with rollback, canonical source switch, unified single-modal dirty checking, pending action resumption, deadlock-free background teardown concurrency; and 31/31 passing CTest test targets)*
 - [ ] Memory budget: ≤ 1.2 GB working set on 50-PDF/5000-page project
 - [ ] Palm rejection tuning, stylus matrix testing (Wacom/HP MPP/Surface)
 - [ ] Accessibility pass (keyboard-only operation of all fluid actions)

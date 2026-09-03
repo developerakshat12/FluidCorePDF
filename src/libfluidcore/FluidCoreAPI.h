@@ -211,11 +211,21 @@ class FluidCoreAPI {
                                   const WorkspaceExportOptions& options = {}) const = 0;
 
     // Persistence & Search API
-    // TODO(M5): signature-only by design. The .ltproj schema-locking decision is deferred
-    // to M5 (ROADMAP §3); implementations must not ship DDL before docs/specs/ltspec.md
-    // exists (GOVERNANCE §4).
+    virtual void newProject(const std::string& /*title*/ = "Untitled Project") {}
     virtual void openProject(const std::string& ltprojDirectoryPath) = 0;
+    virtual bool openProjectWithError(const std::string& ltprojDirectoryPath,
+                                      std::string* /*error*/ = nullptr) {
+        openProject(ltprojDirectoryPath);
+        return isProjectOpen();
+    }
     virtual void saveProject() = 0;
+    virtual bool saveProjectWithError(std::string* /*error*/ = nullptr) {
+        saveProject();
+        return isProjectOpen();
+    }
+    virtual bool isProjectOpen() const { return false; }
+    virtual std::string projectTitle() const { return ""; }
+    virtual std::string projectPath() const { return ""; }
     virtual std::vector<SearchResult> executeSearch(const std::string& query) const = 0;
     virtual std::vector<WorkspaceMatch> searchWorkspace(const std::string& query,
                                                         bool caseSensitive = false) const = 0;

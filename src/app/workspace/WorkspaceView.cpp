@@ -158,6 +158,15 @@ void WorkspaceView::cancelCurrentInteraction() {
     }
 }
 
+void WorkspaceView::notifyModelReloaded() {
+    cancelCurrentInteraction();
+    clearSearch();
+    m_undoStack.clear();
+    if (m_area && GTK_IS_WIDGET(m_area)) {
+        gtk_widget_queue_draw(m_area);
+    }
+}
+
 void WorkspaceView::setExcerptTileCache(ExcerptTileCache* cache) {
     m_excerptTileCache = cache;
     if (m_excerptTileCache) {

@@ -50,6 +50,8 @@ class PdfDocumentService {
     PopplerDocument* getMainDocument(const std::string& docId) const;
     PopplerPagePtr getMainPage(const std::string& docId, std::size_t pageNo) const;
     std::string getFilePath(const std::string& docId) const;
+    std::vector<std::pair<std::string, std::string>> allDocuments() const;
+    bool repointDocumentPath(const std::string& docId, const std::string& newPath);
 
     // Background worker access (protected by m_workerPopplerMutex)
     PopplerPagePtr getBackgroundPage(const std::string& docId, std::size_t pageNo);

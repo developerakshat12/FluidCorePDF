@@ -48,6 +48,7 @@ class WorkspaceView {
 
     // Transient interaction cancellation (Esc key / gesture discard)
     void cancelCurrentInteraction();
+    void notifyModelReloaded();
 
     // Instant Inline In-Place Stack Renaming
     void startInlineStackRename(const std::string& stackId);

@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 #include <vector>
 
 #include <cairo.h>
@@ -85,15 +86,86 @@ DocumentPane::DocumentPane(const std::string& pdfPath) : m_pdfPath(pdfPath) {
     gtk_widget_set_margin_top(pillWidget, 16);
     gtk_overlay_add_overlay(GTK_OVERLAY(m_viewOverlay), pillWidget);
 
+    loadDocument(pdfPath);
+}
+
+void DocumentPane::closeDocument() {
+    if (m_pinchGesture) {
+        g_object_unref(m_pinchGesture);
+        m_pinchGesture = nullptr;
+    }
+    m_searchService.cancel();
+    clearTextSelection();
+    clearCropSelection();
+    if (m_inkOverlay) {
+        m_inkOverlay->textSelectionService().clearCache();
+    }
+    m_undoStack.clear();
+    m_pageTileCache.clear();
+    m_squeezeEngine.resetSqueeze(m_docId);
+    m_searchHits.clear();
+    m_excerptAnchors.clear();
+
+    if (m_scroller) {
+        GtkWidget* child = gtk_bin_get_child(GTK_BIN(m_scroller));
+        if (child) {
+            gtk_container_remove(GTK_CONTAINER(m_scroller), child);
+        }
+    }
+    m_overlay = nullptr;
+    m_area = nullptr;
+    m_inkOverlay.reset();
+
+    for (PageLayout& layout : m_pages) {
+        if (layout.page) {
+            g_object_unref(layout.page);
+            layout.page = nullptr;
+        }
+    }
+    m_pages.clear();
+    if (m_document) {
+        g_object_unref(m_document);
+        m_document = nullptr;
+    }
+    m_pdfPath.clear();
+    m_layoutWidth = 0.0;
+    m_layoutHeight = 0.0;
+}
+
+void DocumentPane::repointCompanionPath(const std::string& newPdfPath) {
+    m_pdfPath = newPdfPath;
+}
+
+bool DocumentPane::loadDocument(const std::string& pdfPath, const std::string& docId) {
+    closeDocument();
+
+    if (!docId.empty()) {
+        m_docId = docId;
+    } else if (!pdfPath.empty()) {
+        std::filesystem::path p(pdfPath);
+        m_docId = p.filename().string();
+    } else {
+        m_docId = "doc-primary";
+    }
+
+    m_pdfPath = pdfPath;
     if (pdfPath.empty()) {
-        gtk_container_add(GTK_CONTAINER(m_scroller),
-                          makeStatusLabel("No document loaded — pass a PDF path as the first "
-                                          "argument."));
-        return;
+        gtk_container_add(
+            GTK_CONTAINER(m_scroller),
+            makeStatusLabel(
+                "No document loaded — open a PDF or project from the HeaderBar (Ctrl+O)."));
+        gtk_widget_show_all(m_scroller);
+        return true;
     }
 
     GError* error = nullptr;
-    gchar* uri = g_filename_to_uri(pdfPath.c_str(), nullptr, nullptr);
+    gchar* uri = nullptr;
+    if (pdfPath.rfind("file://", 0) == 0) {
+        uri = g_strdup(pdfPath.c_str());
+    } else {
+        uri = g_filename_to_uri(pdfPath.c_str(), nullptr, &error);
+    }
+
     m_document = poppler_document_new_from_file(uri, nullptr, &error);
     g_free(uri);
     if (!m_document) {
@@ -103,7 +175,8 @@ DocumentPane::DocumentPane(const std::string& pdfPath) : m_pdfPath(pdfPath) {
             g_error_free(error);
         gtk_container_add(GTK_CONTAINER(m_scroller), makeStatusLabel(message));
         g_free(message);
-        return;
+        gtk_widget_show_all(m_scroller);
+        return false;
     }
 
     const int pageCount = poppler_document_get_n_pages(m_document);
@@ -176,6 +249,9 @@ DocumentPane::DocumentPane(const std::string& pdfPath) : m_pdfPath(pdfPath) {
 
     // Auto-load companion .xopp if present
     m_annotationStore.loadAnnotations(m_pdfPath);
+
+    gtk_widget_show_all(m_scroller);
+    return true;
 }
 
 DocumentPane::~DocumentPane() {
@@ -191,26 +267,7 @@ DocumentPane::~DocumentPane() {
         g_source_remove(m_zoomDebounceTimerId);
         m_zoomDebounceTimerId = 0;
     }
-    if (m_pinchGesture) {
-        g_object_unref(m_pinchGesture);
-        m_pinchGesture = nullptr;
-    }
-    m_searchService.cancel();
-    clearTextSelection();
-    if (m_inkOverlay) {
-        m_inkOverlay->textSelectionService().clearCache();
-    }
-    m_undoStack.clear();
-    if (!m_pdfPath.empty() && !m_annotationStore.strokes().empty()) {
-        saveAnnotations();
-    }
-    m_pageTileCache.clear();
-    for (PageLayout& layout : m_pages) {
-        if (layout.page)
-            g_object_unref(layout.page);
-    }
-    if (m_document)
-        g_object_unref(m_document);
+    closeDocument();
 }
 
 double DocumentPane::docYToScreen(double docY) const {

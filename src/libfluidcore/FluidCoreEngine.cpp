@@ -248,17 +248,55 @@ bool FluidCoreEngine::removeEdge(const std::string& edgeId) {
     return m_graph.removeEdge(edgeId);
 }
 
+void FluidCoreEngine::newProject(const std::string& title) {
+    m_model.clear();
+    m_graph.clear();
+    m_store.closeProject();
+    m_store.setProjectTitle(title);
+}
+
 void FluidCoreEngine::openProject(const std::string& ltprojDirectoryPath) {
-    if (m_store.openProject(ltprojDirectoryPath)) {
+    std::string err;
+    openProjectWithError(ltprojDirectoryPath, &err);
+}
+
+bool FluidCoreEngine::openProjectWithError(const std::string& ltprojDirectoryPath,
+                                           std::string* error) {
+    if (m_store.openProject(ltprojDirectoryPath, error)) {
+        m_model.clear();
+        m_graph.clear();
         std::vector<DocumentRecord> docs;
-        m_store.rehydrate(m_model, m_graph, docs);
+        return m_store.rehydrate(m_model, m_graph, docs, error);
     }
+    return false;
 }
 
 void FluidCoreEngine::saveProject() {
+    std::string err;
+    saveProjectWithError(&err);
+}
+
+bool FluidCoreEngine::saveProjectWithError(std::string* error) {
     if (m_store.isOpen()) {
-        m_store.saveProject(m_model, m_graph);
+        std::vector<DocumentRecord> docs = m_store.listDocuments();
+        return m_store.saveProject(m_model, m_graph, docs, error);
     }
+    if (error) {
+        *error = "No project is currently open";
+    }
+    return false;
+}
+
+bool FluidCoreEngine::isProjectOpen() const {
+    return m_store.isOpen();
+}
+
+std::string FluidCoreEngine::projectTitle() const {
+    return m_store.metadata().title;
+}
+
+std::string FluidCoreEngine::projectPath() const {
+    return m_store.bundlePath();
 }
 
 std::vector<SearchResult> FluidCoreEngine::executeSearch(const std::string& query) const {

@@ -69,8 +69,9 @@ milestones:
     status: pending
     perf_gates: { cold_load_50pdf_s_max: 8, ram_gb_max: 1.2 }
     items:
-      - .ltproj WAL finalization + kill -9 recovery suite
-      - full round-trip persistence acceptance test (.ltproj save -> close -> reopen -> diff)
+      - .ltproj WAL finalization + kill -9 recovery suite               # complete: ProjectStore SQLite WAL engine, atomic directory commits, multi-process SIGKILL fuzzing harness (TASK-5.1)
+      - full round-trip persistence acceptance test                     # complete: RoundTripPersistenceTest verifying all 9 criteria across relocated bundle paths (TASK-5.1)
+      - UI project & workspace persistence                              # complete: Native HeaderBar, GtkFileChooserNative, dynamic PDF hot-load, and UI canvas save (TASK-5.2)
       - palm rejection tuning + stylus matrix
       - keyboard-only accessibility pass
       - i18n framework (EN, DE, ZH)
