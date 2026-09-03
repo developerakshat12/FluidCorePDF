@@ -27,11 +27,17 @@ AppHeaderBar::~AppHeaderBar() = default;
 
 void AppHeaderBar::setupStyles() {
     GtkCssProvider* provider = gtk_css_provider_new();
-    const char* css = ".fc-header-bar {"
+    const char* css = "window, window.csd, window decoration, window.csd decoration {"
+                      "  box-shadow: none;"
+                      "  margin: 0;"
+                      "  padding: 0;"
+                      "  border: none;"
+                      "}"
+                      ".fc-header-bar {"
                       "  background: #0f172a;"
                       "  border-bottom: 1px solid #1e293b;"
                       "  min-height: 44px;"
-                      "  padding: 0 10px;"
+                      "  padding: 4px 10px;"
                       "}"
                       ".fc-header-btn {"
                       "  min-height: 28px;"
@@ -102,9 +108,9 @@ void AppHeaderBar::setupStyles() {
     g_object_unref(provider);
 }
 
-void AppHeaderBar::createWidgets(GtkWindow* parentWindow) {
+void AppHeaderBar::createWidgets(GtkWindow* /*parentWindow*/) {
     m_headerBar = gtk_header_bar_new();
-    gtk_header_bar_set_show_close_button(GTK_HEADER_BAR(m_headerBar), TRUE);
+    gtk_header_bar_set_show_close_button(GTK_HEADER_BAR(m_headerBar), FALSE);
     GtkStyleContext* headerCtx = gtk_widget_get_style_context(m_headerBar);
     gtk_style_context_add_class(headerCtx, "fc-header-bar");
 
@@ -209,10 +215,6 @@ void AppHeaderBar::createWidgets(GtkWindow* parentWindow) {
     gtk_header_bar_pack_end(GTK_HEADER_BAR(m_headerBar), rightCluster);
 
     gtk_widget_show_all(m_headerBar);
-
-    if (parentWindow) {
-        gtk_window_set_titlebar(parentWindow, m_headerBar);
-    }
 }
 
 void AppHeaderBar::setProjectTitle(const std::string& title, const std::string& subtitle) {

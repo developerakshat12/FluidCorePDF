@@ -130,10 +130,15 @@ CairoSurfaceHandle PageTileCache::renderPage(std::size_t pageIndex, PopplerPage*
 
 void PageTileCache::setPinnedPages(const std::vector<std::size_t>& pages) {
     unpinAll();
+    std::size_t pinnedCount = 0;
     for (std::size_t p : pages) {
+        if (pinnedCount >= m_maxPages) {
+            break;
+        }
         auto it = m_lookup.find(p);
         if (it != m_lookup.end()) {
             it->second->pinned = true;
+            ++pinnedCount;
         }
     }
 }

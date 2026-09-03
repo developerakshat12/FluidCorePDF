@@ -1142,6 +1142,12 @@ void DocumentPane::commitScrollSqueeze() {
 }
 
 void DocumentPane::draw(cairo_t* cr) {
+    if (m_pages.empty() || !m_document || !m_squeezeEngine.hasDocument(m_docId)) {
+        cairo_set_source_rgb(cr, 0.906, 0.906, 0.894);
+        cairo_paint(cr);
+        return;
+    }
+
     GtkAllocation allocation;
     gtk_widget_get_allocation(m_area, &allocation);
 
@@ -1156,10 +1162,27 @@ void DocumentPane::draw(cairo_t* cr) {
         clip.height = allocation.height;
     }
 
-    cairo_scale(cr, m_zoom, m_zoom);
+    // Viewport-aware draw clipping: query ScrolledWindow vertical adjustment
+    // to strictly limit rendering to the active on-screen viewport and prevent
+    // catastrophic out-of-memory crashes on multi-hundred-page documents.
+    GtkAdjustment* vadj =
+        m_scroller ? gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(m_scroller)) : nullptr;
+    const double viewportY = vadj ? gtk_adjustment_get_value(vadj) : 0.0;
+    const double viewportH =
+        vadj ? gtk_adjustment_get_page_size(vadj) : static_cast<double>(allocation.height);
 
-    const double clipYStart = clip.y / m_zoom;
-    const double clipYEnd = (clip.y + clip.height) / m_zoom;
+    // Pre-fetch bounds: viewport plus 400px margin for smooth scrolling
+    const double viewYStart = std::max(0.0, viewportY - 400.0) / m_zoom;
+    const double viewYEnd = (viewportY + viewportH + 400.0) / m_zoom;
+
+    const double clipYStart = std::max(viewYStart, clip.y / m_zoom);
+    const double clipYEnd = std::min(viewYEnd, (clip.y + clip.height) / m_zoom);
+
+    if (clipYStart >= clipYEnd) {
+        return;
+    }
+
+    cairo_scale(cr, m_zoom, m_zoom);
 
     const auto segments = m_squeezeEngine.getSegments(m_docId);
     const double pageX =
@@ -1169,6 +1192,13 @@ void DocumentPane::draw(cairo_t* cr) {
 
     for (std::size_t i = 0; i < m_pages.size(); ++i) {
         const PageLayout& layout = m_pages[i];
+        if (layout.y > clipYEnd + 1000.0) {
+            break; // Pages are sorted vertically, stop early
+        }
+        if (layout.y + layout.height < clipYStart - 1000.0) {
+            continue; // Skip pages far above the active viewport
+        }
+
         auto slices = SqueezeRenderHelper::decomposePage(i, layout.y, layout.height, segments);
 
         bool pageVisible = false;

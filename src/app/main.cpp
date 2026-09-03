@@ -241,6 +241,25 @@ void confirmDiscardUnsavedChanges(AppViewContext* ctx, std::function<void()> onP
     }
 }
 
+void configureNativeFileChooser(GtkFileChooserNative* native, AppViewContext* ctx) {
+    if (!native)
+        return;
+    if (std::filesystem::exists("/mnt/d")) {
+        gtk_file_chooser_add_shortcut_folder(GTK_FILE_CHOOSER(native), "/mnt/d", nullptr);
+        gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(native), "/mnt/d");
+    }
+    if (std::filesystem::exists("/mnt/c")) {
+        gtk_file_chooser_add_shortcut_folder(GTK_FILE_CHOOSER(native), "/mnt/c", nullptr);
+    }
+    if (ctx && ctx->pane && !ctx->pane->pdfPath().empty()) {
+        std::error_code ec;
+        std::filesystem::path curDir = std::filesystem::path(ctx->pane->pdfPath()).parent_path();
+        if (std::filesystem::exists(curDir, ec)) {
+            gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(native), curDir.string().c_str());
+        }
+    }
+}
+
 void performSaveProjectAs(AppViewContext* ctx) {
     if (!ctx)
         return;
@@ -248,6 +267,7 @@ void performSaveProjectAs(AppViewContext* ctx) {
     GtkFileChooserNative* native =
         gtk_file_chooser_native_new("Save Project As (.ltproj Bundle)", ctx->window,
                                     GTK_FILE_CHOOSER_ACTION_CREATE_FOLDER, "_Save", "_Cancel");
+    configureNativeFileChooser(native, ctx);
 
     const std::string defaultName = (ctx->engine && !ctx->engine->projectTitle().empty() &&
                                      ctx->engine->projectTitle() != "Untitled Project")
@@ -449,6 +469,7 @@ void performOpenProject(AppViewContext* ctx) {
         GtkFileChooserNative* native =
             gtk_file_chooser_native_new("Open FluidCore Project (.ltproj Bundle)", ctx->window,
                                         GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER, "_Open", "_Cancel");
+        configureNativeFileChooser(native, ctx);
 
         gint res = gtk_native_dialog_run(GTK_NATIVE_DIALOG(native));
         if (res != GTK_RESPONSE_ACCEPT) {
@@ -524,6 +545,7 @@ void performOpenPdf(AppViewContext* ctx) {
     confirmDiscardUnsavedChanges(ctx, [ctx]() {
         GtkFileChooserNative* native = gtk_file_chooser_native_new(
             "Open PDF Document", ctx->window, GTK_FILE_CHOOSER_ACTION_OPEN, "_Open", "_Cancel");
+        configureNativeFileChooser(native, ctx);
 
         GtkFileFilter* filter = gtk_file_filter_new();
         gtk_file_filter_set_name(filter, "PDF Documents (*.pdf)");
@@ -1315,13 +1337,13 @@ void onActivate(GtkApplication* app, gpointer userData) {
     gtk_paned_set_position(GTK_PANED(paned), 480);
 
     GtkWidget* rootBox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_box_pack_start(GTK_BOX(rootBox), headerBar->widget(), FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(rootBox), topToolbar->widget(), FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(rootBox), paned, TRUE, TRUE, 0);
 
     gtk_container_add(GTK_CONTAINER(window), rootBox);
+    gtk_window_set_title(GTK_WINDOW(window), "FluidCore");
     gtk_window_set_position(GTK_WINDOW(window), GTK_WIN_POS_CENTER);
-    gtk_window_set_keep_above(GTK_WINDOW(window), TRUE);
-    gtk_window_set_urgency_hint(GTK_WINDOW(window), TRUE);
     gtk_widget_show_all(window);
     gtk_window_deiconify(GTK_WINDOW(window));
     gtk_window_present(GTK_WINDOW(window));

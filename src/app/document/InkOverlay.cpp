@@ -850,6 +850,11 @@ void InkOverlay::renderStroke(cairo_t* cr, const FluidCore::Stroke& stroke) cons
 }
 
 void InkOverlay::draw(cairo_t* cr) {
+    const auto& pages = m_pane.pages();
+    if (pages.empty()) {
+        return;
+    }
+
     GtkAllocation allocation;
     gtk_widget_get_allocation(m_widget, &allocation);
 
@@ -862,8 +867,24 @@ void InkOverlay::draw(cairo_t* cr) {
     }
 
     const double zoom = m_pane.zoom();
-    const double clipYStart = clip.y / zoom;
-    const double clipYEnd = (clip.y + clip.height) / zoom;
+    GtkAdjustment* vadj =
+        m_pane.scroller()
+            ? gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(m_pane.scroller()))
+            : nullptr;
+    const double viewportY = vadj ? gtk_adjustment_get_value(vadj) : 0.0;
+    const double viewportH =
+        vadj ? gtk_adjustment_get_page_size(vadj) : static_cast<double>(allocation.height);
+
+    const double viewYStart = std::max(0.0, viewportY - 400.0) / zoom;
+    const double viewYEnd = (viewportY + viewportH + 400.0) / zoom;
+
+    const double clipYStart = std::max(viewYStart, clip.y / zoom);
+    const double clipYEnd = std::min(viewYEnd, (clip.y + clip.height) / zoom);
+
+    if (clipYStart >= clipYEnd) {
+        return;
+    }
+
     const double unscaledWidth = allocation.width / zoom;
     const double pageX = kPageMargin + std::max(0.0, (unscaledWidth - m_pane.layoutWidth()) / 2.0);
 
@@ -871,10 +892,16 @@ void InkOverlay::draw(cairo_t* cr) {
     cairo_scale(cr, zoom, zoom);
 
     const auto segments = m_pane.squeezeSegments();
-    const auto& pages = m_pane.pages();
 
     for (std::size_t i = 0; i < pages.size(); ++i) {
         const auto& layout = pages[i];
+        if (layout.y > clipYEnd + 1000.0) {
+            break; // Sorted by y, stop early
+        }
+        if (layout.y + layout.height < clipYStart - 1000.0) {
+            continue; // Skip pages far above the active viewport
+        }
+
         auto slices = SqueezeRenderHelper::decomposePage(i, layout.y, layout.height, segments);
 
         for (const auto& slice : slices) {

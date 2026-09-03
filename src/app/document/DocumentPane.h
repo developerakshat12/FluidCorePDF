@@ -72,6 +72,7 @@ class DocumentPane {
     bool copySelection();
 
     PopplerDocument* document() const { return m_document; }
+    GtkWidget* scroller() const { return m_scroller; }
     void clearCache() { m_pageTileCache.clear(); }
 
     const std::string& pdfPath() const { return m_pdfPath; }
