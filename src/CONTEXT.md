@@ -1,6 +1,6 @@
 # Src Workspace (Code)
 
-Last updated: 2026-09-01
+Last updated: 2026-09-04
 
 ## What this is for
 The core codebase for the FluidCore platform. Milestones M0–M4 are complete, and M5 (Hardening) is currently in progress.
@@ -9,14 +9,16 @@ The core codebase for the FluidCore platform. Milestones M0–M4 are complete, a
 src/
 ├── libfluidcore/               # Standalone C++20 engine. NO GTK/GDK/Cairo HEADERS EVER (ADR-0001)
 │   ├── workspace/              # Spatial scene graph (WorkspaceModel, ExcerptCardNode, CardStackNode, CanvasStrokeNode, CardLayoutEngine, PhysicsSolver, RTreeIndex, ExcerptPayload)
+│   ├── geometry/               # Geometric algorithms (StrokeHitTest two-phase broad/narrow hit-testing)
+│   ├── input/                  # Hardware input arbitration & palm rejection (PalmRejectionEngine)
 │   ├── squeeze/                # Piecewise coordinate mapper (SqueezeEngine)
 │   ├── graph/                  # Relational multigraph & Bezier routing (GraphTopology, GraphEdge)
-│   ├── storage/                # SQLite WAL ProjectStore, AnnotationStore, XoppDocument (.xopp bridge)
+│   ├── storage/                # SQLite WAL ProjectStore (pressures_blob), AnnotationStore, XoppDocument (.xopp bridge)
 │   ├── search/                 # AnchorSqueezePlanner, SearchSqueezePlanner, WorkspaceSearchEngine
 │   ├── export/                 # Pure C++20 WorkspaceExportEngine (Markdown outline & synthesis export)
 │   ├── text/                   # TextSelection domain model & interval arithmetic
 │   ├── undo/                   # UndoStack, Command, Annotation/Squeeze/Workspace command primitives
-│   ├── tests/                  # Headless CTest suites (storage/, workspace/, engine, topology, squeeze, text, undo, search, export)
+│   ├── tests/                  # Headless CTest suites (geometry/, input/, storage/, workspace/, engine, topology, squeeze, text, undo, search, export)
 │   ├── FluidCoreAPI.h          # Public abstract engine facade interface
 │   ├── FluidCoreEngine.h/.cpp  # Concrete engine implementation
 │   └── CMakeLists.txt

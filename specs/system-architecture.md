@@ -44,6 +44,8 @@ graph TB
         BEZIER["Cubic Bezier Spline Router"]
         FTS_ENG["SQLite FTS5 Full-Text Index"]
         WAL_STORE["ProjectStore (SQLite WAL)"]
+        PALM_ENG["PalmRejectionEngine (Input Arbitration)"]
+        HIT_TEST["StrokeHitTest (Two-Phase Hit Testing)"]
     end
 
     subgraph Dual-Pane View & Rendering (GTK 3 / Cairo)

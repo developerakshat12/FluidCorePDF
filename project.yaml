@@ -7,7 +7,7 @@ project:
   license: GPL-2.0-or-later
   engine_relicense_candidate: LGPL-2.1-or-later
   created: 2026-08-26
-  updated: 2026-09-01
+  updated: 2026-09-04
 
 stack:
   language: C++20

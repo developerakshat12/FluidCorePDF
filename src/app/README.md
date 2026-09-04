@@ -34,6 +34,7 @@ app/
 │   └── WorkspaceState.h             # Authoritative viewport transform and interaction state
 └── tests/                    # GUI and service test suites
     ├── BiDirectionalAnchorTest.cpp
+    ├── CropDragCrashTest.cpp
     ├── DamageRectTest.cpp
     ├── ExcerptTileCacheTest.cpp
     ├── PageTileCacheTest.cpp

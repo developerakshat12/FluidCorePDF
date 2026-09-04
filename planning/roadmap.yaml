@@ -1,7 +1,7 @@
 # Machine-readable milestone state. Update alongside planning/ROADMAP.md.
 # status values: pending | in_progress | demo_gate_pending | complete
 project: fluidcore-platform
-updated: 2026-09-01
+updated: 2026-09-04
 
 milestones:
   - id: M0
@@ -66,13 +66,14 @@ milestones:
   - id: M5
     name: hardening
     window_weeks: [49, 58]
-    status: pending
+    status: in_progress
     perf_gates: { cold_load_50pdf_s_max: 8, ram_gb_max: 1.2 }
     items:
       - .ltproj WAL finalization + kill -9 recovery suite               # complete: ProjectStore SQLite WAL engine, atomic directory commits, multi-process SIGKILL fuzzing harness (TASK-5.1)
       - full round-trip persistence acceptance test                     # complete: RoundTripPersistenceTest verifying all 9 criteria across relocated bundle paths (TASK-5.1)
       - UI project & workspace persistence                              # complete: Native HeaderBar, GtkFileChooserNative, dynamic PDF hot-load, and UI canvas save (TASK-5.2)
-      - palm rejection tuning + stylus matrix
+      - palm rejection tuning + stylus matrix                           # complete: pure C++20 PalmRejectionEngine with dynamic digitizer presets (Wacom, Surface, HP MPP, Generic), contact debounce, retroactive touch cancellation delivery, pressures_blob persistence, variable-width stroke rendering, and 34/34 passing CTest test targets (TASK-5.3)
+      - accurate whole-stroke eraser & live target preview              # complete: pure C++20 two-phase StrokeHitTest (expanded AABB broad-phase + point-to-segment narrow-phase), live hover target aura, eraser drag redraw latency fix, active cursor ring, double-click to center removal, and StrokeHitTestTest
       - keyboard-only accessibility pass
       - i18n framework (EN, DE, ZH)
 

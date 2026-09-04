@@ -139,10 +139,10 @@ sequenceDiagram
 ### 4.1 Low-Latency Cairo Vector Inking
 * **Drawing Pipeline**: High-performance CPU vector inking rendered through Cairo 2D with sub-pixel antialiasing, transient ARGB32 overlay masks, and dirty-rectangle damage tracking (`gtk_widget_queue_draw_area`).
 * **Pen Modalities**:
-  * **Ballpoint Pen**: Variable line width with pressure sensitivity.
+  * **Ballpoint Pen**: Variable line width with pressure sensitivity ($w_i = \text{base\_width} \cdot (0.25 + 0.75 \cdot p_i)$) and lossless `.ltproj` persistence via `pressures_blob`.
   * **Fluorescent Highlighter**: Multiply blend mode preserving text contrast.
-  * **Stroke & Pixel Eraser**: Instant stroke deletion or segment clipping.
-* **Palm Rejection & Input Arbitration**: Software palm rejection (`HandRecognition`) arbitrates between stylus drawing and touch/mouse canvas manipulation.
+  * **Whole-Stroke Object Eraser**: Two-phase spatial hit-testing engine (`StrokeHitTest`) combining $O(1)$ expanded AABB broad-phase reject with clamped point-to-segment narrow-phase distance evaluation; live coral-red target aura preview and screen-space radius indicator; full Undo/Redo integration.
+* **Palm Rejection & Input Arbitration**: Pure C++20 `PalmRejectionEngine` arbitrating between Pen, Eraser, Touch, and Mouse with dynamic hardware profile presets (Wacom, Surface, HP MPP, Generic), contact debounce, proximity tracking, and synchronous retroactive touch cancellation delivery.
 
 ### 4.2 "Ink Links" (Visual Hyperlinks / Relational Connectors)
 * **Mechanic**: Drawing a continuous stroke between any two workspace cards (or between a card and document margin) transforms the stroke into a dynamic **Live Ink Link**.

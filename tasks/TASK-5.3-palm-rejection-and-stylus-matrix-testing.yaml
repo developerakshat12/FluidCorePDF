@@ -25,7 +25,7 @@ deliverables:
 acceptance_checks:
   - "clang-format --dry-run --Werror clean on all touched files"
   - "python3 ops/scripts/check_invariants.py passes (0 GUI includes in libfluidcore)"
-  - "all 33 registered CTest targets pass (100%)"
+  - "all 34 registered CTest targets pass (100%)"
   - "Retroactive touch cancellation cleanly aborts in-flight touch drags when pen touches down within MPP/Surface latency window"
   - "Pen contact bounce within debounce window does not trigger duplicate stroke creation"
   - "Hardware profile auto-detects Wacom, Surface, HP MPP, and Generic via USB VID/PID and device name fallback"

@@ -17,13 +17,17 @@ libfluidcore/
 │   ├── CardLayoutEngine.h/.cpp   # Accordion cascade deck positioning
 │   ├── PhysicsSolver.h/.cpp      # Proximity snapping (16pt) and overlap detection
 │   └── ExcerptPayload.h/.cpp     # Binary & string serialization for drag-and-drop
+├── geometry/                 # Pure C++20 geometric analysis & hit-testing
+│   └── StrokeHitTest.h/.cpp      # Two-phase broad/narrow phase polyline distance hit-tester
+├── input/                    # Hardware input arbitration & palm rejection
+│   └── PalmRejectionEngine.h/.cpp# Input arbitration state machine & hardware profile presets
 ├── squeeze/                  # Piecewise continuous deformation engine
 │   └── SqueezeEngine.h/.cpp      # Piecewise mapper Y_screen = T(Y_doc, regions)
 ├── graph/                    # Relational knowledge multigraph
 │   ├── GraphTopology.h/.cpp      # Multigraph G=(V,E) maintaining bi-directional links
 │   └── GraphEdge.h               # Directed edge representation with Bezier spline anchors
 ├── storage/                  # Persistence layer
-│   ├── ProjectStore.h/.cpp       # SQLite WAL project bundle manager (.ltproj)
+│   ├── ProjectStore.h/.cpp       # SQLite WAL project bundle manager (.ltproj) & pressure blobs
 │   ├── AnnotationStore.h/.cpp    # High-level stroke and annotation persistence
 │   └── XoppDocument.h/.cpp       # Clean-room .xopp XML/gzip reader and writer
 ├── search/                   # Search and squeeze planning algorithms
@@ -41,7 +45,9 @@ libfluidcore/
 │   ├── SqueezeCommands.h/.cpp    # Squeeze state mutation commands
 │   └── WorkspaceCommands.h/.cpp  # Node insertion, movement, deletion, edge links, stack merge commands
 └── tests/                    # Headless CTest suites (zero GUI deps)
-    ├── storage/                  # AnnotationStoreTest, XoppDocumentTest
+    ├── geometry/                 # StrokeHitTestTest
+    ├── input/                    # StylusMatrixTest
+    ├── storage/                  # AnnotationStoreTest, XoppDocumentTest, ProjectStoreTest, CrashRecoveryFuzzTest, RoundTripPersistenceTest
     ├── workspace/                # CardLayoutEngineTest, CardStackNodeTest, ExcerptCardNodeTest, PhysicsSolverTest, RTreeBenchmarkTest, RTreeIndexTest, WorkspaceModelTest
     ├── AnchorSqueezePlannerTest.cpp
     ├── FluidCoreApiSmokeTest.cpp
