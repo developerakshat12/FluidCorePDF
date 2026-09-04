@@ -48,6 +48,8 @@ struct InkingState {
     std::string currentTool = "select";
     uint32_t currentColor = 0x000000;
     double currentWidth = 1.5;
+    double eraserRadius = 18.0;
+    std::vector<std::string> hoveredEraserStrokeIds;
     bool isDrawing = false;
     FluidCore::Stroke activeStroke;
     std::vector<StrokeStabilizer::BezierSegment> activeSegments;
@@ -119,6 +121,8 @@ struct WorkspaceState {
     bool isDropHovering = false;
     double dropHoverScreenX = 0.0;
     double dropHoverScreenY = 0.0;
+
+    bool isEraserPointerHovering = false;
 
     bool showMinimap = true;
     double minimapWidth = 200.0;

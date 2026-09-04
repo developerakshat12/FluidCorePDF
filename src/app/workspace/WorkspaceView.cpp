@@ -1,6 +1,8 @@
 #include "workspace/WorkspaceView.h"
 #include "FluidCoreEngine.h"
+#include "geometry/StrokeHitTest.h"
 #include "graph/GraphTopology.h"
+#include "input/PalmRejectionEngine.h"
 #include "services/ExcerptTileCache.h"
 #include "undo/WorkspaceCommands.h"
 #include "workspace/CanvasStrokeNode.h"
@@ -19,15 +21,56 @@ namespace FluidCoreApp {
 namespace {
 constexpr double kMinZoom = 0.10; // 10%
 constexpr double kMaxZoom = 2.0;  // 200%
+
+FluidCore::InputDeviceClass classifyGdkDevice(GdkDevice* dev) {
+    if (!dev) {
+        return FluidCore::InputDeviceClass::Mouse;
+    }
+    GdkInputSource src = gdk_device_get_source(dev);
+    switch (src) {
+    case GDK_SOURCE_PEN:
+        return FluidCore::InputDeviceClass::Pen;
+    case GDK_SOURCE_ERASER:
+        return FluidCore::InputDeviceClass::Eraser;
+    case GDK_SOURCE_TOUCHSCREEN:
+        return FluidCore::InputDeviceClass::Touch;
+    case GDK_SOURCE_MOUSE:
+    case GDK_SOURCE_TRACKPOINT:
+    case GDK_SOURCE_TOUCHPAD:
+    default:
+        return FluidCore::InputDeviceClass::Mouse;
+    }
+}
+
+void updatePalmProfile(FluidCore::PalmRejectionEngine* engine, GdkDevice* dev) {
+    if (!engine || !dev) {
+        return;
+    }
+    const char* devName = gdk_device_get_name(dev);
+    std::string name = devName ? devName : "";
+    std::string vid;
+    std::string pid;
+    const char* vendorId = gdk_device_get_vendor_id(dev);
+    const char* productId = gdk_device_get_product_id(dev);
+    if (vendorId) {
+        vid = vendorId;
+    }
+    if (productId) {
+        pid = productId;
+    }
+    auto profile = FluidCore::PalmRejectionEngine::detectProfile(vid, pid, name);
+    engine->setProfileOverride(profile);
+}
 } // namespace
 
 WorkspaceView::WorkspaceView(FluidCore::FluidCoreAPI& api) : m_api(api) {
     m_area = gtk_drawing_area_new();
     gtk_widget_set_can_focus(m_area, TRUE);
-    gtk_widget_add_events(m_area, GDK_POINTER_MOTION_MASK | GDK_BUTTON_PRESS_MASK |
-                                      GDK_BUTTON_RELEASE_MASK | GDK_SCROLL_MASK |
-                                      GDK_KEY_PRESS_MASK | GDK_KEY_RELEASE_MASK |
-                                      GDK_SMOOTH_SCROLL_MASK);
+    gtk_widget_add_events(
+        m_area, GDK_POINTER_MOTION_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK |
+                    GDK_SCROLL_MASK | GDK_KEY_PRESS_MASK | GDK_KEY_RELEASE_MASK |
+                    GDK_SMOOTH_SCROLL_MASK | GDK_PROXIMITY_IN_MASK | GDK_PROXIMITY_OUT_MASK |
+                    GDK_TOUCH_MASK | GDK_LEAVE_NOTIFY_MASK);
 
     g_object_set_data(G_OBJECT(m_area), "workspace-view-instance", this);
 
@@ -49,6 +92,13 @@ WorkspaceView::WorkspaceView(FluidCore::FluidCoreAPI& api) : m_api(api) {
                      this);
     g_signal_connect(m_area, "key-press-event", G_CALLBACK(WorkspaceView::keyPressCallback), this);
     g_signal_connect(m_area, "key-release-event", G_CALLBACK(WorkspaceView::keyReleaseCallback),
+                     this);
+    g_signal_connect(m_area, "proximity-in-event", G_CALLBACK(WorkspaceView::proximityInCallback),
+                     this);
+    g_signal_connect(m_area, "proximity-out-event", G_CALLBACK(WorkspaceView::proximityOutCallback),
+                     this);
+    g_signal_connect(m_area, "touch-event", G_CALLBACK(WorkspaceView::touchCallback), this);
+    g_signal_connect(m_area, "leave-notify-event", G_CALLBACK(WorkspaceView::leaveNotifyCallback),
                      this);
 
     // Setup GTK Drag and Drop Destination
@@ -120,6 +170,8 @@ void WorkspaceView::cancelCurrentInteraction() {
     if (m_undoStack.isRecordingMacro()) {
         m_undoStack.abortMacro();
     }
+    m_state.isEraserPointerHovering = false;
+    m_state.inking.hoveredEraserStrokeIds.clear();
 
     // 3. Discard in-flight connector
     if (m_state.connector.isConnecting) {
@@ -669,6 +721,10 @@ void WorkspaceView::setTool(const std::string& tool) {
         } else if (tool == "eraser") {
             m_state.inking.currentWidth = 24.0;
         }
+        if (tool != "eraser") {
+            m_state.isEraserPointerHovering = false;
+            m_state.inking.hoveredEraserStrokeIds.clear();
+        }
         m_state.inking.isDrawing = false;
         m_state.inking.hasWetSegment = false;
 
@@ -728,6 +784,29 @@ gboolean WorkspaceView::keyPressCallback(GtkWidget*, GdkEventKey* event, gpointe
 
 gboolean WorkspaceView::keyReleaseCallback(GtkWidget*, GdkEventKey* event, gpointer userData) {
     return static_cast<WorkspaceView*>(userData)->onKeyRelease(event);
+}
+
+gboolean WorkspaceView::proximityInCallback(GtkWidget*, GdkEventProximity* event,
+                                            gpointer userData) {
+    auto* self = static_cast<WorkspaceView*>(userData);
+    return self ? self->onProximityIn(event) : FALSE;
+}
+
+gboolean WorkspaceView::proximityOutCallback(GtkWidget*, GdkEventProximity* event,
+                                             gpointer userData) {
+    auto* self = static_cast<WorkspaceView*>(userData);
+    return self ? self->onProximityOut(event) : FALSE;
+}
+
+gboolean WorkspaceView::touchCallback(GtkWidget*, GdkEventTouch* event, gpointer userData) {
+    auto* self = static_cast<WorkspaceView*>(userData);
+    return self ? self->onTouch(event) : FALSE;
+}
+
+gboolean WorkspaceView::leaveNotifyCallback(GtkWidget*, GdkEventCrossing* event,
+                                            gpointer userData) {
+    auto* self = static_cast<WorkspaceView*>(userData);
+    return self ? self->onLeaveNotify(event) : FALSE;
 }
 
 void WorkspaceView::dragDataReceivedCallback(GtkWidget*, GdkDragContext* context, gint x, gint y,
@@ -819,6 +898,45 @@ gboolean WorkspaceView::onScroll(GdkEventScroll* event) {
 }
 
 gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
+    GdkDevice* dev = gdk_event_get_source_device(reinterpret_cast<GdkEvent*>(event));
+    if (!dev) {
+        dev = event->device;
+    }
+    updatePalmProfile(m_palmEngine, dev);
+    FluidCore::InputDeviceClass devClass = classifyGdkDevice(dev);
+
+    gdouble pressAxis = 1.0;
+    if (!gdk_event_get_axis(reinterpret_cast<GdkEvent*>(event), GDK_AXIS_PRESSURE, &pressAxis) ||
+        pressAxis <= 0.0) {
+        pressAxis = 1.0;
+    }
+    float pressure = static_cast<float>(pressAxis);
+    uint64_t nowMs = static_cast<uint64_t>(g_get_real_time() / 1000);
+
+    if (m_palmEngine) {
+        if (devClass == FluidCore::InputDeviceClass::Pen ||
+            devClass == FluidCore::InputDeviceClass::Eraser) {
+            auto res = m_palmEngine->onPenDown(event->x, event->y, pressure, nowMs, devClass);
+            if (res.isDuplicateBounce) {
+                return TRUE;
+            }
+            if (!res.cancelledTouchIds.empty()) {
+                cancelActiveTouches(res.cancelledTouchIds);
+            }
+        } else if (devClass == FluidCore::InputDeviceClass::Touch) {
+            uint32_t touchId = 1;
+            auto decision = m_palmEngine->onTouchDown(touchId, event->x, event->y, nowMs);
+            if (decision != FluidCore::InputDecision::Accept) {
+                return TRUE;
+            }
+        } else {
+            auto decision = m_palmEngine->onMouseDown(event->x, event->y, nowMs);
+            if (decision != FluidCore::InputDecision::Accept) {
+                return TRUE;
+            }
+        }
+    }
+
     GtkAllocation alloc;
     gtk_widget_get_allocation(m_area, &alloc);
 
@@ -957,8 +1075,7 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
             }
         }
 
-        // 3. Double-Click: toggle collapse if on chevron; inline rename on title area; otherwise
-        // center on point
+        // 3. Double-Click: toggle collapse if on chevron; inline rename on title area
         if (event->type == GDK_2BUTTON_PRESS) {
             for (const auto* node : visibleNodes) {
                 if (const auto* stack = dynamic_cast<const FluidCore::CardStackNode*>(node)) {
@@ -991,8 +1108,6 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
                 }
             }
 
-            FluidCore::Point worldPt = screenToWorld(event->x, event->y);
-            centerOn(worldPt.x, worldPt.y);
             return TRUE;
         }
 
@@ -1098,8 +1213,10 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
             m_state.inking.hasWetSegment = false;
 
             FluidCore::Point wPt = screenToWorld(event->x, event->y);
+            m_state.inking.activeStroke.pressures.clear();
+            m_state.inking.activeStroke.pressures.push_back(pressure);
             m_state.inking.stabilizer.beginStroke(
-                FluidCoreApp::StrokeStabilizer::Point2D{wPt.x, wPt.y}, 1.0, g_get_real_time());
+                FluidCoreApp::StrokeStabilizer::Point2D{wPt.x, wPt.y}, pressure, g_get_real_time());
             if (m_area && GTK_IS_WIDGET(m_area)) {
                 gtk_widget_queue_draw(m_area);
             }
@@ -1109,45 +1226,7 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
             m_state.inking.isDrawing = true;
             m_state.lastMouseX = event->x;
             m_state.lastMouseY = event->y;
-            FluidCore::Point wPt = screenToWorld(event->x, event->y);
-            const double wRadius = 30.0 / m_state.viewport.zoom;
-            const FluidCore::Rectangle queryRect{wPt.x - wRadius, wPt.y - wRadius, wRadius * 2.0,
-                                                 wRadius * 2.0};
-
-            auto hits = m_api.queryVisibleNodes(queryRect);
-            bool removed = false;
-            auto* engine = dynamic_cast<FluidCore::FluidCoreEngine*>(&m_api);
-            for (const auto* hit : hits) {
-                if (const auto* strokeNode =
-                        dynamic_cast<const FluidCore::CanvasStrokeNode*>(hit)) {
-                    if (engine) {
-                        m_undoStack.pushAndExecute(std::make_unique<FluidCore::RemoveNodeCommand>(
-                            engine->workspaceModel(), strokeNode->id()));
-                    } else {
-                        m_api.removeNode(strokeNode->id());
-                    }
-                    removed = true;
-                }
-            }
-
-            std::string hitEdge =
-                WorkspaceInteraction::hitTestEdgeAtWorldPoint(m_api, wPt, wRadius);
-            if (!hitEdge.empty()) {
-                if (engine) {
-                    m_undoStack.pushAndExecute(std::make_unique<FluidCore::RemoveEdgeCommand>(
-                        engine->graphTopology(), hitEdge));
-                } else {
-                    m_api.removeEdge(hitEdge);
-                }
-                if (m_state.selectedEdgeId && *m_state.selectedEdgeId == hitEdge) {
-                    m_state.selectedEdgeId.reset();
-                }
-                removed = true;
-            }
-
-            if (removed && m_area && GTK_IS_WIDGET(m_area)) {
-                gtk_widget_queue_draw(m_area);
-            }
+            performEraserAction(event->x, event->y);
             return TRUE;
         }
     }
@@ -1156,7 +1235,20 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
 }
 
 gboolean WorkspaceView::onButtonRelease(GdkEventButton* event) {
-    (void)event;
+    GdkDevice* dev = gdk_event_get_source_device(reinterpret_cast<GdkEvent*>(event));
+    if (!dev) {
+        dev = event->device;
+    }
+    FluidCore::InputDeviceClass devClass = classifyGdkDevice(dev);
+    uint64_t nowMs = static_cast<uint64_t>(g_get_real_time() / 1000);
+    if (m_palmEngine) {
+        if (devClass == FluidCore::InputDeviceClass::Pen ||
+            devClass == FluidCore::InputDeviceClass::Eraser) {
+            m_palmEngine->onPenUp(event->x, event->y, nowMs);
+        } else if (devClass == FluidCore::InputDeviceClass::Touch) {
+            m_palmEngine->onTouchUp(1, event->x, event->y, nowMs);
+        }
+    }
     if (m_state.isMinimapDragging) {
         m_state.isMinimapDragging = false;
         return TRUE;
@@ -1265,15 +1357,19 @@ gboolean WorkspaceView::onButtonRelease(GdkEventButton* event) {
             if (m_undoStack.isRecordingMacro()) {
                 m_undoStack.endMacro();
             }
+            updateEraserHover(event->x, event->y);
         } else if (m_state.inking.currentTool == "pen" ||
                    m_state.inking.currentTool == "highlighter") {
             m_state.inking.stabilizer.endStroke();
             m_state.inking.hasWetSegment = false;
 
             m_state.inking.activeStroke.points.clear();
+            m_state.inking.activeStroke.pressures.clear();
             for (const auto& sample : m_state.inking.stabilizer.rawSamples()) {
                 m_state.inking.activeStroke.points.push_back(
                     FluidCore::XoppPoint{sample.point.x, sample.point.y});
+                m_state.inking.activeStroke.pressures.push_back(
+                    static_cast<float>(sample.pressure));
             }
 
             if (!m_state.inking.activeStroke.points.empty()) {
@@ -1355,6 +1451,34 @@ gboolean WorkspaceView::onButtonRelease(GdkEventButton* event) {
 gboolean WorkspaceView::onMotion(GdkEventMotion* event) {
     if (!m_area || !GTK_IS_WIDGET(m_area))
         return FALSE;
+
+    GdkDevice* dev = gdk_event_get_source_device(reinterpret_cast<GdkEvent*>(event));
+    if (!dev) {
+        dev = event->device;
+    }
+    FluidCore::InputDeviceClass devClass = classifyGdkDevice(dev);
+
+    gdouble pressAxis = 1.0;
+    if (!gdk_event_get_axis(reinterpret_cast<GdkEvent*>(event), GDK_AXIS_PRESSURE, &pressAxis) ||
+        pressAxis <= 0.0) {
+        pressAxis = 1.0;
+    }
+    float pressure = static_cast<float>(pressAxis);
+    uint64_t nowMs = static_cast<uint64_t>(g_get_real_time() / 1000);
+
+    if (m_palmEngine) {
+        if (devClass == FluidCore::InputDeviceClass::Pen ||
+            devClass == FluidCore::InputDeviceClass::Eraser) {
+            m_palmEngine->onPenMotion(event->x, event->y, pressure, nowMs);
+        } else if (devClass == FluidCore::InputDeviceClass::Touch) {
+            uint32_t touchId = 1;
+            auto decision = m_palmEngine->onTouchMotion(touchId, event->x, event->y, nowMs);
+            if (decision != FluidCore::InputDecision::Accept) {
+                return TRUE;
+            }
+        }
+    }
+
     GtkAllocation alloc;
     gtk_widget_get_allocation(m_area, &alloc);
 
@@ -1464,7 +1588,7 @@ gboolean WorkspaceView::onMotion(GdkEventMotion* event) {
 
         if (m_state.inking.currentTool == "pen" || m_state.inking.currentTool == "highlighter") {
             auto result = m_state.inking.stabilizer.pushPoint(
-                FluidCoreApp::StrokeStabilizer::Point2D{wPt.x, wPt.y}, 1.0, g_get_real_time());
+                FluidCoreApp::StrokeStabilizer::Point2D{wPt.x, wPt.y}, pressure, g_get_real_time());
             for (const auto& seg : result.newlyCommitted) {
                 m_state.inking.activeSegments.push_back(seg);
             }
@@ -1474,46 +1598,13 @@ gboolean WorkspaceView::onMotion(GdkEventMotion* event) {
                 gtk_widget_queue_draw(m_area);
             }
         } else if (m_state.inking.currentTool == "eraser") {
-            const double wRadius = 30.0 / m_state.viewport.zoom;
-            const FluidCore::Rectangle queryRect{wPt.x - wRadius, wPt.y - wRadius, wRadius * 2.0,
-                                                 wRadius * 2.0};
-
-            auto hits = m_api.queryVisibleNodes(queryRect);
-            bool removed = false;
-            auto* engine = dynamic_cast<FluidCore::FluidCoreEngine*>(&m_api);
-            for (const auto* hit : hits) {
-                if (const auto* strokeNode =
-                        dynamic_cast<const FluidCore::CanvasStrokeNode*>(hit)) {
-                    if (engine) {
-                        m_undoStack.pushAndExecute(std::make_unique<FluidCore::RemoveNodeCommand>(
-                            engine->workspaceModel(), strokeNode->id()));
-                    } else {
-                        m_api.removeNode(strokeNode->id());
-                    }
-                    removed = true;
-                }
-            }
-
-            std::string hitEdge =
-                WorkspaceInteraction::hitTestEdgeAtWorldPoint(m_api, wPt, wRadius);
-            if (!hitEdge.empty()) {
-                if (engine) {
-                    m_undoStack.pushAndExecute(std::make_unique<FluidCore::RemoveEdgeCommand>(
-                        engine->graphTopology(), hitEdge));
-                } else {
-                    m_api.removeEdge(hitEdge);
-                }
-                if (m_state.selectedEdgeId && *m_state.selectedEdgeId == hitEdge) {
-                    m_state.selectedEdgeId.reset();
-                }
-                removed = true;
-            }
-
-            if (removed && m_area && GTK_IS_WIDGET(m_area)) {
-                gtk_widget_queue_draw(m_area);
-            }
+            performEraserAction(event->x, event->y);
         }
         return TRUE;
+    }
+
+    if (m_state.inking.currentTool == "eraser") {
+        updateEraserHover(event->x, event->y);
     }
 
     if (m_area && GTK_IS_WIDGET(m_area)) {
@@ -1720,6 +1811,211 @@ gboolean WorkspaceView::onKeyRelease(GdkEventKey* event) {
         return TRUE;
     }
     return FALSE;
+}
+
+gboolean WorkspaceView::onProximityIn(GdkEventProximity* event) {
+    if (m_palmEngine) {
+        GdkDevice* dev = gdk_event_get_source_device(reinterpret_cast<GdkEvent*>(event));
+        if (!dev) {
+            dev = event->device;
+        }
+        updatePalmProfile(m_palmEngine, dev);
+        uint64_t nowMs = static_cast<uint64_t>(g_get_real_time() / 1000);
+        m_palmEngine->onPenProximity(true, nowMs);
+    }
+    if (m_state.inking.currentTool == "eraser") {
+        m_state.isEraserPointerHovering = true;
+    }
+    return FALSE;
+}
+
+gboolean WorkspaceView::onProximityOut(GdkEventProximity* /*event*/) {
+    if (m_palmEngine) {
+        uint64_t nowMs = static_cast<uint64_t>(g_get_real_time() / 1000);
+        m_palmEngine->onPenProximity(false, nowMs);
+    }
+    if (m_state.inking.currentTool == "eraser") {
+        m_state.isEraserPointerHovering = false;
+        if (!m_state.inking.hoveredEraserStrokeIds.empty()) {
+            m_state.inking.hoveredEraserStrokeIds.clear();
+        }
+        if (m_area && GTK_IS_WIDGET(m_area)) {
+            gtk_widget_queue_draw(m_area);
+        }
+    }
+    return FALSE;
+}
+
+gboolean WorkspaceView::onLeaveNotify(GdkEventCrossing*) {
+    m_state.isEraserPointerHovering = false;
+    if (!m_state.inking.hoveredEraserStrokeIds.empty()) {
+        m_state.inking.hoveredEraserStrokeIds.clear();
+        if (m_area && GTK_IS_WIDGET(m_area)) {
+            gtk_widget_queue_draw(m_area);
+        }
+    } else if (m_state.inking.currentTool == "eraser" && m_area && GTK_IS_WIDGET(m_area)) {
+        gtk_widget_queue_draw(m_area);
+    }
+    return FALSE;
+}
+
+void WorkspaceView::updateEraserHover(double screenX, double screenY) {
+    if (m_state.inking.currentTool != "eraser") {
+        return;
+    }
+
+    m_state.lastMouseX = screenX;
+    m_state.lastMouseY = screenY;
+    m_state.isEraserPointerHovering = true;
+
+    const double zoom = m_state.viewport.zoom;
+    const double wRadius = m_state.inking.eraserRadius / zoom;
+    const FluidCore::Point wPt = screenToWorld(screenX, screenY);
+
+    const FluidCore::Rectangle queryRect{wPt.x - wRadius, wPt.y - wRadius, wRadius * 2.0,
+                                         wRadius * 2.0};
+    auto candidateNodes = m_api.queryVisibleNodes(queryRect);
+
+    std::vector<const FluidCore::Stroke*> candidateStrokes;
+    for (const auto* node : candidateNodes) {
+        if (const auto* strokeNode = dynamic_cast<const FluidCore::CanvasStrokeNode*>(node)) {
+            candidateStrokes.push_back(&strokeNode->stroke());
+        }
+    }
+
+    auto matches = FluidCore::findStrokesUnderPoint(wPt.x, wPt.y, candidateStrokes, wRadius);
+
+    std::vector<std::string> newHoveredIds;
+    newHoveredIds.reserve(matches.size());
+    for (const auto& m : matches) {
+        newHoveredIds.push_back(m.strokeId);
+    }
+
+    if (newHoveredIds != m_state.inking.hoveredEraserStrokeIds) {
+        m_state.inking.hoveredEraserStrokeIds = std::move(newHoveredIds);
+    }
+    if (m_area && GTK_IS_WIDGET(m_area)) {
+        gtk_widget_queue_draw(m_area);
+    }
+}
+
+void WorkspaceView::performEraserAction(double screenX, double screenY) {
+    if (m_state.inking.currentTool != "eraser") {
+        return;
+    }
+
+    m_state.lastMouseX = screenX;
+    m_state.lastMouseY = screenY;
+    m_state.isEraserPointerHovering = true;
+
+    const double zoom = m_state.viewport.zoom;
+    const double wRadius = m_state.inking.eraserRadius / zoom;
+    const FluidCore::Point wPt = screenToWorld(screenX, screenY);
+
+    const FluidCore::Rectangle queryRect{wPt.x - wRadius, wPt.y - wRadius, wRadius * 2.0,
+                                         wRadius * 2.0};
+    auto candidateNodes = m_api.queryVisibleNodes(queryRect);
+
+    std::vector<const FluidCore::Stroke*> candidateStrokes;
+    for (const auto* node : candidateNodes) {
+        if (const auto* strokeNode = dynamic_cast<const FluidCore::CanvasStrokeNode*>(node)) {
+            candidateStrokes.push_back(&strokeNode->stroke());
+        }
+    }
+
+    auto matches = FluidCore::findStrokesUnderPoint(wPt.x, wPt.y, candidateStrokes, wRadius);
+
+    auto* engine = dynamic_cast<FluidCore::FluidCoreEngine*>(&m_api);
+
+    for (const auto& match : matches) {
+        if (engine) {
+            m_undoStack.pushAndExecute(std::make_unique<FluidCore::RemoveNodeCommand>(
+                engine->workspaceModel(), match.strokeId));
+        } else {
+            m_api.removeNode(match.strokeId);
+        }
+    }
+
+    // Also check graph edges (connectors)
+    std::string hitEdge = WorkspaceInteraction::hitTestEdgeAtWorldPoint(m_api, wPt, wRadius);
+    if (!hitEdge.empty()) {
+        if (engine) {
+            m_undoStack.pushAndExecute(
+                std::make_unique<FluidCore::RemoveEdgeCommand>(engine->graphTopology(), hitEdge));
+        } else {
+            m_api.removeEdge(hitEdge);
+        }
+        if (m_state.selectedEdgeId && *m_state.selectedEdgeId == hitEdge) {
+            m_state.selectedEdgeId.reset();
+        }
+    }
+
+    m_state.inking.hoveredEraserStrokeIds.clear();
+
+    if (m_area && GTK_IS_WIDGET(m_area)) {
+        gtk_widget_queue_draw(m_area);
+    }
+}
+
+gboolean WorkspaceView::onTouch(GdkEventTouch* event) {
+    if (!m_palmEngine) {
+        return FALSE;
+    }
+    uint32_t touchId = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(event->sequence));
+    if (touchId == 0) {
+        touchId = 1;
+    }
+    uint64_t nowMs = static_cast<uint64_t>(g_get_real_time() / 1000);
+
+    if (event->type == GDK_TOUCH_BEGIN) {
+        auto decision = m_palmEngine->onTouchDown(touchId, event->x, event->y, nowMs);
+        if (decision != FluidCore::InputDecision::Accept) {
+            return TRUE;
+        }
+    } else if (event->type == GDK_TOUCH_UPDATE) {
+        auto decision = m_palmEngine->onTouchMotion(touchId, event->x, event->y, nowMs);
+        if (decision != FluidCore::InputDecision::Accept) {
+            return TRUE;
+        }
+    } else if (event->type == GDK_TOUCH_END || event->type == GDK_TOUCH_CANCEL) {
+        m_palmEngine->onTouchUp(touchId, event->x, event->y, nowMs);
+    }
+    return FALSE;
+}
+
+void WorkspaceView::cancelActiveTouches(const std::vector<uint32_t>& /*touchIds*/) {
+    if (m_state.isPanning) {
+        m_state.isPanning = false;
+        if (m_area && GTK_IS_WIDGET(m_area)) {
+            GdkWindow* win = gtk_widget_get_window(m_area);
+            if (win) {
+                gdk_window_set_cursor(win, nullptr);
+            }
+        }
+    }
+    if (m_state.dragSnap.isDraggingCard || m_state.dragSnap.dragPending) {
+        if (m_state.dragSnap.isDraggingCard && !m_state.dragSnap.dragCandidateNodeId.empty()) {
+            m_api.updateNodePosition(m_state.dragSnap.dragCandidateNodeId,
+                                     m_state.dragSnap.dragInitialWorldPos.x,
+                                     m_state.dragSnap.dragInitialWorldPos.y);
+        }
+        m_state.dragSnap.isDraggingCard = false;
+        m_state.dragSnap.dragPending = false;
+        m_state.dragSnap.dragCandidateNodeId.clear();
+        m_state.dragSnap.activeMergeTargetId.clear();
+        m_state.dragSnap.activeSnapGuideLines.clear();
+        m_state.dragSnap.activeSnapType = FluidCore::SnapType::None;
+        if (m_area && GTK_IS_WIDGET(m_area)) {
+            GdkWindow* win = gtk_widget_get_window(m_area);
+            if (win) {
+                gdk_window_set_cursor(win, nullptr);
+            }
+        }
+    }
+    cancelCurrentInteraction();
+    if (m_area && GTK_IS_WIDGET(m_area)) {
+        gtk_widget_queue_draw(m_area);
+    }
 }
 
 } // namespace FluidCoreApp

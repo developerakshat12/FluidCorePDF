@@ -9,6 +9,10 @@
 
 #include <gtk/gtk.h>
 
+namespace FluidCore {
+class PalmRejectionEngine;
+}
+
 namespace FluidCoreApp {
 
 class ExcerptTileCache;
@@ -107,6 +111,9 @@ class WorkspaceView {
     void setSpacePressed(bool pressed);
     bool isSpacePressed() const { return m_state.isSpacePressed; }
 
+    void setPalmRejectionEngine(FluidCore::PalmRejectionEngine* engine) { m_palmEngine = engine; }
+    FluidCore::PalmRejectionEngine* palmRejectionEngine() const { return m_palmEngine; }
+
     const WorkspaceState& state() const { return m_state; }
     WorkspaceState& state() { return m_state; }
 
@@ -120,6 +127,14 @@ class WorkspaceView {
     static gboolean motionCallback(GtkWidget* widget, GdkEventMotion* event, gpointer userData);
     static gboolean keyPressCallback(GtkWidget* widget, GdkEventKey* event, gpointer userData);
     static gboolean keyReleaseCallback(GtkWidget* widget, GdkEventKey* event, gpointer userData);
+    static gboolean proximityInCallback(GtkWidget* widget, GdkEventProximity* event,
+                                        gpointer userData);
+    static gboolean proximityOutCallback(GtkWidget* widget, GdkEventProximity* event,
+                                         gpointer userData);
+    static gboolean touchCallback(GtkWidget* widget, GdkEventTouch* event, gpointer userData);
+
+    static gboolean leaveNotifyCallback(GtkWidget* widget, GdkEventCrossing* event,
+                                        gpointer userData);
 
     static gboolean zoomSettlingTimeoutCallback(gpointer userData);
     void onZoomSettled();
@@ -139,25 +154,37 @@ class WorkspaceView {
     gboolean onMotion(GdkEventMotion* event);
     gboolean onKeyPress(GdkEventKey* event);
     gboolean onKeyRelease(GdkEventKey* event);
+    gboolean onProximityIn(GdkEventProximity* event);
+    gboolean onProximityOut(GdkEventProximity* event);
+    gboolean onTouch(GdkEventTouch* event);
+    gboolean onLeaveNotify(GdkEventCrossing* event);
+    void cancelActiveTouches(const std::vector<uint32_t>& touchIds);
+
+    void updateEraserHover(double screenX, double screenY);
+    void performEraserAction(double screenX, double screenY);
 
     void onDragDataReceived(GdkDragContext* context, gint x, gint y, GtkSelectionData* data,
                             guint info, guint time);
     gboolean onDragMotion(GdkDragContext* context, gint x, gint y, guint time);
     void onDragLeave(GdkDragContext* context, guint time);
 
-    FluidCore::FluidCoreAPI& m_api;
     GtkWidget* m_area = nullptr;
-    GtkWidget* m_activeRenamePopover = nullptr;
-    GtkWidget* m_activeRenameEntry = nullptr;
-    std::string m_activeRenameStackId;
-
-    ExcerptTileCache* m_excerptTileCache = nullptr;
+    FluidCore::FluidCoreAPI& m_api;
     WorkspaceState m_state;
     FluidCore::UndoStack m_undoStack;
+    FluidCore::PalmRejectionEngine* m_palmEngine = nullptr;
+    guint m_settleTimeoutSourceId = 0;
+
+    ExcerptTileCache* m_excerptTileCache = nullptr;
 
     NavigateToSourceCallback m_onNavigateToSource;
     ExcerptAddedCallback m_onExcerptAdded;
     ActivatedCallback m_onActivated;
+
+    // Popover inline stack rename widgets
+    GtkWidget* m_activeRenamePopover = nullptr;
+    GtkWidget* m_activeRenameEntry = nullptr;
+    std::string m_activeRenameStackId;
 };
 
 } // namespace FluidCoreApp

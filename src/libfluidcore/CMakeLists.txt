@@ -22,6 +22,8 @@ add_library(fluidcore STATIC
     search/SearchSqueezePlanner.cpp
     search/WorkspaceSearchEngine.cpp
     export/WorkspaceExportEngine.cpp
+    input/PalmRejectionEngine.cpp
+    geometry/StrokeHitTest.cpp
 )
 
 find_package(ZLIB REQUIRED)
@@ -126,4 +128,12 @@ if(BUILD_TESTING)
     add_executable(round_trip_persistence_test tests/storage/RoundTripPersistenceTest.cpp)
     target_link_libraries(round_trip_persistence_test PRIVATE fluidcore)
     add_test(NAME RoundTripPersistenceTest COMMAND round_trip_persistence_test)
+
+    add_executable(stylus_matrix_test tests/input/StylusMatrixTest.cpp)
+    target_link_libraries(stylus_matrix_test PRIVATE fluidcore)
+    add_test(NAME StylusMatrixTest COMMAND stylus_matrix_test)
+
+    add_executable(stroke_hit_test tests/geometry/StrokeHitTestTest.cpp)
+    target_link_libraries(stroke_hit_test PRIVATE fluidcore)
+    add_test(NAME StrokeHitTest COMMAND stroke_hit_test)
 endif()

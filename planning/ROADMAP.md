@@ -89,8 +89,8 @@ gantt
 - [x] `.ltproj` SQLite WAL bundle finalization; atomic temp-swap commits; crash-recovery test suite (kill -9 fuzzing) *(complete via TASK-5.1: ProjectStore SQLite WAL engine, atomic directory commits, WAL truncation on close, multi-process SIGKILL fuzzing harness CrashRecoveryFuzzTest)*
 - [x] Full round-trip persistence acceptance test (`.ltproj` save → close → reopen → diff) *(complete via TASK-5.1: RoundTripPersistenceTest verifying all 9 criteria across relocated bundle paths)*
 - [x] UI Project & Workspace Persistence: Native HeaderBar, File Choosers (`GtkFileChooserNative`), Document Ingestion, and Live Canvas Save *(complete via TASK-5.2: modern GTK3 `AppHeaderBar` with live save badge [Saved/Unsaved/Save Failed], project title, New/Open/Save/Save As/Export buttons; GtkFileChooserNative wiring with .ltproj validation, schema version checks, atomic bundle directory ingestion with rollback, canonical source switch, unified single-modal dirty checking, pending action resumption, deadlock-free background teardown concurrency; and 31/31 passing CTest test targets)*
+- [x] Palm rejection tuning, stylus matrix testing (Wacom/HP MPP/Surface) *(complete via TASK-5.3: pure C++20 `PalmRejectionEngine` with dynamic hardware profiles [Wacom EMR/AES, Microsoft Surface, HP MPP, Generic], contact debounce, retroactive touch cancellation delivery via PenEventResult, lossless per-point vector pressure persistence via SQLite `pressures_blob` with 8xN cross-validation and base_width fallback, unified variable-width stroke rendering [w = base_width * (0.25 + 0.75 * p)], GTK viewport integration across WorkspaceView, InkOverlay, DocumentPane, and 33/33 passing headless CTest targets)*
 - [ ] Memory budget: ≤ 1.2 GB working set on 50-PDF/5000-page project
-- [ ] Palm rejection tuning, stylus matrix testing (Wacom/HP MPP/Surface)
 - [ ] Accessibility pass (keyboard-only operation of all fluid actions)
 - [ ] i18n framework; initial locales: EN, DE, ZH
 

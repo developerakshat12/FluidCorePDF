@@ -19,6 +19,10 @@
 #include <gtk/gtk.h>
 #include <poppler.h>
 
+namespace FluidCore {
+class PalmRejectionEngine;
+}
+
 namespace FluidCoreApp {
 
 class InkOverlay;
@@ -93,6 +97,9 @@ class DocumentPane {
 
     InkOverlay* inkOverlay() const { return m_inkOverlay.get(); }
     PageTileCache& pageTileCache() { return m_pageTileCache; }
+
+    void setPalmRejectionEngine(FluidCore::PalmRejectionEngine* engine);
+    FluidCore::PalmRejectionEngine* palmRejectionEngine() const { return m_palmEngine; }
 
     // Squeeze Engine facades for view & overlay components
     double docYToScreen(double docY) const;
@@ -187,6 +194,7 @@ class DocumentPane {
     FluidCore::UndoStack m_undoStack;
     FluidCore::SqueezeEngine m_squeezeEngine;
     std::unique_ptr<InkOverlay> m_inkOverlay;
+    FluidCore::PalmRejectionEngine* m_palmEngine = nullptr;
 
     // Interactive downward fold squeeze state
     double m_activeFoldStartDocY = 0.0;

@@ -2,6 +2,7 @@
 #include "FluidCoreAPI.h"
 #include "document/InkOverlay.h"
 #include "document/SqueezeRenderHelper.h"
+#include "input/PalmRejectionEngine.h"
 #include "search/AnchorSqueezePlanner.h"
 #include "search/SearchSqueezePlanner.h"
 #include "undo/AnnotationCommands.h"
@@ -237,6 +238,9 @@ bool DocumentPane::loadDocument(const std::string& pdfPath, const std::string& d
     gtk_container_add(GTK_CONTAINER(m_overlay), m_area);
 
     m_inkOverlay = std::make_unique<InkOverlay>(*this, m_annotationStore);
+    if (m_palmEngine) {
+        m_inkOverlay->setPalmRejectionEngine(m_palmEngine);
+    }
     gtk_overlay_add_overlay(GTK_OVERLAY(m_overlay), m_inkOverlay->widget());
     gtk_overlay_set_overlay_pass_through(GTK_OVERLAY(m_overlay), m_inkOverlay->widget(), FALSE);
 
@@ -1386,6 +1390,13 @@ void DocumentPane::draw(cairo_t* cr) {
             SqueezeRenderHelper::renderMarginFoldPin(cr, pageX - 8.0, sy0, 4.5, false, false);
             SqueezeRenderHelper::renderMarginFoldPin(cr, pageX - 8.0, sy1, 4.5, false, false);
         }
+    }
+}
+
+void DocumentPane::setPalmRejectionEngine(FluidCore::PalmRejectionEngine* engine) {
+    m_palmEngine = engine;
+    if (m_inkOverlay) {
+        m_inkOverlay->setPalmRejectionEngine(engine);
     }
 }
 

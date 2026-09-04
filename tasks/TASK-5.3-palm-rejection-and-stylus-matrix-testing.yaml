@@ -1,0 +1,36 @@
+id: TASK-5.3-palm-rejection-and-stylus-matrix-testing
+title: Palm Rejection Tuning, Stylus Matrix Testing (Wacom / HP MPP / Surface), and Per-Point Pressure Persistence
+milestone: M5
+status: completed
+workspace: D:\FluidCorePDF\fluidcore-platform
+specs:
+  - specs/palm_rejection_and_stylus_matrix_spec.md
+  - specs/features.md (section 1 & 2)
+  - planning/TRD.md (section 4.1 & 6)
+  - planning/ROADMAP.md (Milestone 5)
+  - skills/cpp-core-dev/SKILL.md
+  - skills/gtk-frontend/SKILL.md
+dependencies:
+  - TASK-5.1-ltproj-wal-finalization-and-roundtrip-persistence
+  - TASK-5.2-ui-project-workspace-persistence-and-file-choosers
+deliverables:
+  - src/libfluidcore/input/PalmRejectionEngine.{h,cpp} — pure C++20 arbitration state machine supporting Pen, Eraser, Touch, Mouse, dynamic hardware profiles (Wacom EMR/AES, Microsoft Surface, HP MPP, Generic), contact debounce, proximity tracking, and PenEventResult retroactive touch cancellation delivery.
+  - src/libfluidcore/storage/ProjectStore.cpp — pressures_blob schema migration, little-endian binary encoding/decoding, defensive length validation (8*N bytes matching points_blob), and NULL fallback to base_width.
+  - src/app/workspace/WorkspaceRenderer.cpp — variable-width vector stroke rendering using the unified pressure formula: w = base_width * (0.25 + 0.75 * p).
+  - src/app/workspace/WorkspaceView.{h,cpp} — PalmRejectionEngine integration, device classification, contact debouncing, proximity callbacks, and retroactive touch cancellation for canvas drag/pan.
+  - src/app/document/InkOverlay.{h,cpp} — PalmRejectionEngine integration, device classification, contact debouncing, proximity callbacks, and touch cancellation for PDF document annotations.
+  - src/app/document/DocumentPane.{h,cpp} — setPalmRejectionEngine setter and forwarding to child InkOverlay on document load/lifecycle.
+  - src/app/main.cpp — shared PalmRejectionEngine instantiation per window and wiring into DocumentPane and WorkspaceView.
+  - src/libfluidcore/tests/input/StylusMatrixTest.cpp — comprehensive headless CTest suite validating all hardware profiles, touch cancellation latency, contact bounce, proximity hover, and multi-touch rejection.
+acceptance_checks:
+  - "clang-format --dry-run --Werror clean on all touched files"
+  - "python3 ops/scripts/check_invariants.py passes (0 GUI includes in libfluidcore)"
+  - "all 33 registered CTest targets pass (100%)"
+  - "Retroactive touch cancellation cleanly aborts in-flight touch drags when pen touches down within MPP/Surface latency window"
+  - "Pen contact bounce within debounce window does not trigger duplicate stroke creation"
+  - "Hardware profile auto-detects Wacom, Surface, HP MPP, and Generic via USB VID/PID and device name fallback"
+  - "Vector strokes save and rehydrate lossless pressure data with strict 8*N cross-validation against point count"
+  - "Variable stroke width rendering applies unified formula w = base_width * (0.25 + 0.75 * p)"
+constraints:
+  - Zero GUI/Cairo/GTK headers in src/libfluidcore/ (ADR-0001 clean separation)
+  - DCO signed-off commit (git commit -s)

@@ -1,6 +1,7 @@
 #include "FluidCoreEngine.h"
 #include "document/DocumentPane.h"
 #include "export/ExportDialog.h"
+#include "input/PalmRejectionEngine.h"
 #include "services/ExcerptTileCache.h"
 #include "services/PdfDocumentService.h"
 #include "services/ToolManager.h"
@@ -926,6 +927,14 @@ void onActivate(GtkApplication* app, gpointer userData) {
     g_object_set_data_full(
         G_OBJECT(app), "workspace-view", workspace,
         +[](gpointer data) { delete static_cast<FluidCoreApp::WorkspaceView*>(data); });
+
+    auto* palmEngine = new FluidCore::PalmRejectionEngine();
+    g_object_set_data_full(
+        G_OBJECT(app), "palm-rejection-engine", palmEngine,
+        +[](gpointer data) { delete static_cast<FluidCore::PalmRejectionEngine*>(data); });
+
+    documentPane->setPalmRejectionEngine(palmEngine);
+    workspace->setPalmRejectionEngine(palmEngine);
 
     // Tool synchronization service & Top modern toolbar
     auto* toolManager = new FluidCoreApp::ToolManager();

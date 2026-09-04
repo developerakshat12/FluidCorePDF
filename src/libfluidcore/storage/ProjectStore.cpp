@@ -74,6 +74,15 @@ inline std::vector<uint8_t> encodePointsLE(const std::vector<XoppPoint>& points)
     return buf;
 }
 
+inline std::vector<uint8_t> encodePressuresLE(const std::vector<double>& pressures) {
+    std::vector<uint8_t> buf;
+    buf.reserve(pressures.size() * 8);
+    for (const double p : pressures) {
+        writeDoubleLE(buf, p);
+    }
+    return buf;
+}
+
 // Simple RAII wrapper for SQLite statements
 class SqliteStatement {
   public:
@@ -364,6 +373,7 @@ bool ProjectStore::initSchema(std::string* error) {
             page_index INTEGER DEFAULT NULL,
             bounding_box_blob BLOB NOT NULL,
             points_blob BLOB NOT NULL,
+            pressures_blob BLOB DEFAULT NULL,
             tool_type TEXT NOT NULL,
             color INTEGER NOT NULL,
             base_width REAL NOT NULL,
@@ -404,6 +414,11 @@ bool ProjectStore::initSchema(std::string* error) {
             sqlite3_free(errMsg);
         return false;
     }
+
+    // Additive schema migration: ensure pressures_blob exists on pre-existing databases
+    sqlite3_exec(m_db, "ALTER TABLE ink_strokes ADD COLUMN pressures_blob BLOB DEFAULT NULL;",
+                 nullptr, nullptr, nullptr);
+
     return true;
 }
 
@@ -883,6 +898,10 @@ void serializeNodeRecursive(sqlite3* db, const std::string& projectId, const Wor
         const auto& stroke = strokeNode->stroke();
         auto bboxBytes = encodeBoundingBoxLE(strokeNode->bounds());
         auto ptsBytes = encodePointsLE(stroke.points);
+        std::vector<uint8_t> pressBytes;
+        if (!stroke.pressures.empty()) {
+            pressBytes = encodePressuresLE(stroke.pressures);
+        }
 
         insertInkStrokeStmt.reset();
         sqlite3_bind_text(insertInkStrokeStmt.get(), 1, stroke.id.c_str(), -1, SQLITE_STATIC);
@@ -892,10 +911,16 @@ void serializeNodeRecursive(sqlite3* db, const std::string& projectId, const Wor
                           static_cast<int>(bboxBytes.size()), SQLITE_STATIC);
         sqlite3_bind_blob(insertInkStrokeStmt.get(), 5, ptsBytes.data(),
                           static_cast<int>(ptsBytes.size()), SQLITE_STATIC);
-        sqlite3_bind_text(insertInkStrokeStmt.get(), 6, stroke.tool.c_str(), -1, SQLITE_STATIC);
-        sqlite3_bind_int64(insertInkStrokeStmt.get(), 7, static_cast<sqlite3_int64>(stroke.color));
-        sqlite3_bind_double(insertInkStrokeStmt.get(), 8, stroke.width);
-        sqlite3_bind_int64(insertInkStrokeStmt.get(), 9,
+        if (!pressBytes.empty()) {
+            sqlite3_bind_blob(insertInkStrokeStmt.get(), 6, pressBytes.data(),
+                              static_cast<int>(pressBytes.size()), SQLITE_STATIC);
+        } else {
+            sqlite3_bind_null(insertInkStrokeStmt.get(), 6);
+        }
+        sqlite3_bind_text(insertInkStrokeStmt.get(), 7, stroke.tool.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_int64(insertInkStrokeStmt.get(), 8, static_cast<sqlite3_int64>(stroke.color));
+        sqlite3_bind_double(insertInkStrokeStmt.get(), 9, stroke.width);
+        sqlite3_bind_int64(insertInkStrokeStmt.get(), 10,
                            static_cast<sqlite3_int64>(stroke.timestamp ? stroke.timestamp : now));
         insertInkStrokeStmt.execute();
     } else {
@@ -1004,20 +1029,22 @@ bool ProjectStore::saveProject(const WorkspaceModel& model, const GraphTopology&
     SqliteStatement deleteFtsStmt(m_db, "DELETE FROM fts_universal_index WHERE entity_id = ?;");
 
     SqliteStatement insertInkStrokeStmt(
-        m_db, "INSERT INTO ink_strokes (stroke_id, project_id, container_type, container_ref_id, "
-              "page_index, "
-              "bounding_box_blob, points_blob, tool_type, color, base_width, created_at) "
-              "VALUES (?, ?, 'WORKSPACE', ?, NULL, ?, ?, ?, ?, ?, ?) "
-              "ON CONFLICT(stroke_id) DO UPDATE SET "
-              "    bounding_box_blob = excluded.bounding_box_blob, "
-              "    points_blob = excluded.points_blob, "
-              "    tool_type = excluded.tool_type, "
-              "    color = excluded.color, "
-              "    base_width = excluded.base_width "
-              "WHERE (tool_type != excluded.tool_type OR color != excluded.color OR base_width != "
-              "excluded.base_width OR "
-              "       bounding_box_blob != excluded.bounding_box_blob OR points_blob != "
-              "excluded.points_blob);");
+        m_db,
+        "INSERT INTO ink_strokes (stroke_id, project_id, container_type, container_ref_id, "
+        "page_index, "
+        "bounding_box_blob, points_blob, pressures_blob, tool_type, color, base_width, created_at) "
+        "VALUES (?, ?, 'WORKSPACE', ?, NULL, ?, ?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(stroke_id) DO UPDATE SET "
+        "    bounding_box_blob = excluded.bounding_box_blob, "
+        "    points_blob = excluded.points_blob, "
+        "    pressures_blob = excluded.pressures_blob, "
+        "    tool_type = excluded.tool_type, "
+        "    color = excluded.color, "
+        "    base_width = excluded.base_width "
+        "WHERE (tool_type != excluded.tool_type OR color != excluded.color OR base_width != "
+        "excluded.base_width OR "
+        "       bounding_box_blob != excluded.bounding_box_blob OR points_blob != "
+        "excluded.points_blob OR pressures_blob IS NOT excluded.pressures_blob);");
 
     // Serialize top-level nodes and their hierarchy while tracking all visited IDs
     std::unordered_set<std::string> currentModelNodeIds;
@@ -1378,7 +1405,8 @@ bool ProjectStore::rehydrate(WorkspaceModel& outModel, GraphTopology& outGraph,
 
     // 5. Rehydrate Workspace Ink Strokes
     SqliteStatement strokeStmt(
-        m_db, "SELECT stroke_id, bounding_box_blob, points_blob, tool_type, color, base_width, "
+        m_db, "SELECT stroke_id, bounding_box_blob, points_blob, pressures_blob, tool_type, color, "
+              "base_width, "
               "created_at "
               "FROM ink_strokes WHERE project_id = ? AND container_type = 'WORKSPACE';");
     if (strokeStmt.isValid()) {
@@ -1415,13 +1443,33 @@ bool ProjectStore::rehydrate(WorkspaceModel& outModel, GraphTopology& outGraph,
                 stroke.points.push_back(FluidCore::XoppPoint{x, y});
             }
 
+            const void* pressBlob = sqlite3_column_blob(strokeStmt.get(), 3);
+            int pressBytes = sqlite3_column_bytes(strokeStmt.get(), 3);
+            if (pressBlob && pressBytes > 0) {
+                // Strict cross-validation: pressures_blob must be exactly 8 * count (matching
+                // points_blob point count)
+                if (pressBytes % 8 == 0 && static_cast<size_t>(pressBytes / 8) == count) {
+                    const uint8_t* pPtr = reinterpret_cast<const uint8_t*>(pressBlob);
+                    stroke.pressures.reserve(count);
+                    for (size_t i = 0; i < count; ++i) {
+                        stroke.pressures.push_back(readDoubleLE(pPtr + (i * 8)));
+                    }
+                } else {
+                    std::cerr << "[ProjectStore] Warning: Stroke '" << (sid ? sid : "unknown")
+                              << "' pressures count (" << (pressBytes / 8)
+                              << ") does not match points count (" << count
+                              << "); discarding corrupted pressures_blob and falling back to "
+                                 "base_width.\n";
+                }
+            }
+
             const char* tool =
-                reinterpret_cast<const char*>(sqlite3_column_text(strokeStmt.get(), 3));
+                reinterpret_cast<const char*>(sqlite3_column_text(strokeStmt.get(), 4));
             if (tool)
                 stroke.tool = tool;
-            stroke.color = static_cast<uint32_t>(sqlite3_column_int64(strokeStmt.get(), 4));
-            stroke.width = sqlite3_column_double(strokeStmt.get(), 5);
-            stroke.timestamp = static_cast<uint64_t>(sqlite3_column_int64(strokeStmt.get(), 6));
+            stroke.color = static_cast<uint32_t>(sqlite3_column_int64(strokeStmt.get(), 5));
+            stroke.width = sqlite3_column_double(strokeStmt.get(), 6);
+            stroke.timestamp = static_cast<uint64_t>(sqlite3_column_int64(strokeStmt.get(), 7));
 
             auto strokeNode = std::make_unique<FluidCore::CanvasStrokeNode>(std::move(stroke));
             outModel.insert(std::move(strokeNode));

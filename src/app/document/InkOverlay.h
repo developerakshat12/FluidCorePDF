@@ -13,6 +13,10 @@
 #include <string>
 #include <vector>
 
+namespace FluidCore {
+class PalmRejectionEngine;
+} // namespace FluidCore
+
 namespace FluidCoreApp {
 
 class DocumentPane;
@@ -75,6 +79,9 @@ class InkOverlay {
     FluidCore::Rectangle computeNormalizedSelectionBounds(std::size_t pageIndex, double pageWidth,
                                                           double pageHeight) const;
 
+    void setPalmRejectionEngine(FluidCore::PalmRejectionEngine* engine) { m_palmEngine = engine; }
+    FluidCore::PalmRejectionEngine* palmRejectionEngine() const { return m_palmEngine; }
+
   private:
     static void drawCallback(GtkWidget* area, cairo_t* cr, gpointer userData);
     static gboolean buttonPressCallback(GtkWidget* widget, GdkEventButton* event,
@@ -83,6 +90,11 @@ class InkOverlay {
                                          gpointer userData);
     static gboolean buttonReleaseCallback(GtkWidget* widget, GdkEventButton* event,
                                           gpointer userData);
+    static gboolean proximityInCallback(GtkWidget* widget, GdkEventProximity* event,
+                                        gpointer userData);
+    static gboolean proximityOutCallback(GtkWidget* widget, GdkEventProximity* event,
+                                         gpointer userData);
+    static gboolean touchCallback(GtkWidget* widget, GdkEventTouch* event, gpointer userData);
     static void dragDataGetCallback(GtkWidget* widget, GdkDragContext* context,
                                     GtkSelectionData* data, guint info, guint time,
                                     gpointer userData);
@@ -92,6 +104,10 @@ class InkOverlay {
     gboolean onButtonPress(GdkEventButton* event);
     gboolean onMotionNotify(GdkEventMotion* event);
     gboolean onButtonRelease(GdkEventButton* event);
+    gboolean onProximityIn(GdkEventProximity* event);
+    gboolean onProximityOut(GdkEventProximity* event);
+    gboolean onTouch(GdkEventTouch* event);
+    void cancelActiveTouches(const std::vector<uint32_t>& touchIds);
     void onDragDataGet(GdkDragContext* context, GtkSelectionData* data, guint info, guint time);
     void onDragEnd(GdkDragContext* context);
 
@@ -139,6 +155,8 @@ class InkOverlay {
     std::string m_currentTool = "pen";
     std::uint32_t m_currentColor = 0x000000;
     double m_currentWidth = 2.0;
+
+    FluidCore::PalmRejectionEngine* m_palmEngine = nullptr;
 };
 
 } // namespace FluidCoreApp

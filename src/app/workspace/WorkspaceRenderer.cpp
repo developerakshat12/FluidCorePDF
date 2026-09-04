@@ -1040,27 +1040,78 @@ void WorkspaceRenderer::draw(cairo_t* cr, const WorkspaceState& state, FluidCore
             if (stroke.points.empty())
                 continue;
 
+            const bool isHoveredForErase =
+                !state.inking.hoveredEraserStrokeIds.empty() &&
+                (std::find(state.inking.hoveredEraserStrokeIds.begin(),
+                           state.inking.hoveredEraserStrokeIds.end(),
+                           strokeNode->id()) != state.inking.hoveredEraserStrokeIds.end());
+
+            const auto& pt0 = stroke.points[0];
+            const double baseW = stroke.width * zoom;
+
+            if (isHoveredForErase) {
+                cairo_save(cr);
+                cairo_set_source_rgba(cr, 1.0, 0.22, 0.22, 0.45);
+                cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+                cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
+                const double glowWidth = (stroke.width + 10.0) * zoom;
+                if (stroke.points.size() == 1) {
+                    cairo_new_path(cr);
+                    cairo_arc(cr, (pt0.x - originX) * zoom, (pt0.y - originY) * zoom,
+                              std::max(2.0, glowWidth / 2.0), 0, 2 * M_PI);
+                    cairo_fill(cr);
+                } else {
+                    cairo_set_line_width(cr, std::max(2.0, glowWidth));
+                    cairo_new_path(cr);
+                    cairo_move_to(cr, (pt0.x - originX) * zoom, (pt0.y - originY) * zoom);
+                    for (size_t i = 1; i < stroke.points.size(); ++i) {
+                        const auto& pt = stroke.points[i];
+                        cairo_line_to(cr, (pt.x - originX) * zoom, (pt.y - originY) * zoom);
+                    }
+                    cairo_stroke(cr);
+                }
+                cairo_restore(cr);
+            }
+
             cairo_set_source_rgba(
                 cr, ((stroke.color >> 16) & 0xFF) / 255.0, ((stroke.color >> 8) & 0xFF) / 255.0,
                 (stroke.color & 0xFF) / 255.0, stroke.tool == "highlighter" ? 0.45 : 1.0);
-            cairo_set_line_width(cr, stroke.width * zoom);
             cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
             cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
 
-            cairo_new_path(cr);
-            const auto& pt0 = stroke.points[0];
-            cairo_move_to(cr, (pt0.x - originX) * zoom, (pt0.y - originY) * zoom);
-
             if (stroke.points.size() == 1) {
+                const double w0 = (stroke.pressures.empty() || stroke.pressures.size() < 1)
+                                      ? baseW
+                                      : baseW * (0.25 + 0.75 * stroke.pressures[0]);
+                cairo_new_path(cr);
                 cairo_arc(cr, (pt0.x - originX) * zoom, (pt0.y - originY) * zoom,
-                          std::max(1.0, stroke.width * zoom / 2.0), 0, 2 * M_PI);
+                          std::max(1.0, w0 / 2.0), 0, 2 * M_PI);
                 cairo_fill(cr);
-            } else {
+            } else if (stroke.pressures.empty() ||
+                       stroke.pressures.size() != stroke.points.size()) {
+                // Constant base_width mode
+                cairo_set_line_width(cr, std::max(0.5, baseW));
+                cairo_new_path(cr);
+                cairo_move_to(cr, (pt0.x - originX) * zoom, (pt0.y - originY) * zoom);
                 for (size_t i = 1; i < stroke.points.size(); ++i) {
                     const auto& pt = stroke.points[i];
                     cairo_line_to(cr, (pt.x - originX) * zoom, (pt.y - originY) * zoom);
                 }
                 cairo_stroke(cr);
+            } else {
+                // Variable pressure mode: w_i = base_width * (0.25 + 0.75 * p_i)
+                for (size_t i = 1; i < stroke.points.size(); ++i) {
+                    const auto& pPrev = stroke.points[i - 1];
+                    const auto& pCurr = stroke.points[i];
+                    const double segPressure =
+                        (stroke.pressures[i - 1] + stroke.pressures[i]) / 2.0;
+                    const double segWidth = baseW * (0.25 + 0.75 * segPressure);
+                    cairo_set_line_width(cr, std::max(0.5, segWidth));
+                    cairo_new_path(cr);
+                    cairo_move_to(cr, (pPrev.x - originX) * zoom, (pPrev.y - originY) * zoom);
+                    cairo_line_to(cr, (pCurr.x - originX) * zoom, (pCurr.y - originY) * zoom);
+                    cairo_stroke(cr);
+                }
             }
         } else {
             const FluidCore::Rectangle b = node->bounds();
@@ -1072,32 +1123,37 @@ void WorkspaceRenderer::draw(cairo_t* cr, const WorkspaceState& state, FluidCore
         }
     }
 
-    // Render active wet ink
+    // Render active wet ink with pressure dynamics
     if (state.inking.isDrawing &&
         (state.inking.currentTool == "pen" || state.inking.currentTool == "highlighter")) {
         cairo_set_source_rgba(cr, ((state.inking.currentColor >> 16) & 0xFF) / 255.0,
                               ((state.inking.currentColor >> 8) & 0xFF) / 255.0,
                               (state.inking.currentColor & 0xFF) / 255.0,
                               state.inking.currentTool == "highlighter" ? 0.45 : 1.0);
-        cairo_set_line_width(cr, state.inking.currentWidth * zoom);
         cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
         cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
-        cairo_new_path(cr);
 
         const auto& samples = state.inking.stabilizer.rawSamples();
+        const double baseW = state.inking.currentWidth * zoom;
+
         if (samples.size() == 1) {
+            const double w0 = baseW * (0.25 + 0.75 * samples[0].pressure);
+            cairo_new_path(cr);
             cairo_arc(cr, (samples[0].point.x - originX) * zoom,
-                      (samples[0].point.y - originY) * zoom,
-                      std::max(1.0, state.inking.currentWidth * zoom / 2.0), 0, 2 * M_PI);
+                      (samples[0].point.y - originY) * zoom, std::max(1.0, w0 / 2.0), 0, 2 * M_PI);
             cairo_fill(cr);
         } else if (samples.size() > 1) {
-            cairo_move_to(cr, (samples[0].point.x - originX) * zoom,
-                          (samples[0].point.y - originY) * zoom);
             for (size_t i = 1; i < samples.size(); ++i) {
+                const double segPressure = (samples[i - 1].pressure + samples[i].pressure) / 2.0;
+                const double segWidth = baseW * (0.25 + 0.75 * segPressure);
+                cairo_set_line_width(cr, std::max(0.5, segWidth));
+                cairo_new_path(cr);
+                cairo_move_to(cr, (samples[i - 1].point.x - originX) * zoom,
+                              (samples[i - 1].point.y - originY) * zoom);
                 cairo_line_to(cr, (samples[i].point.x - originX) * zoom,
                               (samples[i].point.y - originY) * zoom);
+                cairo_stroke(cr);
             }
-            cairo_stroke(cr);
         }
     }
 
@@ -1120,6 +1176,43 @@ void WorkspaceRenderer::draw(cairo_t* cr, const WorkspaceState& state, FluidCore
         cairo_set_dash(cr, dashes, 2, 0.0);
         cairo_set_line_width(cr, 1.8);
         cairo_stroke(cr);
+        cairo_restore(cr);
+    }
+
+    // Eraser cursor radius indicator & target feedback
+    if (state.inking.currentTool == "eraser" && state.isEraserPointerHovering) {
+        cairo_save(cr);
+        const double cx = state.lastMouseX;
+        const double cy = state.lastMouseY;
+        const double r = state.inking.eraserRadius;
+
+        const bool hasTargets =
+            state.inking.isDrawing || !state.inking.hoveredEraserStrokeIds.empty();
+
+        if (hasTargets) {
+            // Targeted: active solid deletion indicator ring
+            cairo_set_source_rgba(cr, 1.0, 0.20, 0.20, 0.12);
+            cairo_new_path(cr);
+            cairo_arc(cr, cx, cy, r, 0, 2 * M_PI);
+            cairo_fill_preserve(cr);
+
+            cairo_set_source_rgba(cr, 1.0, 0.25, 0.25, 0.85);
+            cairo_set_line_width(cr, 1.8);
+            cairo_stroke(cr);
+        } else {
+            // Idle: subtle dashed/faint ring
+            cairo_set_source_rgba(cr, 0.90, 0.35, 0.35, 0.06);
+            cairo_new_path(cr);
+            cairo_arc(cr, cx, cy, r, 0, 2 * M_PI);
+            cairo_fill_preserve(cr);
+
+            cairo_set_source_rgba(cr, 0.85, 0.30, 0.30, 0.45);
+            double dashes[] = {3.0, 3.0};
+            cairo_set_dash(cr, dashes, 2, 0.0);
+            cairo_set_line_width(cr, 1.2);
+            cairo_stroke(cr);
+            cairo_set_dash(cr, nullptr, 0, 0.0);
+        }
         cairo_restore(cr);
     }
 

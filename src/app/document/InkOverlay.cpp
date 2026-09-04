@@ -2,6 +2,7 @@
 #include "document/DamageRect.h"
 #include "document/DocumentPane.h"
 #include "document/SqueezeRenderHelper.h"
+#include "input/PalmRejectionEngine.h"
 #include "undo/AnnotationCommands.h"
 #include "workspace/ExcerptPayload.h"
 
@@ -11,6 +12,46 @@
 
 namespace FluidCoreApp {
 namespace {
+
+FluidCore::InputDeviceClass classifyGdkDevice(GdkDevice* dev) {
+    if (!dev) {
+        return FluidCore::InputDeviceClass::Mouse;
+    }
+    GdkInputSource src = gdk_device_get_source(dev);
+    switch (src) {
+    case GDK_SOURCE_PEN:
+        return FluidCore::InputDeviceClass::Pen;
+    case GDK_SOURCE_ERASER:
+        return FluidCore::InputDeviceClass::Eraser;
+    case GDK_SOURCE_TOUCHSCREEN:
+        return FluidCore::InputDeviceClass::Touch;
+    case GDK_SOURCE_MOUSE:
+    case GDK_SOURCE_TRACKPOINT:
+    case GDK_SOURCE_TOUCHPAD:
+    default:
+        return FluidCore::InputDeviceClass::Mouse;
+    }
+}
+
+void updatePalmProfile(FluidCore::PalmRejectionEngine* engine, GdkDevice* dev) {
+    if (!engine || !dev) {
+        return;
+    }
+    const char* devName = gdk_device_get_name(dev);
+    std::string name = devName ? devName : "";
+    std::string vid;
+    std::string pid;
+    const char* vendorId = gdk_device_get_vendor_id(dev);
+    const char* productId = gdk_device_get_product_id(dev);
+    if (vendorId) {
+        vid = vendorId;
+    }
+    if (productId) {
+        pid = productId;
+    }
+    auto profile = FluidCore::PalmRejectionEngine::detectProfile(vid, pid, name);
+    engine->setProfileOverride(profile);
+}
 
 constexpr double kPageMargin = 16.0;
 
@@ -126,7 +167,8 @@ InkOverlay::InkOverlay(DocumentPane& pane, FluidCore::AnnotationStore& store)
 
     gtk_widget_add_events(m_widget, GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK |
                                         GDK_POINTER_MOTION_MASK | GDK_ENTER_NOTIFY_MASK |
-                                        GDK_LEAVE_NOTIFY_MASK);
+                                        GDK_LEAVE_NOTIFY_MASK | GDK_PROXIMITY_IN_MASK |
+                                        GDK_PROXIMITY_OUT_MASK | GDK_TOUCH_MASK);
 
     g_signal_connect(m_widget, "draw", G_CALLBACK(InkOverlay::drawCallback), this);
     g_signal_connect(m_widget, "button-press-event", G_CALLBACK(InkOverlay::buttonPressCallback),
@@ -135,6 +177,11 @@ InkOverlay::InkOverlay(DocumentPane& pane, FluidCore::AnnotationStore& store)
                      this);
     g_signal_connect(m_widget, "button-release-event",
                      G_CALLBACK(InkOverlay::buttonReleaseCallback), this);
+    g_signal_connect(m_widget, "proximity-in-event", G_CALLBACK(InkOverlay::proximityInCallback),
+                     this);
+    g_signal_connect(m_widget, "proximity-out-event", G_CALLBACK(InkOverlay::proximityOutCallback),
+                     this);
+    g_signal_connect(m_widget, "touch-event", G_CALLBACK(InkOverlay::touchCallback), this);
     g_signal_connect(m_widget, "drag-data-get", G_CALLBACK(InkOverlay::dragDataGetCallback), this);
     g_signal_connect(m_widget, "drag-end", G_CALLBACK(InkOverlay::dragEndCallback), this);
     g_signal_connect(m_widget, "enter-notify-event",
@@ -333,6 +380,21 @@ gboolean InkOverlay::buttonReleaseCallback(GtkWidget*, GdkEventButton* event, gp
     return static_cast<InkOverlay*>(userData)->onButtonRelease(event);
 }
 
+gboolean InkOverlay::proximityInCallback(GtkWidget*, GdkEventProximity* event, gpointer userData) {
+    auto* self = static_cast<InkOverlay*>(userData);
+    return self ? self->onProximityIn(event) : FALSE;
+}
+
+gboolean InkOverlay::proximityOutCallback(GtkWidget*, GdkEventProximity* event, gpointer userData) {
+    auto* self = static_cast<InkOverlay*>(userData);
+    return self ? self->onProximityOut(event) : FALSE;
+}
+
+gboolean InkOverlay::touchCallback(GtkWidget*, GdkEventTouch* event, gpointer userData) {
+    auto* self = static_cast<InkOverlay*>(userData);
+    return self ? self->onTouch(event) : FALSE;
+}
+
 gboolean InkOverlay::onButtonPress(GdkEventButton* event) {
     m_pane.notifyActivated();
 
@@ -341,6 +403,44 @@ gboolean InkOverlay::onButtonPress(GdkEventButton* event) {
     }
 
     GdkDevice* device = gdk_event_get_source_device(reinterpret_cast<GdkEvent*>(event));
+    if (!device) {
+        device = event->device;
+    }
+    updatePalmProfile(m_palmEngine, device);
+    FluidCore::InputDeviceClass devClass = classifyGdkDevice(device);
+
+    gdouble pressAxis = 1.0;
+    if (!gdk_event_get_axis(reinterpret_cast<GdkEvent*>(event), GDK_AXIS_PRESSURE, &pressAxis) ||
+        pressAxis <= 0.0) {
+        pressAxis = 1.0;
+    }
+    float pressure = static_cast<float>(pressAxis);
+    uint64_t nowMs = static_cast<uint64_t>(g_get_real_time() / 1000);
+
+    if (m_palmEngine) {
+        if (devClass == FluidCore::InputDeviceClass::Pen ||
+            devClass == FluidCore::InputDeviceClass::Eraser) {
+            auto res = m_palmEngine->onPenDown(event->x, event->y, pressure, nowMs, devClass);
+            if (res.isDuplicateBounce) {
+                return TRUE;
+            }
+            if (!res.cancelledTouchIds.empty()) {
+                cancelActiveTouches(res.cancelledTouchIds);
+            }
+        } else if (devClass == FluidCore::InputDeviceClass::Touch) {
+            uint32_t touchId = 1;
+            auto decision = m_palmEngine->onTouchDown(touchId, event->x, event->y, nowMs);
+            if (decision != FluidCore::InputDecision::Accept) {
+                return TRUE;
+            }
+        } else {
+            auto decision = m_palmEngine->onMouseDown(event->x, event->y, nowMs);
+            if (decision != FluidCore::InputDecision::Accept) {
+                return TRUE;
+            }
+        }
+    }
+
     const GdkInputSource source = device ? gdk_device_get_source(device) : GDK_SOURCE_MOUSE;
     if (source == GDK_SOURCE_TOUCHSCREEN) {
         return FALSE;
@@ -449,18 +549,14 @@ gboolean InkOverlay::onButtonPress(GdkEventButton* event) {
     m_isDrawing = true;
     m_activePageIndex = i;
 
-    gdouble pressure = 1.0;
-    if (!gdk_event_get_axis(reinterpret_cast<GdkEvent*>(event), GDK_AXIS_PRESSURE, &pressure) ||
-        pressure <= 0.0) {
-        pressure = 1.0;
-    }
-
     m_lastPressure = pressure;
     m_activeStroke = FluidCore::Stroke{};
     m_activeStroke.tool = (source == GDK_SOURCE_ERASER) ? "eraser" : m_currentTool;
     m_activeStroke.color = m_currentColor;
     m_activeStroke.width = m_currentWidth;
     m_activeStroke.timestamp = static_cast<std::uint64_t>(event->time);
+    m_activeStroke.pressures.clear();
+    m_activeStroke.pressures.push_back(pressure);
 
     m_stabilizer.beginStroke({xp, yp}, pressure, static_cast<std::uint64_t>(event->time),
                              StabilizerMode::Smooth);
@@ -485,6 +581,33 @@ gboolean InkOverlay::onButtonPress(GdkEventButton* event) {
 }
 
 gboolean InkOverlay::onMotionNotify(GdkEventMotion* event) {
+    GdkDevice* dev = gdk_event_get_source_device(reinterpret_cast<GdkEvent*>(event));
+    if (!dev) {
+        dev = event->device;
+    }
+    FluidCore::InputDeviceClass devClass = classifyGdkDevice(dev);
+
+    gdouble pressAxis = 1.0;
+    if (!gdk_event_get_axis(reinterpret_cast<GdkEvent*>(event), GDK_AXIS_PRESSURE, &pressAxis) ||
+        pressAxis <= 0.0) {
+        pressAxis = 1.0;
+    }
+    float pressure = static_cast<float>(pressAxis);
+    uint64_t nowMs = static_cast<uint64_t>(g_get_real_time() / 1000);
+
+    if (m_palmEngine) {
+        if (devClass == FluidCore::InputDeviceClass::Pen ||
+            devClass == FluidCore::InputDeviceClass::Eraser) {
+            m_palmEngine->onPenMotion(event->x, event->y, pressure, nowMs);
+        } else if (devClass == FluidCore::InputDeviceClass::Touch) {
+            uint32_t touchId = 1;
+            auto decision = m_palmEngine->onTouchMotion(touchId, event->x, event->y, nowMs);
+            if (decision != FluidCore::InputDecision::Accept) {
+                return TRUE;
+            }
+        }
+    }
+
     if (m_isPotentialExcerptDrag) {
         const double dist = std::hypot(event->x - m_pressScreenX, event->y - m_pressScreenY);
         if (dist >= 4.0) {
@@ -599,12 +722,6 @@ gboolean InkOverlay::onMotionNotify(GdkEventMotion* event) {
         return TRUE;
     }
 
-    gdouble pressure = 1.0;
-    if (!gdk_event_get_axis(reinterpret_cast<GdkEvent*>(event), GDK_AXIS_PRESSURE, &pressure) ||
-        pressure <= 0.0) {
-        pressure = 1.0;
-    }
-
     auto pushResult =
         m_stabilizer.pushPoint({xp, yp}, pressure, static_cast<std::uint64_t>(event->time));
 
@@ -621,6 +738,21 @@ gboolean InkOverlay::onMotionNotify(GdkEventMotion* event) {
 }
 
 gboolean InkOverlay::onButtonRelease(GdkEventButton* event) {
+    GdkDevice* dev = gdk_event_get_source_device(reinterpret_cast<GdkEvent*>(event));
+    if (!dev) {
+        dev = event->device;
+    }
+    FluidCore::InputDeviceClass devClass = classifyGdkDevice(dev);
+    uint64_t nowMs = static_cast<uint64_t>(g_get_real_time() / 1000);
+    if (m_palmEngine) {
+        if (devClass == FluidCore::InputDeviceClass::Pen ||
+            devClass == FluidCore::InputDeviceClass::Eraser) {
+            m_palmEngine->onPenUp(event->x, event->y, nowMs);
+        } else if (devClass == FluidCore::InputDeviceClass::Touch) {
+            m_palmEngine->onTouchUp(1, event->x, event->y, nowMs);
+        }
+    }
+
     if (m_isPotentialExcerptDrag) {
         m_isPotentialExcerptDrag = false;
         clearSelection();
@@ -700,15 +832,11 @@ gboolean InkOverlay::onButtonRelease(GdkEventButton* event) {
             m_activeStroke.points.clear();
             m_activeStroke.pressures.clear();
             m_activeStroke.points.reserve(samples.size());
-            if (samples.size() > 1) {
-                m_activeStroke.pressures.reserve(samples.size() - 1);
-            }
+            m_activeStroke.pressures.reserve(samples.size());
 
             for (std::size_t i = 0; i < samples.size(); ++i) {
                 m_activeStroke.points.push_back({samples[i].point.x, samples[i].point.y});
-                if (i + 1 < samples.size()) {
-                    m_activeStroke.pressures.push_back(samples[i].pressure);
-                }
+                m_activeStroke.pressures.push_back(samples[i].pressure);
             }
 
             m_pane.undoStack().pushAndExecute(std::make_unique<FluidCore::AddStrokeCommand>(
@@ -733,7 +861,8 @@ void InkOverlay::renderBezierSegment(cairo_t* cr, const StrokeStabilizer::Bezier
         const double t = static_cast<double>(k) / kSubdivisions;
         const auto currPt = evalCubicBezier(seg.p0, seg.p1, seg.p2, seg.p3, t);
         const double currP = (1.0 - t) * seg.pressure0 + t * seg.pressure1;
-        const double segWidth = std::max(0.5, baseWidth * 0.5 * (prevP + currP));
+        const double avgP = 0.5 * (prevP + currP);
+        const double segWidth = std::max(0.5, baseWidth * (0.25 + 0.75 * avgP));
 
         cairo_set_line_width(cr, segWidth);
         cairo_move_to(cr, prevPt.x, prevPt.y);
@@ -749,7 +878,8 @@ void InkOverlay::renderActiveLiveStroke(cairo_t* cr) const {
     if (m_activeBezierSegments.empty() && !m_hasWetSegment) {
         if (!m_stabilizer.rawSamples().empty()) {
             const auto& p0 = m_stabilizer.rawSamples().front().point;
-            const double radius = std::max(0.5, m_activeStroke.width * m_lastPressure * 0.5);
+            const double w0 = m_activeStroke.width * (0.25 + 0.75 * m_lastPressure);
+            const double radius = std::max(0.5, w0 * 0.5);
             cairo_arc(cr, p0.x, p0.y, radius, 0.0, 2.0 * M_PI);
             cairo_fill(cr);
         }
@@ -768,7 +898,8 @@ void InkOverlay::renderActiveLiveStroke(cairo_t* cr) const {
             lastEnd = m_stabilizer.rawSamples().front().point;
         }
 
-        const double segWidth = std::max(0.5, m_activeStroke.width * m_lastPressure);
+        const double segWidth =
+            std::max(0.5, m_activeStroke.width * (0.25 + 0.75 * m_lastPressure));
         cairo_set_line_width(cr, segWidth);
         cairo_move_to(cr, lastEnd.x, lastEnd.y);
         cairo_line_to(cr, m_wetTip.x, m_wetTip.y);
@@ -820,12 +951,17 @@ void InkOverlay::renderStroke(cairo_t* cr, const FluidCore::Stroke& stroke) cons
     }
 
     if (stroke.points.size() == 1) {
-        const double radius = std::max(0.5, stroke.width / 2.0);
+        const double p0 = stroke.pressures.empty() ? 1.0 : stroke.pressures[0];
+        const double w0 = stroke.width * (0.25 + 0.75 * p0);
+        const double radius = std::max(0.5, w0 / 2.0);
         cairo_arc(cr, stroke.points[0].x, stroke.points[0].y, radius, 0.0, 2.0 * M_PI);
         cairo_fill(cr);
     } else if (stroke.points.size() == 2) {
         const double p0 = stroke.pressures.empty() ? 1.0 : stroke.pressures[0];
-        cairo_set_line_width(cr, std::max(0.5, stroke.width * p0));
+        const double p1 = stroke.pressures.size() > 1 ? stroke.pressures[1] : p0;
+        const double avgP = 0.5 * (p0 + p1);
+        const double w = stroke.width * (0.25 + 0.75 * avgP);
+        cairo_set_line_width(cr, std::max(0.5, w));
         cairo_move_to(cr, stroke.points[0].x, stroke.points[0].y);
         cairo_line_to(cr, stroke.points[1].x, stroke.points[1].y);
         cairo_stroke(cr);
@@ -1171,6 +1307,74 @@ void InkOverlay::onDragEnd(GdkDragContext*) {
     m_isPotentialExcerptDrag = false;
     m_isSelectingCrop = false;
     m_isSelectingText = false;
+    if (m_widget && GTK_IS_WIDGET(m_widget)) {
+        gtk_widget_queue_draw(m_widget);
+    }
+}
+
+gboolean InkOverlay::onProximityIn(GdkEventProximity* event) {
+    if (m_palmEngine) {
+        GdkDevice* dev = gdk_event_get_source_device(reinterpret_cast<GdkEvent*>(event));
+        if (!dev) {
+            dev = event->device;
+        }
+        updatePalmProfile(m_palmEngine, dev);
+        uint64_t nowMs = static_cast<uint64_t>(g_get_real_time() / 1000);
+        m_palmEngine->onPenProximity(true, nowMs);
+    }
+    return FALSE;
+}
+
+gboolean InkOverlay::onProximityOut(GdkEventProximity* /*event*/) {
+    if (m_palmEngine) {
+        uint64_t nowMs = static_cast<uint64_t>(g_get_real_time() / 1000);
+        m_palmEngine->onPenProximity(false, nowMs);
+    }
+    return FALSE;
+}
+
+gboolean InkOverlay::onTouch(GdkEventTouch* event) {
+    if (!m_palmEngine) {
+        return FALSE;
+    }
+    uint32_t touchId = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(event->sequence));
+    if (touchId == 0) {
+        touchId = 1;
+    }
+    uint64_t nowMs = static_cast<uint64_t>(g_get_real_time() / 1000);
+
+    if (event->type == GDK_TOUCH_BEGIN) {
+        auto decision = m_palmEngine->onTouchDown(touchId, event->x, event->y, nowMs);
+        if (decision != FluidCore::InputDecision::Accept) {
+            return TRUE;
+        }
+    } else if (event->type == GDK_TOUCH_UPDATE) {
+        auto decision = m_palmEngine->onTouchMotion(touchId, event->x, event->y, nowMs);
+        if (decision != FluidCore::InputDecision::Accept) {
+            return TRUE;
+        }
+    } else if (event->type == GDK_TOUCH_END || event->type == GDK_TOUCH_CANCEL) {
+        m_palmEngine->onTouchUp(touchId, event->x, event->y, nowMs);
+    }
+    return FALSE;
+}
+
+void InkOverlay::cancelActiveTouches(const std::vector<uint32_t>& /*touchIds*/) {
+    if (m_isSelectingCrop) {
+        m_isSelectingCrop = false;
+        clearCropSelection();
+    }
+    if (m_isSelectingText) {
+        m_isSelectingText = false;
+        clearSelection();
+    }
+    m_isPotentialExcerptDrag = false;
+    if (m_isDrawing) {
+        m_isDrawing = false;
+        m_activeStroke = FluidCore::Stroke{};
+        m_activeBezierSegments.clear();
+        m_hasWetSegment = false;
+    }
     if (m_widget && GTK_IS_WIDGET(m_widget)) {
         gtk_widget_queue_draw(m_widget);
     }
