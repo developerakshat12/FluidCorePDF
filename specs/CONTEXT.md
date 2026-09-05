@@ -1,6 +1,6 @@
 # Specs Workspace
 
-Last updated: 2026-09-04
+Last updated: 2026-09-05
 
 ## What this is for
 How the system works: interaction design, architecture, execution flows, and codebase mapping. Read the file the routing table points to — these are long documents; do not load all of them.

@@ -1,9 +1,9 @@
 # Src Workspace (Code)
 
-Last updated: 2026-09-04
+Last updated: 2026-09-05
 
 ## What this is for
-The core codebase for the FluidCore platform. Milestones M0–M4 are complete, and M5 (Hardening) is currently in progress.
+The core codebase for the FluidCore platform. Milestones M0–M4 and M5.5 (Windows Port) are complete; M5 hardening is in progress with Windows native pre-release running.
 
 ```
 src/
@@ -28,6 +28,7 @@ src/
     ├── services/               # DocumentSearchService, ExcerptTileCache, PageTileCache, PdfDocumentService, PdfExportService, StrokeStabilizer, TextSelectionService
     ├── workspace/              # Infinite canvas: WorkspaceView, WorkspaceRenderer, WorkspaceInteraction, WorkspaceState
     ├── tests/                  # Viewport, tile cache, stabilizer, anchor, export, and interaction tests
+    ├── fluidcore.rc            # Windows PE application icon and version resource script
     ├── main.cpp                # GTK3 application entry point
     └── CMakeLists.txt
 ```

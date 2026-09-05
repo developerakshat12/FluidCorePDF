@@ -1,5 +1,5 @@
 # Master Reference Index
-Last updated: 2026-08-31
+Last updated: 2026-09-05
 
 One line per document. Read only what the CLAUDE.md routing table sends you to.
 
@@ -10,7 +10,7 @@ One line per document. Read only what the CLAUDE.md routing table sends you to.
 | TRD.md | Technical objectives, subsystem→mechanism mapping, engineering challenges |
 | ROADMAP.md | M0–M6 milestones, perf budgets (§5), risks |
 | MVP-SPEC.md | v1.0 contract: A1–E3 acceptance criteria + out-of-scope list |
-| roadmap.yaml | Machine-readable milestone status — source for current state |
+| roadmap.yaml | Machine-readable milestone status — source for current state (M0–M4 & M5.5 complete) |
 | backlog.yaml | Post-1.0 P1–P3 items |
 
 ## /specs

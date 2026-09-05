@@ -138,5 +138,17 @@ graph TD
 
 ---
 
+### 2.4 Packaging, Installer & Native Windows Platform (`ops/`, `resources/`, `src/app/fluidcore.rc`)
+
+| File / Path | Key Symbols & Classes | Primary Responsibilities & Connectivity |
+|---|---|---|
+| `src/app/fluidcore.rc` | `IDI_APPLICATION`, `VS_VERSION_INFO` | Windows PE resource script embedding application icon and executable file metadata into `fluidcore_app.exe`. |
+| `resources/icons/` | `fluidcore.ico`, `fluidcore.png`, `generate_icons.py` | Application iconography across 256x256, 128x128, 64x64, 48x48, 32x32, and 16x16 formats. |
+| `ops/installer/fluidcore.iss` | Inno Setup Script | Native 64-bit Windows installer configuration producing `FluidCore-Setup-x64.exe` with Start Menu, Desktop shortcuts, and `.ltproj` file associations. |
+| `ops/scripts/package-windows.ps1` | Packager script | Collects runtime DLLs, GLib schemas, Pixbuf loaders, icons, compiles Inno Setup installer, and archives portable zip distribution. |
+| `ops/scripts/build-win.ps1` | Build harness | MSYS2 UCRT64 toolchain driver for configure, build, CTest execution, scalability benchmark, and native execution. |
+
+---
+
 *This concludes the complete File & Function Architecture Mapping.*
 

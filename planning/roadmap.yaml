@@ -1,7 +1,7 @@
 # Machine-readable milestone state. Update alongside planning/ROADMAP.md.
 # status values: pending | in_progress | demo_gate_pending | complete
 project: fluidcore-platform
-updated: 2026-09-04
+updated: 2026-09-05
 
 milestones:
   - id: M0
@@ -78,12 +78,22 @@ milestones:
       - keyboard-only accessibility pass
       - i18n framework (EN, DE, ZH)
 
+  - id: M5.5
+    name: windows-native-port
+    window_weeks: [55, 58]
+    status: complete
+    items:
+      - MSYS2 UCRT64 toolchain provisioning and clean libfluidcore compilation # complete: GCC 16, CMake, Ninja, GTK3, Cairo, Poppler
+      - NTFS file lock resolution & SQLite WAL persistence validation          # complete: Gate 1 passed, all 36 CTests passing
+      - Win32 path normalization and native runtime verification               # complete: fluidcore_app.exe runs natively on Windows 11
+      - Windows CI workflow in GitHub Actions                                  # complete: windows (ucrt64) matrix job
+
   - id: M6
     name: v1.0-release
     window_weeks: [59, 62]
     status: in_progress
     items:
-      - Windows native Inno Setup installer (.exe), standalone portable zip, .ltproj file association, and GitHub release automation
+      - Windows native Inno Setup installer (.exe), standalone portable zip, .ltproj file association, and GitHub release automation # complete: Inno Setup installer, standalone zip, .ltproj association, release CI (TASK-6.1)
       - Flatpak/AppImage/deb packaging
       - docs site + persona screencasts
       - offline security audit

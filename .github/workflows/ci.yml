@@ -112,6 +112,7 @@ jobs:
             mingw-w64-ucrt-x86_64-poppler
             mingw-w64-ucrt-x86_64-sqlite3
             mingw-w64-ucrt-x86_64-zlib
+            mingw-w64-ucrt-x86_64-binutils
       - name: Configure
         shell: msys2 {0}
         run: |

@@ -3,7 +3,7 @@
 ; uninstaller, and .ltproj file associations.
 
 #ifndef MyAppVersion
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "0.9.0"
 #endif
 
 #define MyAppName "FluidCore"

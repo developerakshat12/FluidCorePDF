@@ -13,17 +13,52 @@ param (
     [string]$OutputDir = "build-win\dist\fluidcore-windows-x64",
     [string]$ZipFile = "build-win\dist\fluidcore-windows-x64.zip",
     [switch]$BuildInstaller = $true,
-    [string]$AppVersion = "1.0.0"
+    [string]$AppVersion = "0.9.0"
 )
 
 $ErrorActionPreference = "Stop"
 
-$MsysRoot = "C:\msys64"
+$MsysCandidates = @(
+    $env:MSYS2_ROOT,
+    "C:\msys64",
+    "D:\msys64",
+    "C:\tools\msys64"
+)
+$MsysRoot = $null
+foreach ($Cand in $MsysCandidates) {
+    if ($Cand -and (Test-Path "$Cand\ucrt64\bin")) {
+        $MsysRoot = $Cand
+        break
+    }
+}
+if (-not $MsysRoot) {
+    $MsysRoot = "C:\msys64"
+}
 $UcrtBin = "$MsysRoot\ucrt64\bin"
-$ObjDump = "$UcrtBin\objdump.exe"
 
-if (-not (Test-Path $ObjDump)) {
-    Write-Error "objdump.exe not found at $ObjDump. MSYS2 UCRT64 is required."
+$ObjDump = $null
+if (Test-Path "$UcrtBin\objdump.exe") {
+    $ObjDump = "$UcrtBin\objdump.exe"
+} else {
+    $Cmd = Get-Command objdump.exe -ErrorAction SilentlyContinue
+    if ($Cmd) {
+        $ObjDump = $Cmd.Source
+    }
+}
+
+if (-not $ObjDump) {
+    $Pacman = "$MsysRoot\usr\bin\pacman.exe"
+    if (Test-Path $Pacman) {
+        Write-Host "[FluidCore Packager] objdump.exe not found. Installing mingw-w64-ucrt-x86_64-binutils via pacman..." -ForegroundColor Yellow
+        & $Pacman -S --noconfirm mingw-w64-ucrt-x86_64-binutils
+        if (Test-Path "$UcrtBin\objdump.exe") {
+            $ObjDump = "$UcrtBin\objdump.exe"
+        }
+    }
+}
+
+if (-not $ObjDump) {
+    Write-Error "objdump.exe not found at $UcrtBin\objdump.exe. MSYS2 UCRT64 binutils is required."
 }
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path

@@ -1,18 +1,17 @@
 # Ops Workspace
 
-Last updated: 2026-08-31
+Last updated: 2026-09-05
 
 ## What this is for
 Build, CI, benchmarks, packaging, release. Everything that keeps the project shippable and its perf budgets measurable.
 
-## Planned layout (fills in during M0)
+## Current layout
 ```
 ops/
 ├── CONTEXT.md            # this file
-├── ci-pipeline.md        # CI design: build matrix, sanitizers, format check, syscall audit
-├── benchmarks/           # bench-<area>.md artifacts attached to perf-gated PRs
-├── packaging/            # Flatpak / AppImage / .deb manifests; Windows MSYS2 notes
-└── scripts/              # local dev helpers
+├── benchmarks/           # bench-scalability.md (50-PDF 5000-page cold start & memory budget)
+├── installer/            # fluidcore.iss (Inno Setup 64-bit native installer script)
+└── scripts/              # build-win.ps1, package-windows.ps1, check_budgets.py, check_invariants.py
 ```
 
 ## Standing gates (from ROADMAP §5 — these are release blockers)

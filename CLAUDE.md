@@ -1,6 +1,6 @@
 # FluidCore Platform
 
-Open-source, offline-first alternative to LiquidText: fluid PDF reader + infinite synthesis workspace. Decoupled C++20 engine (`libfluidcore`) + GTK 3 / Cairo / Poppler desktop frontend. Pre-alpha (M0–M4 complete: links, stacks, search & export; M5 in progress: hardening).
+Open-source, offline-first alternative to LiquidText: fluid PDF reader + infinite synthesis workspace. Decoupled C++20 engine (`libfluidcore`) + GTK 3 / Cairo / Poppler desktop frontend. Pre-release (M0–M4 and M5.5 Windows port complete; M5 hardening in progress; Windows native installer and portable release live).
 
 ## Folder Structure
 - `/planning` — PRD, TRD, ROADMAP, MVP scope, ADRs (why & what)
@@ -42,12 +42,12 @@ Open-source, offline-first alternative to LiquidText: fluid PDF reader + infinit
 - **Native Windows Build & Run (MSYS2 UCRT64)**:
   FluidCore runs natively on Windows 11. Use `ops/scripts/build-win.ps1` or `ops/scripts/package-windows.ps1`:
   ```powershell
-  # Build and run all 34 CTest suites
+  # Build and run all 36 CTest suites
   powershell -ExecutionPolicy Bypass -File ops/scripts/build-win.ps1 -Test
   # Launch app natively with document
   powershell -ExecutionPolicy Bypass -File ops/scripts/build-win.ps1 -Run -Document "D:\path\to\doc.pdf"
-  # Package standalone zip distribution (bundled DLLs, schemas, icons)
-  powershell -ExecutionPolicy Bypass -File ops/scripts/package-windows.ps1
+  # Package standalone zip distribution and Inno Setup installer
+  powershell -ExecutionPolicy Bypass -File ops/scripts/package-windows.ps1 -BuildInstaller
   ```
 - **Running via WSL from PowerShell**: Avoid wrapping commands with nested quotes in `wsl bash -c "..."` because PowerShell strips inner quotes around paths with spaces (e.g., `study material`). Instead, invoke directly:
   ```powershell

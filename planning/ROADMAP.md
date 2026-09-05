@@ -38,8 +38,8 @@ gantt
 | **M3** | Workspace | Infinite canvas + live excerpts | Drag excerpt from pane to canvas with bi-directional anchor |
 | **M4** | Synthesis | Ink links, stacks, FTS5 search | Full "compare two depositions end-to-end" persona journey works |
 | **M5** | Hardening | `.ltproj` WAL durability, perf, i18n | Crash-safe recovery passes; memory budget met on 50-doc project |
-| **M5.5** | Windows Port | MSYS2 UCRT64, Win32 input, NTFS WAL | Native Windows 11 build; 34/34 CTests pass; portable clean-PC zip bundle |
-| **M6** | v1.0 | Packaging, docs, community launch | Signed packages for Linux + Windows Beta release |
+| **M5.5** | Windows Port | MSYS2 UCRT64, Win32 input, NTFS WAL | Native Windows 11 build; 36/36 CTests pass; portable clean-PC zip bundle & installer |
+| **M6** | v1.0 | Packaging, docs, community launch | Signed packages for Linux + Windows Pre-release live |
 
 ## 3. Milestone Detail
 

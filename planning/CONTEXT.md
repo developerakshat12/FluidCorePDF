@@ -1,6 +1,6 @@
 # Planning Workspace
 
-Last updated: 2026-09-04
+Last updated: 2026-09-05
 
 ## What this is for
 Product-level truth: what we build, for whom, in what order, and what "done" means. Strategy and scope live here; implementation detail lives in `/specs`.
