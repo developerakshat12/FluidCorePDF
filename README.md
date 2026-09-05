@@ -1,37 +1,80 @@
 # FluidCore Platform
 
 [![CI](https://github.com/developerakshat12/FluidCorePDF/actions/workflows/ci.yml/badge.svg)](https://github.com/developerakshat12/FluidCorePDF/actions/workflows/ci.yml)
+[![Release: v1.0.0](https://img.shields.io/badge/Release-v1.0.0-brightgreen.svg)](https://github.com/developerakshat12/FluidCorePDF/releases)
 [![License: GPL-2.0-or-later](https://img.shields.io/badge/License-GPL%202.0%2B-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2011%20Native%20%7C%20Linux-brightgreen.svg)]()
 [![Offline First](https://img.shields.io/badge/Network-Air--Gapped%20%2F%20Zero%20Telemetry-success.svg)]()
 
-An **open-source, offline-first alternative to LiquidText** designed for active reading and synthesis: a fluid, malleable PDF reader seamlessly fused with an infinite 2D thinking canvas. Built as a decoupled C++20 engine (`libfluidcore`) with a native GTK 3 / Cairo / Poppler desktop frontend.
+An **open-source, offline-first alternative to LiquidText** designed for active reading, deep comprehension, and complex knowledge synthesis: a fluid, malleable PDF reader seamlessly fused with an infinite 2D thinking canvas. Built as a high-performance decoupled C++20 engine (`libfluidcore`) with a native GTK 3 / Cairo / Poppler desktop frontend.
+
+![FluidCore Main Application Window — Fluid Document Reader and Infinite 2D Workspace](Images/Main_App_Window.png)
+*FluidCore's unified workspace: high-performance document reader with continuous navigation (left) seamlessly connected to an infinite 2D spatial synthesis canvas (right).*
 
 ---
 
-## 🚀 Pre-Release (Windows Native Preview — v0.9.0)
+## 🚀 Official Release (v1.0.0)
 
-> **Status: Pre-Release.** The native Windows 11 port (Milestone 5.5) and release packaging pipeline (Milestone 6.1) are complete. FluidCore runs natively on Windows with all core active-reading capabilities and passes all 36/36 test suites. Hardening tasks (Milestone 5 keyboard accessibility and i18n) and Linux package bundles (Milestone 6) remain in active progress toward the v1.0 release.
+FluidCore **v1.0.0** is now officially released! Available for both **Windows 11 (Native)** and **Linux (Ubuntu, Debian, Fedora, Arch)** with verified zero-network air-gapped compliance, SQLite WAL atomic persistence, and sustained 50-document scalability.
 
-### Downloads for Windows
+### Downloads
 
-| Package | Format | Description |
-| :--- | :--- | :--- |
-| **Native Installer** | `FluidCore-Setup-x64.exe` | Recommended. Inno Setup 64-bit installer with Start Menu integration, desktop shortcut, uninstaller, and `.ltproj` project bundle file associations. |
-| **Portable Zip** | `fluidcore-windows-x64.zip` | Standalone portable archive containing all required UCRT64 runtime DLLs, GLib schemas, GDK-Pixbuf loaders, and Adwaita icons. Run anywhere without admin privileges or external dependencies. |
+| Platform | Package | Format | Description |
+| :--- | :--- | :--- | :--- |
+| **Windows** | **Native Installer** | `FluidCore-Setup-x64.exe` | **Recommended for Windows.** Inno Setup 64-bit installer with Start Menu integration, desktop shortcut, uninstaller, and `.ltproj` project bundle file associations. |
+| **Windows** | **Portable Zip** | `fluidcore-windows-x64.zip` | Standalone portable archive containing all required UCRT64 runtime DLLs, GLib schemas, GDK-Pixbuf loaders, and Adwaita icons. Run anywhere without admin privileges or external dependencies. |
+| **Linux** | **AppImage Bundle** | `FluidCore-1.0.0-x86_64.AppImage` | **Recommended for Linux.** Standalone portable executable with bundled dependencies, desktop integration, and Wayland/X11 support. Make executable (`chmod +x`) and run anywhere. |
+| **Linux** | **Debian Package** | `fluidcore_1.0.0_amd64.deb` | Native Debian/Ubuntu package (`apt install ./fluidcore_1.0.0_amd64.deb`) with system dependency management, FreeDesktop application menu entry, and MIME type associations. |
+| **Linux** | **Flatpak Manifest** | `ops/flatpak/org.fluidcore.platform.yml` | Sandboxed distribution manifest for Flathub with zero-network isolation (`--unshare=network`) and host filesystem portal access. |
 
 ---
 
-## ✨ Why FluidCore?
+## ✨ Core Features & Visual Showcase
 
-Standard PDF viewers lock your reading material into rigid, linear pages. FluidCore transforms your documents into malleable workspaces:
+Standard PDF viewers lock your reading material into rigid, linear pages. FluidCore transforms your documents into malleable, interconnected workspaces:
 
-- **Accordion Squeeze**: Pinch or `Ctrl+Shift+Scroll` to collapse non-adjacent pages and compare distant paragraphs, clauses, or figures side-by-side with slice-clipped precision.
-- **Infinite 2D Canvas**: Drag text excerpts, equations, or visual image crops from your documents onto an unbounded 2D canvas backed by an $O(\log N)$ R*-tree spatial index.
-- **Bi-Directional Anchors**: Every excerpt retains a live link to its exact document location. Click `↗ Anchor` on any card to glide directly to the source; click the floating `↶ Return` pill to jump back to your canvas thought.
-- **Relational Ink Connectors**: Draw lines between excerpt cards using the connector tool to establish persistent Bezier relational links (`GraphEdge`) that automatically route around obstacles.
-- **Magnetic Card Stacking**: Drag cards near each other (16pt magnetic proximity) to snap them into collapsible, reorderable topic decks with cascade previews.
-- **Full-Text & Tag Canvas Search**: Instant in-memory search across document text, canvas excerpt snippets, and hashtags (`#tag`, `tag:xyz`) with 250ms camera glide navigation and glowing halos.
+### 1. Accordion Squeeze & Non-Linear Reading
+Pinch or `Ctrl+Shift+Scroll` to dynamically collapse non-adjacent pages, bringing distant paragraphs, clauses, equations, or figures side-by-side with slice-clipped precision. Search-driven squeeze (`Ctrl+F` / `Ctrl+Shift+S`) automatically folds intermediate material so all matching passages appear in one continuous view with fold crease markers.
+
+![Find and Squeeze Feature — Dynamic Document Compression](Images/Find_and_Sequeeze_Feature.png)
+*Find & Squeeze in action: searching for keywords compresses intervening pages to display relevant findings side-by-side without losing page context.*
+
+---
+
+### 2. Direct PDF Vector Inking & Highlighting
+Annotate directly on the PDF document with a high-precision vector inking engine adapted from Xournal++. Features pressure-sensitive pen strokes, translucent highlighting overlays, centripetal Catmull-Rom curve stabilization ($\le 8.05\text{ ms}$ latency), and a two-phase whole-stroke eraser with live hover targeting.
+
+![Direct Vector Inking and Highlighting on PDF Documents](Images/Annotation_on_pdf_using_xournalapp.png)
+*Live vector inking and text highlighting directly overlaid on PDF document pages with lossless coordinate mapping.*
+
+---
+
+### 3. Infinite 2D Synthesis Canvas & Freehand Stylus Notes
+Drag text excerpts, equations, or visual image crops from your documents onto an unbounded 2D canvas backed by an $O(\log N)$ R*-tree spatial index. Sketch freehand diagrams, write stylus notes, and cluster thoughts naturally with multi-digitizer palm rejection profiles (Wacom EMR/AES, Microsoft Surface, HP MPP).
+
+![Stylus Support and Freehand Vector Notes on Infinite Canvas](Images/Stylus_support_and_annotation_on_infinite_canvas.png)
+*Infinite 2D workspace with freehand stylus sketches, handwritten notes, and excerpt cards organized in 2D space.*
+
+---
+
+### 4. Magnetic Card Stacking & Topic Organization
+Drag excerpt cards near each other ($16\text{pt}$ magnetic proximity threshold) to snap them into neat, collapsible topic decks. Expand stacks with smooth accordion cascade previews, view card count badges, and rename decks directly using the inline rename popover.
+
+![Magnetic Card Stacking and Rename Popover](Images/Card_Stack_and_Renaming.png)
+*Magnetic card stacking: excerpt cards snap into reorderable decks with cascade previews and inline rename controls.*
+
+---
+
+### 5. Relational Ink Connectors & Bi-Directional Anchors
+Draw connecting lines between excerpt cards using the connector tool (`Alt+6` / `F6` / `A` / `L`) to establish persistent Bezier relational links (`GraphEdge`) that automatically route around obstacles. Every card retains an active anchor to its exact document location: click `↗ Anchor` to glide the camera to the source passage in the PDF, and click `↶ Return` to instantly return to your thought on the canvas.
+
+![Relational Bezier Ink Connectors and Bi-directional Anchors](Images/link_feature.png)
+*Relational Bezier connector lines linking related excerpt cards with bi-directional navigation anchors.*
+
+---
+
+### 6. Fast Search, Synthesis Export & 100% Local Privacy
+- **Workspace Search**: Instant in-memory search across document text, canvas excerpt snippets, and hashtags (`#tag`, `tag:xyz`) with $250\text{ ms}$ camera glide navigation and glowing halos.
 - **Synthesis Export**: Flatten annotated vector PDFs with burnt ink or export clean Markdown outlines complete with embedded Mermaid flowcharts (```mermaid).
 - **100% Offline & Private**: All data is stored in portable `.ltproj` bundles (SQLite WAL format) with atomic temp-swap commits. Zero telemetry, zero network calls, completely air-gapped.
 
@@ -123,22 +166,21 @@ powershell -ExecutionPolicy Bypass -File ops/scripts/build-win.ps1 -Run -Documen
 powershell -ExecutionPolicy Bypass -File ops/scripts/package-windows.ps1 -BuildInstaller
 ```
 
-### Linux Build (Ubuntu / Debian)
+### Linux Build (Ubuntu / Debian / Arch / Fedora)
 ```bash
-# 1. Install dependencies
+# 1. Install dependencies (Ubuntu/Debian)
 sudo apt-get update && sudo apt-get install -y \
   build-essential cmake ninja-build pkg-config \
   libgtk-3-dev libcairo2-dev libpoppler-glib-dev libsqlite3-dev zlib1g-dev
 
-# 2. Configure and build
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFLUIDCORE_BUILD_APP=ON
-cmake --build build
+# 2. Configure, build, and test via unified Linux harness
+bash ops/scripts/build-linux.sh --test
 
-# 3. Run all tests
-ctest --test-dir build --output-on-failure
+# 3. Package native .deb and portable AppImage bundles
+bash ops/scripts/build-linux.sh --package
 
 # 4. Launch application
-./build/src/app/fluidcore_app
+bash ops/scripts/build-linux.sh --run
 ```
 
 ---

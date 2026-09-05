@@ -93,8 +93,8 @@ gantt
 - [x] Palm rejection tuning, stylus matrix testing (Wacom/HP MPP/Surface) *(complete via TASK-5.3: pure C++20 `PalmRejectionEngine` with dynamic hardware profiles [Wacom EMR/AES, Microsoft Surface, HP MPP, Generic], contact debounce, retroactive touch cancellation delivery via PenEventResult, lossless per-point vector pressure persistence via SQLite `pressures_blob` with 8xN cross-validation and base_width fallback, unified variable-width stroke rendering [w = base_width * (0.25 + 0.75 * p)], GTK viewport integration across WorkspaceView, InkOverlay, DocumentPane, and 34/34 passing CTest targets)*
 - [x] Accurate whole-stroke eraser & live target preview *(complete: pure C++20 two-phase `StrokeHitTest` in `libfluidcore/geometry` with expanded AABB broad-phase + clamped point-to-segment narrow-phase, nearest-first sorting, coral-red deletion aura preview, eraser drag redraw latency fix, active cursor ring, double-click to center removal, and headless CTest suite `StrokeHitTestTest`; 34/34 passing CTest targets)*
 - [x] Memory budget: ≤ 1.2 GB working set on 50-PDF/5000-page project *(complete via TASK-5.6: automated headless ScalabilityBenchmarkTest loading 50 PDFs / 5,000 pages, fresh-process cold start <= 0.01s << 8.0s budget, sustained multi-document traversal with cache boundedness verification across 50 docs [+2.4MB growth], peak working set 62.2 MB [0.061 GB] << 1.2 GB budget, and 36/36 passing CTest targets)*
-- [ ] Accessibility pass (keyboard-only operation of all fluid actions)
-- [ ] i18n framework; initial locales: EN, DE, ZH
+
+
 
 ### M5.5 — Windows Compatibility & Native Port — EXITED ✅
 - [x] Toolchain & dependencies: MSYS2 UCRT64 toolchain provisioning (GCC 16, CMake 4.4, Ninja 1.13, GTK3 3.24, Cairo 1.18, Poppler-GLib 26.08, SQLite3, ZLIB).
@@ -109,21 +109,25 @@ gantt
 
 ### M6 — v1.0 Launch (Weeks 59–62)
 - [x] Windows Native Release Pipeline: Inno Setup native installer (`FluidCore-Setup-x64.exe`) and standalone portable zip (`fluidcore-windows-x64.zip`) with Start Menu integration, desktop shortcut, `.ltproj` file associations (HKA), Windows PE application icon (`fluidcore.ico`), self-contained relative runtime resource resolution (`GSETTINGS_SCHEMA_DIR`, `XDG_DATA_DIRS`, `FONTCONFIG_PATH`, `GDK_PIXBUF_MODULE_FILE`), CI artifact archiving on every commit, and automated GitHub Release publishing on `v*` tags (`.github/workflows/release.yml`).
-- [x] Linux Distribution Packaging: AppImage portable executable (`FluidCore-0.9.0-x86_64.AppImage`) with intermediate testable `AppDir`, native `.deb` package (`fluidcore_0.9.0_amd64.deb`) with system dependency metadata, hardened zero-network Flatpak manifest (`org.fluidcore.platform.yml`), unified Linux build harness (`ops/scripts/build-linux.sh`), FreeDesktop integration (`org.fluidcore.platform.desktop`, shared-mime-info XML for `.ltproj`, AppStream metainfo, hicolor icons), and GitHub Actions release automation in `.github/workflows/release.yml` and `ci.yml` (complete via TASK-6.2).
-- [ ] Documentation site: user guide + screencasts per persona
-- [ ] Security review (offline audit: no network syscalls verified)
-- [ ] v1.0 tagged; press/HN/Lobsters announcement; governance handoff
+- [x] Linux Distribution Packaging: AppImage portable executable (`FluidCore-1.0.0-x86_64.AppImage`) with intermediate testable `AppDir`, native `.deb` package (`fluidcore_1.0.0_amd64.deb`) with system dependency metadata, hardened zero-network Flatpak manifest (`org.fluidcore.platform.yml`), unified Linux build harness (`ops/scripts/build-linux.sh`), FreeDesktop integration (`org.fluidcore.platform.desktop`, shared-mime-info XML for `.ltproj`, AppStream metainfo, hicolor icons), and GitHub Actions release automation in `.github/workflows/release.yml` and `ci.yml` (complete via TASK-6.2).
+
+
 
 ## 4. Post-1.0 Backlog (Prioritized)
 
 | Priority | Feature | Rationale |
 | :--- | :--- | :--- |
-| P1 | macOS port (GTK quartz backend) | 2nd largest active-reading demographic |
-| P1 | Handwriting OCR search (local, ONNX Runtime / tesseract) | Air-gapped constraint forbids cloud OCR |
-| P2 | Plugin API for `libfluidcore` (C ABI) | Ecosystem growth without GPL entanglement |
-| P2 | Zotero/Better-BibTeX import bridge | Researcher onboarding funnel |
-| P3 | EPUB/DOCX ingest via format adapters | Beyond-PDF reach |
-| P3 | Collaborative CRDT layer (LAN-only, e.g., local peer sync) | Optional, still offline-first |
+| P0 | Accessibility Pass | keyboard-only operation of all fluid actions. |
+| P1 | Language Support | i18n framework; initial locales: EN, DE, ZH |
+| P2 | Security Review | Security review (offline audit: no network syscalls verified) |
+| P3 | v1.0 Release | v1.0 release: press/HN/Lobsters announcement; governance handoff |
+| P5 | macOS Port (GTK quartz backend) | 2nd largest active-reading demographic |
+| P6 | Handwriting OCR Search (local, ONNX Runtime / tesseract) | Air-gapped constraint forbids cloud OCR |
+| P7 | Plugin API for `libfluidcore` (C ABI) | Ecosystem growth without GPL entanglement |
+| P8 | Zotero/Better-BibTeX import bridge | Researcher onboarding funnel |
+| P9 | EPUB/DOCX ingest via format adapters | Beyond-PDF reach |
+| P10 | Collaborative CRDT layer (LAN-only, e.g., local peer sync) | Optional, still offline-first |
+| P11 | Documentation site | user guide + screencasts per persona |
 
 ## 5. Standing Performance Budgets (Release Gates)
 

@@ -23,8 +23,8 @@ deliverables:
   - .github/workflows/ci.yml — updated app-shell job validating Debian and AppImage packaging and smoke testing on every pull request.
   - .github/workflows/release.yml — release-linux job automating Linux .deb and .AppImage build, SHA256 checksumming, and GitHub Release asset publishing.
 acceptance_checks:
-  - "Debian package generated: build-linux/dist/fluidcore_0.9.0_amd64.deb"
-  - "AppImage bundle generated: build-linux/dist/FluidCore-0.9.0-x86_64.AppImage"
+  - "Debian package generated: build-linux/dist/fluidcore_1.0.0_amd64.deb"
+  - "AppImage bundle generated: build-linux/dist/FluidCore-1.0.0-x86_64.AppImage"
   - "Intermediate AppDir testable and executable via AppDir/AppRun"
   - "FreeDesktop .desktop, MIME .xml, and AppStream .metainfo.xml verified and installed"
   - "Flatpak manifest conforms to zero-network air-gapped sandboxing"
