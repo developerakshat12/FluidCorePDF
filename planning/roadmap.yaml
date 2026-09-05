@@ -94,7 +94,7 @@ milestones:
     status: in_progress
     items:
       - Windows native Inno Setup installer (.exe), standalone portable zip, .ltproj file association, and GitHub release automation # complete: Inno Setup installer, standalone zip, .ltproj association, release CI (TASK-6.1)
-      - Flatpak/AppImage/deb packaging
+      - Linux standalone packaging: AppImage portable bundle, native .deb, and Flatpak manifest (TASK-6.2 - NEXT)
       - docs site + persona screencasts
       - offline security audit
       - v1.0 tag + launch
