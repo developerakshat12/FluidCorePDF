@@ -1,6 +1,6 @@
-# The Real Thing: Architectural Blueprint for True LiquidText Engines in Xournal++
+# The Real Thing: Architectural Blueprint for FluidCore Engines in Xournal++
 
-This document presents the complete, uncompromised engineering blueprint to build the **true LiquidText experience** within Xournal++. It details the **Decoupled C++20 Core Engine (`libfluidcore`)** and its integration into Xournal++'s GTK 3 / Cairo frontend: a **genuine infinite 2D workspace canvas**, **spatial movable excerpt cards with magnetic snapping**, **dynamic accordion squeeze with procedural crease rendering**, **elastic relational vector ink links**, and a **multi-document SQLite WAL project container (`.ltproj`)**.
+This document presents the complete, uncompromised engineering blueprint to build the **true FluidCore experience** within Xournal++. It details the **Decoupled C++20 Core Engine (`libfluidcore`)** and its integration into Xournal++'s GTK 3 / Cairo frontend: a **genuine infinite 2D workspace canvas**, **spatial movable excerpt cards with magnetic snapping**, **dynamic accordion squeeze with procedural crease rendering**, **elastic relational vector ink links**, and a **multi-document SQLite WAL project container (`.ltproj`)**.
 
 ---
 
@@ -133,7 +133,7 @@ classDiagram
 
 ## 2. True Spatial Excerpt Cards, Magnetic Snapping & Hierarchical Stacking
 
-In LiquidText, dragging content from the PDF onto the canvas produces a spatial, interactive card. Users can freely position cards, resize them, snap them magnetically into ordered columns, stack them into collapsible accordion groups (validated up to 5 levels deep), and tap them to trigger deep back-navigation with return pills.
+In FluidCore, dragging content from the PDF onto the canvas produces a spatial, interactive card. Users can freely position cards, resize them, snap them magnetically into ordered columns, stack them into collapsible accordion groups (validated up to 5 levels deep), and tap them to trigger deep back-navigation with return pills.
 
 ```mermaid
 sequenceDiagram
@@ -307,7 +307,7 @@ When Card $A$ moves:
 
 ## 5. Multi-Document Project Container (`.ltproj`)
 
-LiquidText allows importing 50+ documents into one project. Excerpts from Document $A$ and Document $B$ sit side-by-side on the same infinite canvas with ink links between them.
+FluidCore allows importing 50+ documents into one project. Excerpts from Document $A$ and Document $B$ sit side-by-side on the same infinite canvas with ink links between them.
 
 ### 5.1 Container File Structure (`.ltproj` Directory Bundle / Archive)
 ```
@@ -340,4 +340,4 @@ LiquidText allows importing 50+ documents into one project. Excerpts from Docume
 
 ---
 
-*This concludes the complete architectural blueprint for the real LiquidText engine.*
+*This concludes the complete architectural blueprint for the FluidCore engine.*

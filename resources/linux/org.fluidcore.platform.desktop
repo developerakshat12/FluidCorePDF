@@ -10,7 +10,7 @@ Categories=Office;Viewer;
 MimeType=application/pdf;application/x-fluidcore-project;
 StartupNotify=true
 StartupWMClass=fluidcore_app
-Keywords=PDF;reader;fluid;squeeze;annotations;workspace;liquidtext;notes;synthesis;
+Keywords=PDF;reader;fluid;squeeze;annotations;workspace;fluidcore;notes;synthesis;
 Actions=NewWindow;
 
 [Desktop Action NewWindow]

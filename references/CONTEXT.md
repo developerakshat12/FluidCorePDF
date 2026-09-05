@@ -15,4 +15,4 @@ Background material: the ICM method itself, upstream pointers, research links. R
 ## External pointers
 - ICM paper: `../ICM/2603.16021v2 (1).pdf` (PDF; not machine-readable by all models — use icm-method.md summary instead)
 - Xournal++ source: `../xournalpp/`
-- LiquidText reference behavior is captured in `/specs/features.md`; do not need the app itself
+- Reference synthesis behavior is captured in `/specs/features.md`; do not need external apps

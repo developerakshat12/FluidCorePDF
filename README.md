@@ -6,7 +6,7 @@
 [![Platform](https://img.shields.io/badge/Platform-Windows%2011%20Native%20%7C%20Linux-brightgreen.svg)]()
 [![Offline First](https://img.shields.io/badge/Network-Air--Gapped%20%2F%20Zero%20Telemetry-success.svg)]()
 
-An **open-source, offline-first alternative to LiquidText** designed for active reading, deep comprehension, and complex knowledge synthesis: a fluid, malleable PDF reader seamlessly fused with an infinite 2D thinking canvas. Built as a high-performance decoupled C++20 engine (`libfluidcore`) with a native GTK 3 / Cairo / Poppler desktop frontend.
+An **open-source, offline-first fluid document synthesis platform** designed for active reading, deep comprehension, and complex knowledge synthesis: a fluid, malleable PDF reader seamlessly fused with an infinite 2D thinking canvas. Built as a high-performance decoupled C++20 engine (`libfluidcore`) with a native GTK 3 / Cairo / Poppler desktop frontend.
 
 ![FluidCore Main Application Window — Fluid Document Reader and Infinite 2D Workspace](Images/Main_App_Window.png)
 *FluidCore's unified workspace: high-performance document reader with continuous navigation (left) seamlessly connected to an infinite 2D spatial synthesis canvas (right).*

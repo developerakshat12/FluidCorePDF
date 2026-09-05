@@ -8,12 +8,12 @@ How the system works: interaction design, architecture, execution flows, and cod
 ## Files
 | File | Contents | Load when |
 |------|----------|-----------|
-| `features.md` | Full LiquidText-parity feature & interaction spec (squeeze, excerpts, links, stacks) | Designing/verifying any user-facing behavior |
+| `features.md` | Full fluid synthesis feature & interaction spec (squeeze, excerpts, links, stacks) | Designing/verifying any user-facing behavior |
 | `system-architecture.md` | Deep dive: GTK/Cairo/Poppler/SQLite + libfluidcore layers, MVC split | Architecture questions, module boundaries |
 | `appflow.md` | User journey + system execution state machines | Implementing flows, debugging lifecycle issues |
 | `integration.md` | Xournal++ integration plan | Touching upstream files, rebasing strategy |
 | `file-function-map.md` | Source file/class responsibility map incl. libfluidcore layout | Locating where code belongs |
-| `new-features-backlog.md` | Novel features beyond LiquidText parity | Idea evaluation only — nothing here blocks v1.0 |
+| `new-features-backlog.md` | Novel features beyond core specification | Idea evaluation only — nothing here blocks v1.0 |
 
 ## Process
 1. Feature work starts from `features.md` section reference (cite it in PRs)

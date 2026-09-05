@@ -1,4 +1,4 @@
-# Grounded Integration Plan: LiquidText Features for Xournal++ via libfluidcore
+# Grounded Integration Plan: Fluid Synthesis Features for Xournal++ via libfluidcore
 
 This document details the concrete integration points in the Xournal++ codebase (`src/core/`) to connect the **Decoupled C++ Core Engine (`libfluidcore`)** to Xournal++'s **GTK 3 / Cairo frontend**. These hooks enable **dual-viewport split rendering**, **cross-pane GTK3 drag-and-drop excerpt extraction**, **persistent bi-directional breadcrumb navigation with floating return pills**, and **multi-hit search context aggregation**.
 
@@ -6,7 +6,7 @@ This document details the concrete integration points in the Xournal++ codebase 
 
 ## 1. Dual-Viewport Split-Screen Shell (`GtkPaned` Container in `MainWindow`)
 
-* **LiquidText Behavior Replicated**: Running the document pane and an independent spatial workspace pane side-by-side with a fluid, draggable splitter and full-screen toggle presets.
+* **Target Behavior Implemented**: Running the document pane and an independent spatial workspace pane side-by-side with a fluid, draggable splitter and full-screen toggle presets.
 * **Exact Xournal++ Entry Points**:
   * `src/core/gui/MainWindow.h` / `MainWindow.cpp`: `MainWindow::initXournalWidget()`, `MainWindow::winXournal`, `MainWindow::xournal`.
   * `src/core/gui/Layout.h` / `Layout.cpp`: Layout adjustment and scroll synchronization.
@@ -59,7 +59,7 @@ This document details the concrete integration points in the Xournal++ codebase 
 
 ## 2. Cross-Pane Spatial Drag-and-Drop Excerpt Initiator (GTK3 DND)
 
-* **LiquidText Behavior Replicated**: Selecting text or lassoing a region in the PDF triggers a draggable ghost that can be dragged across the pane boundary and dropped at an arbitrary $(X, Y)$ coordinate onto the parallel canvas.
+* **Target Behavior Implemented**: Selecting text or lassoing a region in the PDF triggers a draggable ghost that can be dragged across the pane boundary and dropped at an arbitrary $(X, Y)$ coordinate onto the parallel canvas.
 * **Exact Xournal++ Entry Points**:
   * `src/core/gui/PdfFloatingToolbox.h` / `PdfFloatingToolbox.cpp`: `PdfFloatingToolbox::PdfFloatingToolbox`, `newSelection()`, `getSelection()`.
   * `src/core/control/tools/PdfElemSelection.h` / `PdfElemSelection.cpp`: `PdfElemSelection::getSelectedText()`, `PdfElemSelection::getSelectedTextRects()`.
@@ -137,7 +137,7 @@ This document details the concrete integration points in the Xournal++ codebase 
 
 ## 3. Persistent Bi-Directional Link Navigation with Floating Return Pills
 
-* **LiquidText Behavior Replicated**: Tapping an excerpt's source anchor scrolls the document smoothly to the target page with a luminous highlight pulse, and renders an interactive, floating "Return to Excerpt" pill in the document viewport overlay pass so the user can easily jump back at any time.
+* **Target Behavior Implemented**: Tapping an excerpt's source anchor scrolls the document smoothly to the target page with a luminous highlight pulse, and renders an interactive, floating "Return to Excerpt" pill in the document viewport overlay pass so the user can easily jump back at any time.
 * **Exact Xournal++ Entry Points**:
   * `src/core/control/NavigationHistory.h` / `NavigationHistory.cpp`: `NavigationHistory::recordNavPoint()`.
   * `src/core/control/ScrollHandler.h` / `ScrollHandler.cpp`: `ScrollHandler::scrollToPdfPage(size_t page, double left, double top)`.
@@ -174,7 +174,7 @@ This document details the concrete integration points in the Xournal++ codebase 
 
 ## 4. Multi-Hit Search Context Aggregator (Sequential Search Slice View)
 
-* **LiquidText Behavior Replicated**: A consolidated search overview that extracts and displays all search hits sequentially with surrounding context sentences in a continuous scrollable reading stream.
+* **Target Behavior Implemented**: A consolidated search overview that extracts and displays all search hits sequentially with surrounding context sentences in a continuous scrollable reading stream.
 * **Exact Xournal++ Entry Points**:
   * `src/core/gui/SearchBar.h` / `SearchBar.cpp`: `SearchBar::searchTextChangedCallback()`.
   * `src/core/pdf/base/XojPdfPage.h`: `XojPdfPage::findText(const std::string& text)`, `XojPdfPage::getSurroundingTextBlock(const XojPdfRectangle& hitRect)`.

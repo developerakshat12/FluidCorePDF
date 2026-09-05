@@ -1,6 +1,6 @@
 # Contributing to the Fluid Document Synthesis Platform
 
-Thank you for helping build an open-source alternative to LiquidText. This document covers setup, workflow, and standards.
+Thank you for helping build FluidCore, an open-source fluid document synthesis platform. This document covers setup, workflow, and standards.
 
 ## 1. Code of Conduct
 By participating you agree to abide by the [Contributor Covenant v2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct/). Reports go to the maintainers listed in GOVERNANCE.md.

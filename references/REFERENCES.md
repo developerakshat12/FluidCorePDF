@@ -16,12 +16,12 @@ One line per document. Read only what the CLAUDE.md routing table sends you to.
 ## /specs
 | Doc | One-liner |
 |-----|-----------|
-| features.md | Complete LiquidText-parity interaction spec (squeeze/excerpts/links/stacks) |
+| features.md | Complete fluid synthesis interaction spec (squeeze/excerpts/links/stacks) |
 | system-architecture.md | Full stack deep dive: input → controllers → libfluidcore → views → storage |
 | appflow.md | User journey + system execution state machines incl. crash recovery |
 | integration.md | How fluid modules integrate into vendored Xournal++ |
 | file-function-map.md | Which source file/class does what; where new code goes |
-| new-features-backlog.md | Ideas beyond LiquidText parity (non-blocking) |
+| new-features-backlog.md | Advanced features backlog (non-blocking) |
 
 ## /references
 | Doc | One-liner |

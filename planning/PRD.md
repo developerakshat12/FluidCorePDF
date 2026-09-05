@@ -1,5 +1,5 @@
 # Product Requirements Document (PRD)
-## Offline Fluid Document Synthesis Platform (LiquidText Paradigm)
+## Offline Fluid Document Synthesis Platform (Fluid Synthesis Paradigm)
 
 ---
 
@@ -10,7 +10,7 @@ Knowledge workers—including attorneys, researchers, clinicians, intelligence a
 
 While digital devices have replaced physical paper, current PDF viewers merely digitize the static physical page. They maintain the severe limitations of paper while failing to exploit digital affordances like dynamic spatial manipulation, non-linear folding, and associative graph linking.
 
-This document specifies the requirements for an **Offline-First Fluid Document Synthesis Platform**, engineered in the paradigm of **LiquidText**. The platform merges a flexible, malleable document reader with an infinite associative 2D workspace, architected via a **Decoupled High-Performance C++ Core Engine (`libfluidcore`)** integrated with a **Linux-primary GTK 3 / Cairo desktop frontend** (extending Xournal++), enabling users to deconstruct multi-page, multi-document files into interactive excerpt graphs with zero cloud dependencies.
+This document specifies the requirements for an **Offline-First Fluid Document Synthesis Platform**, engineered for **Active Reading and Fluid Synthesis**. The platform merges a flexible, malleable document reader with an infinite associative 2D workspace, architected via a **Decoupled High-Performance C++ Core Engine (`libfluidcore`)** integrated with a **Linux-primary GTK 3 / Cairo desktop frontend** (extending Xournal++), enabling users to deconstruct multi-page, multi-document files into interactive excerpt graphs with zero cloud dependencies.
 
 ```mermaid
 graph TD
@@ -21,7 +21,7 @@ graph TD
         L4[Constant Disruptive Scrolling & Context Switching]
     end
 
-    subgraph LiquidText Solution Paradigm
+    subgraph FluidCore Solution Paradigm
         S1[Fluid Squeeze: Touch Pinch & Desktop Ctrl+Shift+Scroll]
         S2[Multi-Document Single-Canvas Integration]
         S3[Extracted Living Excerpt Cards in Infinite 2D Space]
@@ -64,22 +64,22 @@ graph LR
 ### 2.1 Persona 1: Senior Litigator / Trial Attorney (Sarah)
 * **Goal**: Review 20 deposition transcripts, contracts, and evidentiary filings to construct a motion for summary judgment.
 * **Pain Point**: Flipping between exhibits and witness testimonies in standard PDF viewers causes cognitive overload; quotes copied into Word lose page/line references.
-* **LiquidText Application**: Pulls 50 key deposition clauses into the workspace, connects conflicting testimonies using red ink links, snaps them into topic stacks, and exports a fully cited draft motion.
+* **FluidCore Application**: Pulls 50 key deposition clauses into the workspace, connects conflicting testimonies using red ink links, snaps them into topic stacks, and exports a fully cited draft motion.
 
 ### 2.2 Persona 2: Postdoctoral Research Scientist (Dr. Aris)
 * **Goal**: Conduct a systematic literature review synthesizing 45 research papers on neural interfaces.
 * **Pain Point**: Equations, charts, and methodology sections are scattered across dozens of PDFs.
-* **LiquidText Application**: Loads all 45 papers into one project; uses "Highlight Squeeze" to read only critical sections; clips figures and equations into an infinite canvas; organizes findings into a visual taxonomy.
+* **FluidCore Application**: Loads all 45 papers into one project; uses "Highlight Squeeze" to read only critical sections; clips figures and equations into an infinite canvas; organizes findings into a visual taxonomy.
 
 ### 2.3 Persona 3: Clinical Specialist / Pathologist (Dr. Elena)
 * **Goal**: Review comprehensive patient medical history, multi-year laboratory tests, and recent clinical trial literature.
 * **Pain Point**: Must work on strictly air-gapped hospital workstations where cloud sync is strictly prohibited by HIPAA/GDPR regulations.
-* **LiquidText Application**: Operates 100% locally; pinches lab reports to compare 2022 vs. 2026 liver panel values side-by-side; attaches clinical literature excerpts to patient diagnosis nodes.
+* **FluidCore Application**: Operates 100% locally; pinches lab reports to compare 2022 vs. 2026 liver panel values side-by-side; attaches clinical literature excerpts to patient diagnosis nodes.
 
 ### 2.4 Persona 4: Equity Research Analyst (Marcus)
 * **Goal**: Audit annual 10-K reports, proxy statements, and quarterly earnings calls for 8 competitor firms.
 * **Pain Point**: Footnotes are buried 60 pages away from the primary balance sheet tables.
-* **LiquidText Application**: Pinches the 10-K to place balance sheet line items directly next to their explanatory footnotes; pulls comparative revenue tables into the workspace and links them with directional trend lines.
+* **FluidCore Application**: Pinches the 10-K to place balance sheet line items directly next to their explanatory footnotes; pulls comparative revenue tables into the workspace and links them with directional trend lines.
 
 ---
 

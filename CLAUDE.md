@@ -1,6 +1,6 @@
 # FluidCore Platform
 
-Open-source, offline-first alternative to LiquidText: fluid PDF reader + infinite synthesis workspace. Decoupled C++20 engine (`libfluidcore`) + GTK 3 / Cairo / Poppler desktop frontend. Pre-release (M0–M4 and M5.5 Windows port complete; M5 hardening in progress; Windows native installer and portable release live).
+Open-source, offline-first fluid document synthesis platform: fluid PDF reader + infinite synthesis workspace. Decoupled C++20 engine (`libfluidcore`) + GTK 3 / Cairo / Poppler desktop frontend. Pre-release (M0–M4 and M5.5 Windows port complete; M5 hardening in progress; Windows native installer and portable release live).
 
 ## Folder Structure
 - `/planning` — PRD, TRD, ROADMAP, MVP scope, ADRs (why & what)

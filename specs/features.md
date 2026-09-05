@@ -1,4 +1,4 @@
-# LiquidText PDF: Comprehensive Feature & Interaction Specification
+# FluidCore: Comprehensive Feature & Interaction Specification
 
 > **Focus**: Non-linear Active Reading, Spatial Document Synthesis, Multi-Document Projects, Dynamic Document Squeeze, Bi-Directional Linking, and 100% Offline-First Execution.
 
@@ -8,7 +8,7 @@
 
 Traditional document readers (Adobe Acrobat, Preview, standard PDF viewers) replicate physical paper in a rigid, linear format: pages are stacked vertically or horizontally, annotations are locked inside margins, and cross-referencing distant pages requires tedious scrolling, tab switching, or memorizing page numbers.
 
-**LiquidText** breaks this paradigm by treating documents as **fluid, malleable information substrates**. It is designed around the cognitive process of **Active Reading**—the analytical, critical process where readers highlight, extract, compare, synthesize, and structure knowledge across one or multiple documents simultaneously.
+**FluidCore** breaks this paradigm by treating documents as **fluid, malleable information substrates**. It is designed around the cognitive process of **Active Reading**—the analytical, critical process where readers highlight, extract, compare, synthesize, and structure knowledge across one or multiple documents simultaneously.
 
 ```mermaid
 graph LR
@@ -20,7 +20,7 @@ graph LR
         style P100 fill:#2b2d42,stroke:#8d99ae,color:#edf2f4
     end
 
-    subgraph LiquidText Active Synthesis Model
+    subgraph FluidCore Active Synthesis Model
         DOC[Fluid Document Pane] <-->|Dynamic Squeeze & Pins| SQUEEZE[Side-by-Side Non-Adjacent Passages]
         DOC -->|Drag & Drop Extraction| EXCERPTS[Live Excerpt Nodes]
         EXCERPTS <-->|Bi-Directional Anchors & Return Pills| DOC
@@ -35,7 +35,7 @@ graph LR
     end
 ```
 
-### Core Tenets of the LiquidText Model
+### Core Tenets of the FluidCore Model
 1. **Fluid Representation**: Documents can compress, fold, accordion, and dynamically restructure without altering underlying source files.
 2. **Context Preservation**: Every extracted piece of information (text clip, equation, chart, diagram) maintains an unbreakable bi-directional thread back to its exact origin in the source document.
 3. **Spatial Synthesis**: The workspace provides an infinite, unconstrained 2D canvas running parallel to documents, turning passive reading into spatial concept mapping.
@@ -250,4 +250,4 @@ graph TD
 
 ---
 
-*This concludes the comprehensive feature breakdown of LiquidText PDF.*
+*This concludes the comprehensive feature breakdown of FluidCore.*
