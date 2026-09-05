@@ -109,11 +109,7 @@ gantt
 
 ### M6 — v1.0 Launch (Weeks 59–62)
 - [x] Windows Native Release Pipeline: Inno Setup native installer (`FluidCore-Setup-x64.exe`) and standalone portable zip (`fluidcore-windows-x64.zip`) with Start Menu integration, desktop shortcut, `.ltproj` file associations (HKA), Windows PE application icon (`fluidcore.ico`), self-contained relative runtime resource resolution (`GSETTINGS_SCHEMA_DIR`, `XDG_DATA_DIRS`, `FONTCONFIG_PATH`, `GDK_PIXBUF_MODULE_FILE`), CI artifact archiving on every commit, and automated GitHub Release publishing on `v*` tags (`.github/workflows/release.yml`).
-- [ ] Linux Distribution Packaging (Immediate Next Focus):
-  - [ ] AppImage standalone portable executable (self-contained with bundled GTK3/Poppler shared libraries and desktop file)
-  - [ ] Native `.deb` package generation with system dependency metadata (`libpoppler-glib8`, `libgtk-3-0`, `libcairo2`)
-  - [ ] Flatpak sandbox manifest (`org.fluidcore.FluidCore`) for Flathub distribution
-  - [ ] GitHub Actions Linux release automation in `.github/workflows/release.yml` publishing AppImage & deb artifacts
+- [x] Linux Distribution Packaging: AppImage portable executable (`FluidCore-0.9.0-x86_64.AppImage`) with intermediate testable `AppDir`, native `.deb` package (`fluidcore_0.9.0_amd64.deb`) with system dependency metadata, hardened zero-network Flatpak manifest (`org.fluidcore.platform.yml`), unified Linux build harness (`ops/scripts/build-linux.sh`), FreeDesktop integration (`org.fluidcore.platform.desktop`, shared-mime-info XML for `.ltproj`, AppStream metainfo, hicolor icons), and GitHub Actions release automation in `.github/workflows/release.yml` and `ci.yml` (complete via TASK-6.2).
 - [ ] Documentation site: user guide + screencasts per persona
 - [ ] Security review (offline audit: no network syscalls verified)
 - [ ] v1.0 tagged; press/HN/Lobsters announcement; governance handoff

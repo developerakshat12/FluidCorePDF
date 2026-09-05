@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.fluidcore.platform</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-2.0-or-later</project_license>
+  <name>FluidCore</name>
+  <summary>Offline-first fluid document synthesis platform</summary>
+  
+  <developer id="org.fluidcore">
+    <name>FluidCore Contributors</name>
+  </developer>
+
+  <url type="homepage">https://github.com/fluidcore/fluidcore-platform</url>
+  <url type="bugtracker">https://github.com/fluidcore/fluidcore-platform/issues</url>
+  
+  <description>
+    <p>
+      FluidCore is an open-source, offline-first active reading and document synthesis platform.
+      Designed for researchers, legal professionals, and knowledge workers, it pairs continuous
+      PDF reading with accordion squeeze folding and an infinite 2D synthesis canvas.
+    </p>
+    <ul>
+      <li>Accordion squeeze reading: pinch or scroll to compress non-relevant pages and compare distant passages side by side without text distortion.</li>
+      <li>Infinite 2D canvas: drag text and visual excerpts onto an expansive workspace with sub-millisecond spatial navigation.</li>
+      <li>Bi-directional anchors: click any excerpt node to jump directly to its exact source location in the document pane.</li>
+      <li>Relational ink connectors and magnetic card stacking for structured synthesis.</li>
+      <li>100% offline, crash-safe SQLite WAL project bundle storage (.ltproj) with zero cloud dependencies.</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">org.fluidcore.platform.desktop</launchable>
+
+  <provides>
+    <mediatype>application/pdf</mediatype>
+    <mediatype>application/x-fluidcore-project</mediatype>
+  </provides>
+
+  <content_rating type="oars-1.1"/>
+
+  <releases>
+    <release version="0.9.0" date="2026-09-05">
+      <description>
+        <p>Initial v0.9.0 pre-release featuring full active-reading synthesis loop, Windows and Linux native packaging, SQLite WAL persistence, and 50-PDF scalability.</p>
+      </description>
+    </release>
+  </releases>
+</component>

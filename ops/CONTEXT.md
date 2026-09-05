@@ -10,8 +10,9 @@ Build, CI, benchmarks, packaging, release. Everything that keeps the project shi
 ops/
 ├── CONTEXT.md            # this file
 ├── benchmarks/           # bench-scalability.md (50-PDF 5000-page cold start & memory budget)
-├── installer/            # fluidcore.iss (Inno Setup 64-bit native installer script)
-└── scripts/              # build-win.ps1, package-windows.ps1, check_budgets.py, check_invariants.py
+├── flatpak/              # org.fluidcore.platform.yml (Flathub-compliant sandboxed manifest)
+├── installer/            # fluidcore.iss (Inno Setup 64-bit native Windows installer script)
+└── scripts/              # build-linux.sh, build-win.ps1, package-appimage.sh, package-deb.sh, package-windows.ps1, check_budgets.py, check_invariants.py
 ```
 
 ## Standing gates (from ROADMAP §5 — these are release blockers)

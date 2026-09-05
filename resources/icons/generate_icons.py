@@ -77,12 +77,15 @@ def create_fluidcore_image(size: int) -> Image.Image:
     return img.resize((size, size), Image.Resampling.LANCZOS)
 
 def main():
+    import os
     sizes = [256, 128, 64, 48, 32, 16]
     images = [create_fluidcore_image(s) for s in sizes]
 
     # Save 256x256 PNG
+    os.makedirs("resources/icons", exist_ok=True)
     images[0].save("resources/icons/fluidcore.png", format="PNG")
-    print("Saved resources/icons/fluidcore.png")
+    images[0].save("resources/icons/org.fluidcore.platform.png", format="PNG")
+    print("Saved resources/icons/fluidcore.png and org.fluidcore.platform.png")
 
     # Save multi-resolution Windows ICO
     images[0].save(
@@ -92,6 +95,14 @@ def main():
         append_images=images[1:]
     )
     print("Saved resources/icons/fluidcore.ico with sizes:", sizes)
+
+    # Save Linux hicolor icon hierarchy
+    for size, img in zip(sizes, images):
+        hicolor_dir = f"resources/icons/hicolor/{size}x{size}/apps"
+        os.makedirs(hicolor_dir, exist_ok=True)
+        img.save(f"{hicolor_dir}/org.fluidcore.platform.png", format="PNG")
+        img.save(f"{hicolor_dir}/fluidcore.png", format="PNG")
+    print("Saved Linux hicolor icon hierarchy under resources/icons/hicolor/")
 
 if __name__ == "__main__":
     main()

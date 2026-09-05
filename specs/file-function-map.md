@@ -150,5 +150,20 @@ graph TD
 
 ---
 
+### 2.5 Packaging, Distribution & Linux Platform (`ops/`, `resources/linux/`, `ops/flatpak/`)
+
+| File / Path | Key Symbols & Classes | Primary Responsibilities & Connectivity |
+|---|---|---|
+| `resources/linux/org.fluidcore.platform.desktop` | FreeDesktop Entry | Standard `.desktop` entry with `application/pdf` and `application/x-fluidcore-project` MIME associations, Office;Viewer categories, and `NewWindow` action. |
+| `resources/linux/org.fluidcore.platform.xml` | Shared MIME-info | XML definition mapping `.ltproj` directory bundles to `application/x-fluidcore-project`. |
+| `resources/linux/org.fluidcore.platform.metainfo.xml` | AppStream Metainfo | Software center metadata with CC0-1.0 license, feature descriptions, releases, and developer identity passing validation. |
+| `resources/icons/hicolor/` | FreeDesktop Icon Theme | Multi-resolution PNG icon hierarchy (16x16 through 256x256) for system theme integration. |
+| `ops/scripts/build-linux.sh` | Build & Test Harness | Unified POSIX bash build script mirroring `build-win.ps1` with `--config`, `--test`, `--package`, `--run`, and `--benchmark`. |
+| `ops/scripts/package-deb.sh` | Native Debian Packager | Packages `fluidcore_<version>_amd64.deb` with system dependency declarations and maintainer trigger scripts. |
+| `ops/scripts/package-appimage.sh` | AppImage Packager | Assembles intermediate `AppDir` with `AppRun` trampoline and bundles universal `FluidCore-<version>-x86_64.AppImage` using pinned `appimagetool`. |
+| `ops/flatpak/org.fluidcore.platform.yml` | Flatpak Sandbox Manifest | Flathub-ready manifest with scoped `--filesystem=home` and strict zero-network air-gapped guarantees. |
+
+---
+
 *This concludes the complete File & Function Architecture Mapping.*
 

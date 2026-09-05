@@ -175,3 +175,18 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME ScalabilityBenchmarkTest COMMAND scalability_benchmark_test)
 endif()
+
+install(TARGETS fluidcore_app RUNTIME DESTINATION bin)
+
+if(UNIX AND NOT APPLE)
+    install(FILES "${CMAKE_SOURCE_DIR}/resources/linux/org.fluidcore.platform.desktop"
+            DESTINATION share/applications)
+    install(FILES "${CMAKE_SOURCE_DIR}/resources/linux/org.fluidcore.platform.xml"
+            DESTINATION share/mime/packages)
+    install(FILES "${CMAKE_SOURCE_DIR}/resources/linux/org.fluidcore.platform.metainfo.xml"
+            DESTINATION share/metainfo)
+    if(EXISTS "${CMAKE_SOURCE_DIR}/resources/icons/hicolor")
+        install(DIRECTORY "${CMAKE_SOURCE_DIR}/resources/icons/hicolor"
+                DESTINATION share/icons)
+    endif()
+endif()

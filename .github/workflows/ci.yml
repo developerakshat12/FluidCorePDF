@@ -90,6 +90,26 @@ jobs:
         run: cmake --build build
       - name: Test (ctest)
         run: ctest --test-dir build --output-on-failure
+      - name: Package Linux distributions (.deb & AppImage)
+        run: |
+          bash ops/scripts/package-deb.sh --build-dir build
+          bash ops/scripts/package-appimage.sh --build-dir build
+      - name: Smoke test Linux packages
+        run: |
+          dpkg-deb -I build/dist/fluidcore_0.9.0_amd64.deb
+          dpkg-deb -c build/dist/fluidcore_0.9.0_amd64.deb
+          test -f build/dist/FluidCore-0.9.0-x86_64.AppImage
+          test -x build/dist/FluidCore-0.9.0-x86_64.AppImage
+          test -x build/dist/AppDir/AppRun
+      - name: Upload Linux distribution artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: fluidcore-linux-x64
+          path: |
+            build/dist/fluidcore_0.9.0_amd64.deb
+            build/dist/FluidCore-0.9.0-x86_64.AppImage
+          if-no-files-found: error
+
 
   windows-build:
     name: windows (ucrt64)

@@ -1,0 +1,36 @@
+id: TASK-6.2-linux-distribution-packaging
+title: Linux Distribution Packaging Pipeline (AppImage, .deb, Flatpak, Release CI)
+milestone: M6
+status: completed
+workspace: D:\FluidCorePDF\fluidcore-platform
+specs:
+  - planning/ROADMAP.md (Milestone 6)
+  - planning/roadmap.yaml (Milestone 6)
+  - planning/MVP-SPEC.md (Section 2.6)
+  - ops/CONTEXT.md
+dependencies:
+  - TASK-6.1-windows-release-packaging-and-installer
+deliverables:
+  - resources/linux/org.fluidcore.platform.desktop — FreeDesktop compliant desktop entry with PDF and .ltproj MIME types, Office;Viewer categories, and application keywords.
+  - resources/linux/org.fluidcore.platform.xml — Shared MIME-info XML definition registering application/x-fluidcore-project for .ltproj document bundles.
+  - resources/linux/org.fluidcore.platform.metainfo.xml — AppStream metainfo specification passing validation with zero warnings and CC0-1.0 license.
+  - resources/icons/hicolor/ — multi-resolution PNG icon hierarchy (16x16, 32x32, 48x48, 64x64, 128x128, 256x256) under org.fluidcore.platform.png.
+  - ops/scripts/build-linux.sh — unified Linux build, test, benchmark, and packaging harness mirroring ops/scripts/build-win.ps1.
+  - ops/scripts/package-deb.sh — native Debian package generator producing fluidcore_<version>_amd64.deb with maintainer scripts and system dependency declarations.
+  - ops/scripts/package-appimage.sh — standalone portable AppImage packager staging intermediate AppDir and invoking pinned appimagetool.
+  - ops/flatpak/org.fluidcore.platform.yml — hardened Flathub-ready Flatpak manifest with scoped home filesystem permissions and strictly zero network permissions.
+  - src/app/CMakeLists.txt — CMake install targets for binary, desktop files, MIME info, metainfo, and icon theme.
+  - .github/workflows/ci.yml — updated app-shell job validating Debian and AppImage packaging and smoke testing on every pull request.
+  - .github/workflows/release.yml — release-linux job automating Linux .deb and .AppImage build, SHA256 checksumming, and GitHub Release asset publishing.
+acceptance_checks:
+  - "Debian package generated: build-linux/dist/fluidcore_0.9.0_amd64.deb"
+  - "AppImage bundle generated: build-linux/dist/FluidCore-0.9.0-x86_64.AppImage"
+  - "Intermediate AppDir testable and executable via AppDir/AppRun"
+  - "FreeDesktop .desktop, MIME .xml, and AppStream .metainfo.xml verified and installed"
+  - "Flatpak manifest conforms to zero-network air-gapped sandboxing"
+  - "All 36 CTest suites pass 100% on Linux"
+  - "All architectural invariants pass without GUI leaks or network calls"
+constraints:
+  - Zero runtime network calls (CI syscall audit compliant)
+  - Pure POSIX /bin/bash packaging scripts with no platform lock-in
+  - Hardened sandbox boundaries (no broad filesystem=host in Flatpak)

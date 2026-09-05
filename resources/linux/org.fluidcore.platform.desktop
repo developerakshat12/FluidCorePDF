@@ -1,0 +1,18 @@
+[Desktop Entry]
+Name=FluidCore
+GenericName=Document Synthesis Reader
+Comment=Fluid PDF reader with accordion squeeze folding and infinite synthesis workspace
+Exec=fluidcore_app %F
+Icon=org.fluidcore.platform
+Terminal=false
+Type=Application
+Categories=Office;Viewer;
+MimeType=application/pdf;application/x-fluidcore-project;
+StartupNotify=true
+StartupWMClass=fluidcore_app
+Keywords=PDF;reader;fluid;squeeze;annotations;workspace;liquidtext;notes;synthesis;
+Actions=NewWindow;
+
+[Desktop Action NewWindow]
+Name=New Window
+Exec=fluidcore_app

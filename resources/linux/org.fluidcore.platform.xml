@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-fluidcore-project">
+    <comment>FluidCore Project Bundle</comment>
+    <sub-class-of type="application/x-directory"/>
+    <glob pattern="*.ltproj"/>
+    <icon name="org.fluidcore.platform"/>
+  </mime-type>
+</mime-info>

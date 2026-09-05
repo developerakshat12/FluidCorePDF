@@ -59,3 +59,55 @@ jobs:
             build-win/dist/fluidcore-windows-x64.zip
             build-win/dist/checksums-windows-sha256.txt
           generate_release_notes: true
+
+  release-linux:
+    name: release (linux-x64)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install toolchain + GTK3/Poppler/Cairo dev headers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build g++ pkg-config libgtk-3-dev libpoppler-glib-dev libcairo2-dev \
+            libsqlite3-dev zlib1g-dev dpkg-dev
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DFLUIDCORE_BUILD_APP=ON
+      - name: Build
+        run: cmake --build build
+      - name: Test (ctest)
+        run: ctest --test-dir build --output-on-failure
+      - name: Package Linux distributions (.deb & AppImage)
+        run: |
+          TAG="${{ github.ref_name }}"
+          VERSION="${TAG#v}"
+          bash ops/scripts/package-deb.sh --build-dir build --version "${VERSION}"
+          bash ops/scripts/package-appimage.sh --build-dir build --version "${VERSION}"
+      - name: Smoke test Linux packages
+        run: |
+          TAG="${{ github.ref_name }}"
+          VERSION="${TAG#v}"
+          dpkg-deb -I "build/dist/fluidcore_${VERSION}_amd64.deb"
+          dpkg-deb -c "build/dist/fluidcore_${VERSION}_amd64.deb"
+          test -f "build/dist/FluidCore-${VERSION}-x86_64.AppImage"
+          test -x "build/dist/FluidCore-${VERSION}-x86_64.AppImage"
+          test -x "build/dist/AppDir/AppRun"
+      - name: Compute SHA256 Checksums
+        run: |
+          TAG="${{ github.ref_name }}"
+          VERSION="${TAG#v}"
+          cd build/dist
+          sha256sum "fluidcore_${VERSION}_amd64.deb" "FluidCore-${VERSION}-x86_64.AppImage" > checksums-linux-sha256.txt
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            build/dist/fluidcore_*_amd64.deb
+            build/dist/FluidCore-*-x86_64.AppImage
+            build/dist/checksums-linux-sha256.txt
+          generate_release_notes: true

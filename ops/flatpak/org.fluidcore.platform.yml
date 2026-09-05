@@ -1,0 +1,48 @@
+app-id: org.fluidcore.platform
+runtime: org.gnome.Platform
+runtime-version: '46'
+sdk: org.gnome.Sdk
+command: fluidcore_app
+
+finish-args:
+  # Graphical display access (Wayland with X11 fallback)
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  # Hardware-accelerated rendering
+  - --device=dri
+  # User file access for reading PDFs and opening/saving .ltproj bundles
+  # Hardened: Scoped to home directory rather than unrestricted host filesystem
+  - --filesystem=home
+  # Air-gapped guarantee: Zero network access. Strictly NO --share=network.
+
+build-options:
+  cflags: -O2 -g
+  cxxflags: -O2 -g
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/pkgconfig
+  - /share/man
+  - '*.a'
+  - '*.la'
+
+modules:
+  - name: fluidcore
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DFLUIDCORE_BUILD_APP=ON
+    sources:
+      - type: dir
+        path: ../../
+    post-install:
+      # FreeDesktop application integration
+      - install -Dm644 resources/linux/org.fluidcore.platform.desktop /app/share/applications/org.fluidcore.platform.desktop
+      - install -Dm644 resources/linux/org.fluidcore.platform.xml /app/share/mime/packages/org.fluidcore.platform.xml
+      - install -Dm644 resources/linux/org.fluidcore.platform.metainfo.xml /app/share/metainfo/org.fluidcore.platform.metainfo.xml
+      - install -Dm644 resources/icons/fluidcore.png /app/share/icons/hicolor/256x256/apps/org.fluidcore.platform.png
+      - cp -r resources/icons/hicolor /app/share/icons/
+      - ln -sf fluidcore_app /app/bin/fluidcore
