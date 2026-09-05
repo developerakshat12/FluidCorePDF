@@ -1887,20 +1887,31 @@ int main(int argc, char** argv) {
 #endif
     // Suppress known spurious GLib-GIO critical warnings when enumerating WSL DrvFS mounts (/mnt/c,
     // /mnt/d), Win32 volume roots, and win32 dbus warnings
+    auto filterLogFunc = [](const gchar* log_domain, GLogLevelFlags log_level, const gchar* message,
+                            gpointer user_data) {
+        if (message && (std::strstr(message, "standard::size") ||
+                        std::strstr(message, "g_file_info_get_size") ||
+                        std::strstr(message, "standard::type") ||
+                        std::strstr(message, "g_file_info_get_file_type") ||
+                        std::strstr(message, "win32 session dbus binary not found"))) {
+            return; // Silence harmless GIO volume attribute queries and win32 dbus warning
+        }
+        g_log_default_handler(log_domain, log_level, message, user_data);
+    };
+
+    g_log_set_default_handler(filterLogFunc, nullptr);
     g_log_set_handler(
-        "GLib-GIO", static_cast<GLogLevelFlags>(G_LOG_LEVEL_CRITICAL | G_LOG_LEVEL_WARNING),
-        [](const gchar* log_domain, GLogLevelFlags log_level, const gchar* message,
-           gpointer user_data) {
-            if (message && (std::strstr(message, "standard::size") ||
-                            std::strstr(message, "g_file_info_get_size") ||
-                            std::strstr(message, "standard::type") ||
-                            std::strstr(message, "g_file_info_get_file_type") ||
-                            std::strstr(message, "win32 session dbus binary not found"))) {
-                return; // Silence harmless GIO volume attribute queries and win32 dbus warning
-            }
-            g_log_default_handler(log_domain, log_level, message, user_data);
-        },
-        nullptr);
+        "GLib-GIO",
+        static_cast<GLogLevelFlags>(G_LOG_LEVEL_MASK | G_LOG_FLAG_FATAL | G_LOG_FLAG_RECURSION),
+        filterLogFunc, nullptr);
+    g_log_set_handler(
+        "GLib",
+        static_cast<GLogLevelFlags>(G_LOG_LEVEL_MASK | G_LOG_FLAG_FATAL | G_LOG_FLAG_RECURSION),
+        filterLogFunc, nullptr);
+    g_log_set_handler(
+        nullptr,
+        static_cast<GLogLevelFlags>(G_LOG_LEVEL_MASK | G_LOG_FLAG_FATAL | G_LOG_FLAG_RECURSION),
+        filterLogFunc, nullptr);
 
     const std::string rawArg = argc > 1 ? argv[1] : "";
     const std::string inputPath = normalizePath(rawArg);
