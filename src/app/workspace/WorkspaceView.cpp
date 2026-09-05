@@ -14,6 +14,7 @@
 #include "workspace/WorkspaceRenderer.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 
 namespace FluidCoreApp {
@@ -21,6 +22,13 @@ namespace FluidCoreApp {
 namespace {
 constexpr double kMinZoom = 0.10; // 10%
 constexpr double kMaxZoom = 2.0;  // 200%
+
+std::string generateUniqueStrokeId() {
+    static std::atomic<uint64_t> s_strokeSeq{0};
+    const uint64_t ts = static_cast<uint64_t>(g_get_real_time());
+    const uint64_t seq = ++s_strokeSeq;
+    return "stroke-" + std::to_string(ts) + "-" + std::to_string(seq);
+}
 
 FluidCore::InputDeviceClass classifyGdkDevice(GdkDevice* dev) {
     if (!dev) {
@@ -65,6 +73,13 @@ void updatePalmProfile(FluidCore::PalmRejectionEngine* engine, GdkDevice* dev) {
 
 WorkspaceView::WorkspaceView(FluidCore::FluidCoreAPI& api) : m_api(api) {
     m_area = gtk_drawing_area_new();
+    g_signal_connect(m_area, "destroy", G_CALLBACK(+[](GtkWidget*, gpointer data) {
+                         auto* self = static_cast<WorkspaceView*>(data);
+                         if (self) {
+                             self->m_area = nullptr;
+                         }
+                     }),
+                     this);
     gtk_widget_set_can_focus(m_area, TRUE);
     gtk_widget_add_events(
         m_area, GDK_POINTER_MOTION_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK |
@@ -1203,8 +1218,7 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
             m_state.inking.isDrawing = true;
             m_state.inking.activeStroke = FluidCore::Stroke{};
 
-            static std::size_t s_strokeCounter = 1;
-            m_state.inking.activeStroke.id = "stroke-" + std::to_string(s_strokeCounter++);
+            m_state.inking.activeStroke.id = generateUniqueStrokeId();
             m_state.inking.activeStroke.tool = m_state.inking.currentTool;
             m_state.inking.activeStroke.color = m_state.inking.currentColor;
             m_state.inking.activeStroke.width = m_state.inking.currentWidth;
@@ -1428,6 +1442,10 @@ gboolean WorkspaceView::onButtonRelease(GdkEventButton* event) {
 
                 if (!convertedToConnector) {
                     if (engine) {
+                        while (engine->workspaceModel().find(m_state.inking.activeStroke.id) !=
+                               nullptr) {
+                            m_state.inking.activeStroke.id = generateUniqueStrokeId();
+                        }
                         m_undoStack.pushAndExecute(std::make_unique<FluidCore::InsertNodeCommand>(
                             engine->workspaceModel(), std::make_unique<FluidCore::CanvasStrokeNode>(
                                                           m_state.inking.activeStroke)));

@@ -4,6 +4,8 @@
 #include "search/WorkspaceSearchEngine.h"
 #include "workspace/ExcerptCardNode.h"
 
+#include <atomic>
+#include <chrono>
 #include <filesystem>
 #include <unordered_set>
 #include <utility>
@@ -118,8 +120,14 @@ std::string FluidCoreEngine::mergeNodesIntoStack(const std::string& sourceNodeId
         m_model.updateBounds(targetNodeId);
         return targetNodeId;
     } else {
-        static std::size_t s_stackCounter = 1;
-        std::string stackId = "stack-" + std::to_string(s_stackCounter++);
+        static std::atomic<uint64_t> s_stackSeq{0};
+        auto nowUs = std::chrono::duration_cast<std::chrono::microseconds>(
+                         std::chrono::system_clock::now().time_since_epoch())
+                         .count();
+        std::string stackId;
+        do {
+            stackId = "stack-" + std::to_string(nowUs) + "-" + std::to_string(++s_stackSeq);
+        } while (m_model.find(stackId) != nullptr);
 
         auto newStack = std::make_unique<CardStackNode>(stackId, dstNode->bounds());
         newStack->addChild(std::move(clonedDst));

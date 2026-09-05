@@ -40,17 +40,25 @@ class TopToolbarWidget {
     GtkWidget* m_rootContainer = nullptr;
     GtkWidget* m_pillBox = nullptr;
 
-    // Tool toggle buttons
+    // Tool toggle buttons & icon widgets
     GtkWidget* m_selectBtn = nullptr;
+    GtkWidget* m_selectIcon = nullptr;
     GtkWidget* m_penBtn = nullptr;
+    GtkWidget* m_penIcon = nullptr;
     GtkWidget* m_highlighterBtn = nullptr;
+    GtkWidget* m_highlighterIcon = nullptr;
     GtkWidget* m_eraserBtn = nullptr;
+    GtkWidget* m_eraserIcon = nullptr;
     GtkWidget* m_cropBtn = nullptr;
+    GtkWidget* m_cropIcon = nullptr;
     GtkWidget* m_connectorBtn = nullptr;
+    GtkWidget* m_connectorIcon = nullptr;
 
-    // History action buttons
+    // History action buttons & icon widgets
     GtkWidget* m_undoBtn = nullptr;
+    GtkWidget* m_undoIcon = nullptr;
     GtkWidget* m_redoBtn = nullptr;
+    GtkWidget* m_redoIcon = nullptr;
 
     // Navigation & View action buttons
     GtkWidget* m_zoomInBtn = nullptr;

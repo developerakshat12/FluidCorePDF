@@ -106,6 +106,18 @@ DocumentPane::DocumentPane(const std::string& pdfPath) : m_pdfPath(pdfPath) {
 }
 
 void DocumentPane::closeDocument() {
+    if (m_pulseTimerId != 0) {
+        g_source_remove(m_pulseTimerId);
+        m_pulseTimerId = 0;
+    }
+    if (m_wheelDebounceTimerId != 0) {
+        g_source_remove(m_wheelDebounceTimerId);
+        m_wheelDebounceTimerId = 0;
+    }
+    if (m_zoomDebounceTimerId != 0) {
+        g_source_remove(m_zoomDebounceTimerId);
+        m_zoomDebounceTimerId = 0;
+    }
     if (m_pinchGesture) {
         g_object_unref(m_pinchGesture);
         m_pinchGesture = nullptr;
@@ -228,11 +240,25 @@ bool DocumentPane::loadDocument(const std::string& pdfPath, const std::string& d
     m_squeezeEngine.registerDocumentGeometry(m_docId, pageGeometries);
 
     m_overlay = gtk_overlay_new();
+    g_signal_connect(m_overlay, "destroy", G_CALLBACK(+[](GtkWidget*, gpointer data) {
+                         auto* self = static_cast<DocumentPane*>(data);
+                         if (self) {
+                             self->m_overlay = nullptr;
+                         }
+                     }),
+                     this);
     const int scaledWidth = static_cast<int>(m_layoutWidth * m_zoom);
     const int scaledHeight = static_cast<int>(m_layoutHeight * m_zoom);
     gtk_widget_set_size_request(m_overlay, scaledWidth, scaledHeight);
 
     m_area = gtk_drawing_area_new();
+    g_signal_connect(m_area, "destroy", G_CALLBACK(+[](GtkWidget*, gpointer data) {
+                         auto* self = static_cast<DocumentPane*>(data);
+                         if (self) {
+                             self->m_area = nullptr;
+                         }
+                     }),
+                     this);
     gtk_widget_set_size_request(m_area, scaledWidth, scaledHeight);
     g_signal_connect(m_area, "draw", G_CALLBACK(DocumentPane::drawCallback), this);
     gtk_container_add(GTK_CONTAINER(m_overlay), m_area);
@@ -343,14 +369,14 @@ void DocumentPane::updateLayoutDimensions() {
     const int scaledWidth = static_cast<int>(m_layoutWidth * m_zoom);
     const int scaledHeight = static_cast<int>(m_layoutHeight * m_zoom);
 
-    if (m_overlay) {
+    if (m_overlay && GTK_IS_WIDGET(m_overlay)) {
         gtk_widget_set_size_request(m_overlay, scaledWidth, scaledHeight);
     }
-    if (m_area) {
+    if (m_area && GTK_IS_WIDGET(m_area)) {
         gtk_widget_set_size_request(m_area, scaledWidth, scaledHeight);
         gtk_widget_queue_draw(m_area);
     }
-    if (m_inkOverlay && m_inkOverlay->widget()) {
+    if (m_inkOverlay && m_inkOverlay->widget() && GTK_IS_WIDGET(m_inkOverlay->widget())) {
         gtk_widget_set_size_request(m_inkOverlay->widget(), scaledWidth, scaledHeight);
         gtk_widget_queue_draw(m_inkOverlay->widget());
     }
@@ -385,8 +411,9 @@ void DocumentPane::commitZoom() {
     m_zoomDebounceTimerId = 0;
     m_isZooming = false;
     clearCache();
-    if (m_area)
+    if (m_area && GTK_IS_WIDGET(m_area)) {
         gtk_widget_queue_draw(m_area);
+    }
 }
 
 void DocumentPane::zoomIn() {
@@ -727,7 +754,7 @@ void DocumentPane::navigateSearch(int direction) {
     }
 
     scrollToSearchHit(m_activeSearchHitIndex);
-    if (m_area) {
+    if (m_area && GTK_IS_WIDGET(m_area)) {
         gtk_widget_queue_draw(m_area);
     }
 }
@@ -828,7 +855,7 @@ void DocumentPane::navigateToExcerptSource(std::size_t pageNo, const FluidCore::
         16,
         +[](gpointer data) -> gboolean {
             auto* self = static_cast<DocumentPane*>(data);
-            if (!self) {
+            if (!self || !self->m_area || !GTK_IS_WIDGET(self->m_area)) {
                 return G_SOURCE_REMOVE;
             }
 
@@ -840,7 +867,7 @@ void DocumentPane::navigateToExcerptSource(std::size_t pageNo, const FluidCore::
                 self->m_pulseHighlight.active = false;
                 self->m_pulseHighlight.alpha = 0.0;
                 self->m_pulseTimerId = 0;
-                if (self->m_area) {
+                if (self->m_area && GTK_IS_WIDGET(self->m_area)) {
                     gtk_widget_queue_draw(self->m_area);
                 }
                 return G_SOURCE_REMOVE;
@@ -848,7 +875,7 @@ void DocumentPane::navigateToExcerptSource(std::size_t pageNo, const FluidCore::
 
             const double progress = elapsedSec / totalDurationSec;
             self->m_pulseHighlight.alpha = (1.0 - progress) * (1.0 - progress);
-            if (self->m_area) {
+            if (self->m_area && GTK_IS_WIDGET(self->m_area)) {
                 gtk_widget_queue_draw(self->m_area);
             }
             return G_SOURCE_CONTINUE;
@@ -860,7 +887,7 @@ void DocumentPane::navigateToExcerptSource(std::size_t pageNo, const FluidCore::
         m_returnAnchorPill->show(excerptId, snippet, originWorldCoord);
     }
 
-    if (m_area) {
+    if (m_area && GTK_IS_WIDGET(m_area)) {
         gtk_widget_queue_draw(m_area);
     }
 }
@@ -920,7 +947,7 @@ bool DocumentPane::undo() {
         if (isSqueezeCmd) {
             updateLayoutDimensions();
         } else {
-            if (m_inkOverlay && m_inkOverlay->widget()) {
+            if (m_inkOverlay && m_inkOverlay->widget() && GTK_IS_WIDGET(m_inkOverlay->widget())) {
                 gtk_widget_queue_draw(m_inkOverlay->widget());
             }
         }
@@ -944,7 +971,7 @@ bool DocumentPane::redo() {
         if (isSqueezeCmd) {
             updateLayoutDimensions();
         } else {
-            if (m_inkOverlay && m_inkOverlay->widget()) {
+            if (m_inkOverlay && m_inkOverlay->widget() && GTK_IS_WIDGET(m_inkOverlay->widget())) {
                 gtk_widget_queue_draw(m_inkOverlay->widget());
             }
         }
@@ -1114,8 +1141,10 @@ void DocumentPane::applyContinuousSqueezeDelta(double delta, double cursorScreen
         300,
         +[](gpointer data) -> gboolean {
             auto* self = static_cast<DocumentPane*>(data);
-            self->commitScrollSqueeze();
-            self->m_wheelDebounceTimerId = 0;
+            if (self) {
+                self->m_wheelDebounceTimerId = 0;
+                self->commitScrollSqueeze();
+            }
             return G_SOURCE_REMOVE;
         },
         this);

@@ -112,6 +112,8 @@ class InkOverlay {
     void onDragEnd(GdkDragContext* context);
 
     void updateCursor();
+    void queueDraw();
+    void queueDrawArea(int x, int y, int width, int height);
 
     void renderStroke(cairo_t* cr, const FluidCore::Stroke& stroke) const;
     void renderActiveLiveStroke(cairo_t* cr) const;

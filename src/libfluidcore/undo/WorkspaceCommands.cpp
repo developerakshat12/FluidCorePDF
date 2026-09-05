@@ -1,7 +1,11 @@
 #include "undo/WorkspaceCommands.h"
 
+#include "workspace/CanvasStrokeNode.h"
 #include "workspace/ExcerptCardNode.h"
 
+#include <atomic>
+#include <chrono>
+#include <string>
 #include <utility>
 
 namespace FluidCore {
@@ -43,7 +47,30 @@ InsertNodeCommand::InsertNodeCommand(WorkspaceModel& model, std::unique_ptr<Work
 
 bool InsertNodeCommand::execute() {
     if (m_model.find(m_nodeId)) {
-        return true;
+        if (m_nodeTemplate) {
+            static std::atomic<uint64_t> s_fallbackSeq{0};
+            auto nowUs = std::chrono::duration_cast<std::chrono::microseconds>(
+                             std::chrono::system_clock::now().time_since_epoch())
+                             .count();
+            std::string prefix = m_nodeId.substr(0, m_nodeId.find('-'));
+            if (prefix.empty()) {
+                prefix = "node";
+            }
+            std::string newId;
+            do {
+                newId = prefix + "-" + std::to_string(nowUs) + "-" +
+                        std::to_string(++s_fallbackSeq);
+            } while (m_model.find(newId) != nullptr);
+
+            if (auto* strokeNode = dynamic_cast<CanvasStrokeNode*>(m_nodeTemplate.get())) {
+                auto stroke = strokeNode->stroke();
+                stroke.id = newId;
+                strokeNode->setStroke(std::move(stroke));
+            }
+            m_nodeId = newId;
+        } else {
+            return true;
+        }
     }
     if (!m_nodeTemplate) {
         return false;
@@ -130,8 +157,14 @@ bool StackMergeCommand::execute() {
     } else {
         m_targetWasStack = false;
         if (m_stackId.empty()) {
-            static std::size_t s_stackCounter = 1;
-            m_stackId = "stack-" + std::to_string(s_stackCounter++);
+            static std::atomic<uint64_t> s_stackSeq{0};
+            auto nowUs = std::chrono::duration_cast<std::chrono::microseconds>(
+                             std::chrono::system_clock::now().time_since_epoch())
+                             .count();
+            do {
+                m_stackId =
+                    "stack-" + std::to_string(nowUs) + "-" + std::to_string(++s_stackSeq);
+            } while (m_model.find(m_stackId) != nullptr);
         }
 
         auto newStack = std::make_unique<CardStackNode>(m_stackId, dstNode->bounds());

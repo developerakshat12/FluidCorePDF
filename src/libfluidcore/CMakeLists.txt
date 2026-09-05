@@ -136,4 +136,8 @@ if(BUILD_TESTING)
     add_executable(stroke_hit_test tests/geometry/StrokeHitTestTest.cpp)
     target_link_libraries(stroke_hit_test PRIVATE fluidcore)
     add_test(NAME StrokeHitTest COMMAND stroke_hit_test)
+
+    add_executable(stroke_persistence_regression_test tests/workspace/StrokePersistenceRegressionTest.cpp)
+    target_link_libraries(stroke_persistence_regression_test PRIVATE fluidcore)
+    add_test(NAME StrokePersistenceRegressionTest COMMAND stroke_persistence_regression_test)
 endif()

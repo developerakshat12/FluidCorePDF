@@ -90,3 +90,37 @@ jobs:
         run: cmake --build build
       - name: Test (ctest)
         run: ctest --test-dir build --output-on-failure
+
+  windows-build:
+    name: windows (ucrt64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-gtk3
+            mingw-w64-ucrt-x86_64-cairo
+            mingw-w64-ucrt-x86_64-poppler
+            mingw-w64-ucrt-x86_64-sqlite3
+            mingw-w64-ucrt-x86_64-zlib
+      - name: Configure
+        shell: msys2 {0}
+        run: |
+          cmake -S . -B build-win -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DFLUIDCORE_BUILD_APP=ON
+      - name: Build
+        shell: msys2 {0}
+        run: cmake --build build-win
+      - name: Test (ctest)
+        shell: msys2 {0}
+        run: ctest --test-dir build-win --output-on-failure

@@ -193,6 +193,7 @@ void testOptionTogglesAndFileExport() {
 
     std::ifstream in(tmpPath);
     std::string fileContent((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    in.close();
     assert(fileContent == result.markdown);
     std::filesystem::remove(tmpPath);
 

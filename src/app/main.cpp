@@ -70,6 +70,12 @@ std::string normalizePath(std::string path) {
     if (path.empty()) {
         return path;
     }
+    std::error_code ec;
+    std::filesystem::path p(path);
+    if (std::filesystem::exists(p, ec)) {
+        p = std::filesystem::absolute(p, ec);
+        path = p.string();
+    }
 #ifndef G_OS_WIN32
     // If running on Linux/WSL and passed a Windows path like "D:\foo\bar.pdf"
     if (path.size() >= 3 && std::isalpha(static_cast<unsigned char>(path[0])) && path[1] == ':' &&
@@ -82,6 +88,13 @@ std::string normalizePath(std::string path) {
             }
         }
         return std::string("/mnt/") + drive + sub;
+    }
+#else
+    // On native Windows, convert backslashes to forward slashes for URI/GLib consistency
+    for (char& c : path) {
+        if (c == '\\') {
+            c = '/';
+        }
     }
 #endif
     return path;
@@ -293,11 +306,20 @@ void configureNativeFileChooser(GtkFileChooserNative* native, AppViewContext* ct
             return;
         }
     }
+#ifndef G_OS_WIN32
     if (std::filesystem::exists("/mnt/d")) {
         gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(native), "/mnt/d");
     } else if (std::filesystem::exists("/mnt/c")) {
         gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(native), "/mnt/c");
     }
+#else
+    std::error_code ec;
+    if (std::filesystem::exists("D:\\", ec)) {
+        gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(native), "D:\\");
+    } else if (std::filesystem::exists("C:\\", ec)) {
+        gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(native), "C:\\");
+    }
+#endif
 }
 
 void performSaveProjectAs(AppViewContext* ctx) {
@@ -546,6 +568,51 @@ void performSaveProjectAs(AppViewContext* ctx) {
         }
     }
 
+    // Canonical source switch: ensure documents and companions reside in bundle before save
+    for (const auto& [docId, origPath] : allDocs) {
+        if (origPath.empty())
+            continue;
+        std::filesystem::path srcPdf(origPath);
+        if (!std::filesystem::exists(srcPdf, ec))
+            continue;
+
+        std::string filename = srcPdf.filename().string();
+        if (filename.empty()) {
+            filename = "document.pdf";
+        }
+        std::filesystem::path dstPdf = bundlePath / "documents" / filename;
+        bool sameFile = false;
+        if (std::filesystem::exists(dstPdf, ec)) {
+            sameFile = std::filesystem::equivalent(srcPdf, dstPdf, ec);
+        }
+        ec.clear();
+
+        if (!sameFile) {
+            std::filesystem::copy_file(srcPdf, dstPdf,
+                                       std::filesystem::copy_options::overwrite_existing, ec);
+            ec.clear();
+            std::filesystem::path srcXopp(srcPdf);
+            srcXopp.replace_extension(".xopp");
+            if (std::filesystem::exists(srcXopp, ec)) {
+                std::filesystem::path dstXopp(dstPdf);
+                dstXopp.replace_extension(".xopp");
+                std::filesystem::copy_file(srcXopp, dstXopp,
+                                           std::filesystem::copy_options::overwrite_existing, ec);
+                ec.clear();
+            }
+        }
+
+        std::string newPath = dstPdf.string();
+        if (ctx->pdfDocService) {
+            ctx->pdfDocService->repointDocumentPath(docId, newPath);
+            ctx->pdfDocService->registerMainDocument(
+                newPath, ctx->pane ? ctx->pane->document() : nullptr, newPath);
+        }
+        if (ctx->pane && (ctx->pane->docId() == docId || ctx->pane->pdfPath() == origPath)) {
+            ctx->pane->repointCompanionPath(newPath);
+        }
+    }
+
     // Execute save
     bool ok = ctx->engine->saveProjectWithError(&err);
     if (ctx->pane) {
@@ -553,23 +620,6 @@ void performSaveProjectAs(AppViewContext* ctx) {
     }
 
     if (ok) {
-        // Canonical source switch: repoint document handles to bundle copies ONLY after verified
-        // save
-        for (const auto& [docId, origPath] : allDocs) {
-            if (origPath.empty())
-                continue;
-            std::filesystem::path srcPdf(origPath);
-            std::filesystem::path dstPdf = bundlePath / "documents" / srcPdf.filename();
-            std::string newPath = dstPdf.string();
-            if (ctx->pdfDocService) {
-                ctx->pdfDocService->repointDocumentPath(docId, newPath);
-                ctx->pdfDocService->registerMainDocument(
-                    newPath, ctx->pane ? ctx->pane->document() : nullptr, newPath);
-            }
-            if (ctx->pane && (ctx->pane->docId() == docId || ctx->pane->pdfPath() == origPath)) {
-                ctx->pane->repointCompanionPath(newPath);
-            }
-        }
 
         ctx->isProjectDirty = false;
         if (ctx->workspace)
@@ -1656,6 +1706,20 @@ void onActivate(GtkApplication* app, gpointer userData) {
 int main(int argc, char** argv) {
 #ifndef _WIN32
     installCrashHandlers();
+#else
+    // Ensure Fontconfig can locate fonts.conf and Windows system fonts
+    if (!g_getenv("FONTCONFIG_PATH") && !g_getenv("FONTCONFIG_FILE")) {
+        std::error_code ec;
+        if (argc > 0 && argv[0]) {
+            std::filesystem::path exePath = std::filesystem::absolute(argv[0], ec);
+            std::filesystem::path appDir = exePath.parent_path();
+            if (std::filesystem::exists(appDir / "etc" / "fonts" / "fonts.conf", ec)) {
+                g_setenv("FONTCONFIG_PATH", (appDir / "etc" / "fonts").string().c_str(), TRUE);
+            } else if (std::filesystem::exists("C:/msys64/ucrt64/etc/fonts/fonts.conf", ec)) {
+                g_setenv("FONTCONFIG_PATH", "C:/msys64/ucrt64/etc/fonts", TRUE);
+            }
+        }
+    }
 #endif
     // Suppress known spurious GLib-GIO critical warnings when enumerating WSL DrvFS mounts (/mnt/c,
     // /mnt/d)

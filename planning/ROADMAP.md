@@ -38,7 +38,8 @@ gantt
 | **M3** | Workspace | Infinite canvas + live excerpts | Drag excerpt from pane to canvas with bi-directional anchor |
 | **M4** | Synthesis | Ink links, stacks, FTS5 search | Full "compare two depositions end-to-end" persona journey works |
 | **M5** | Hardening | `.ltproj` WAL durability, perf, i18n | Crash-safe recovery passes; memory budget met on 50-doc project |
-| **M6** | v1.0 | Packaging, docs, community launch | Signed packages for Linux (Flatpak/AppImage/deb); Windows experimental |
+| **M5.5** | Windows Port | MSYS2 UCRT64, Win32 input, NTFS WAL | Native Windows 11 build; 34/34 CTests pass; portable clean-PC zip bundle |
+| **M6** | v1.0 | Packaging, docs, community launch | Signed packages for Linux + Windows Beta release |
 
 ## 3. Milestone Detail
 
@@ -94,6 +95,17 @@ gantt
 - [ ] Memory budget: ≤ 1.2 GB working set on 50-PDF/5000-page project
 - [ ] Accessibility pass (keyboard-only operation of all fluid actions)
 - [ ] i18n framework; initial locales: EN, DE, ZH
+
+### M5.5 — Windows Compatibility & Native Port — EXITED ✅
+- [x] Toolchain & dependencies: MSYS2 UCRT64 toolchain provisioning (GCC 16, CMake 4.4, Ninja 1.13, GTK3 3.24, Cairo 1.18, Poppler-GLib 26.08, SQLite3, ZLIB).
+- [x] Core library compilation: `libfluidcore` builds clean as static library; all 23 core CTest targets pass on Windows.
+- [x] NTFS file & rename semantics (Gate 1): Resolved stream/handle lock in `WorkspaceExportEngineTest`; validated `RoundTripPersistenceTest` and `ProjectStoreTest` SQLite WAL commits on NTFS.
+- [x] Application compilation: Added `_USE_MATH_DEFINES` for standard math constants across `fluidcore_app` and frontend tests; all 34/34 CTest targets pass 100%.
+- [x] Path normalization & dialogs: Refined `normalizePath` and `configureNativeFileChooser` in `main.cpp` for native Windows drive letters (`D:\...`, `C:\...`).
+- [x] Native runtime verification: `fluidcore_app.exe` launches natively on Windows 11, presents UI, and renders Poppler documents.
+- [x] Standalone portable packaging: `ops/scripts/package-windows.ps1` bundles all 90 runtime DLLs, GLib schemas, and Adwaita icons into a standalone 34MB zip; verified clean execution on isolated PATH.
+- [x] Windows CI: Added `windows-build` job to `.github/workflows/ci.yml` with `msys2/setup-msys2@v2`.
+- [x] Build harness: Created `ops/scripts/build-win.ps1` for easy configure, build, test, and run from PowerShell.
 
 ### M6 — v1.0 Launch (Weeks 59–62)
 - [ ] Flatpak, AppImage, .deb packages; Windows MSYS2 build marked beta

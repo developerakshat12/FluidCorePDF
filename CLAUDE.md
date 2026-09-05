@@ -39,6 +39,16 @@ Open-source, offline-first alternative to LiquidText: fluid PDF reader + infinit
 
 ## Common Gotchas & Troubleshooting
 - **GTK Container Lifecycle**: Root widgets returned by `widget()` (such as `m_viewOverlay` in `DocumentPane`) MUST be instantiated at the top of the constructor before any early returns (e.g. on invalid PDF paths). Returning `nullptr` breaks GTK window hierarchy mapping and prevents windows from appearing.
+- **Native Windows Build & Run (MSYS2 UCRT64)**:
+  FluidCore runs natively on Windows 11. Use `ops/scripts/build-win.ps1` or `ops/scripts/package-windows.ps1`:
+  ```powershell
+  # Build and run all 34 CTest suites
+  powershell -ExecutionPolicy Bypass -File ops/scripts/build-win.ps1 -Test
+  # Launch app natively with document
+  powershell -ExecutionPolicy Bypass -File ops/scripts/build-win.ps1 -Run -Document "D:\path\to\doc.pdf"
+  # Package standalone zip distribution (bundled DLLs, schemas, icons)
+  powershell -ExecutionPolicy Bypass -File ops/scripts/package-windows.ps1
+  ```
 - **Running via WSL from PowerShell**: Avoid wrapping commands with nested quotes in `wsl bash -c "..."` because PowerShell strips inner quotes around paths with spaces (e.g., `study material`). Instead, invoke directly:
   ```powershell
   wsl -d Ubuntu --cd "<workspace>/build-wsl" ./src/app/fluidcore_app "<path-to-pdf>"

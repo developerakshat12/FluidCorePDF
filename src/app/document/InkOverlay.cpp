@@ -150,8 +150,9 @@ std::optional<std::size_t> findPageIndexAt(const std::vector<DocumentPane::PageL
         --it;
     }
     const auto& layout = *it;
-    if (docY >= layout.y && docY <= layout.y + layout.height && screenX >= pageX &&
-        screenX <= pageX + layout.width) {
+    const double hMargin = kPageMargin;
+    if (docY >= layout.y - 12.0 && docY <= layout.y + layout.height + 12.0 &&
+        screenX >= pageX - hMargin && screenX <= pageX + layout.width + hMargin) {
         return static_cast<std::size_t>(std::distance(pages.begin(), it));
     }
     return std::nullopt;
@@ -162,6 +163,13 @@ std::optional<std::size_t> findPageIndexAt(const std::vector<DocumentPane::PageL
 InkOverlay::InkOverlay(DocumentPane& pane, FluidCore::AnnotationStore& store)
     : m_pane(pane), m_annotationStore(store) {
     m_widget = gtk_drawing_area_new();
+    g_signal_connect(m_widget, "destroy", G_CALLBACK(+[](GtkWidget*, gpointer data) {
+                         auto* self = static_cast<InkOverlay*>(data);
+                         if (self) {
+                             self->m_widget = nullptr;
+                         }
+                     }),
+                     this);
     gtk_widget_set_size_request(m_widget, static_cast<int>(m_pane.layoutWidth()),
                                 static_cast<int>(m_pane.layoutHeight()));
 
@@ -193,6 +201,18 @@ InkOverlay::InkOverlay(DocumentPane& pane, FluidCore::AnnotationStore& store)
 }
 
 InkOverlay::~InkOverlay() = default;
+
+void InkOverlay::queueDraw() {
+    if (m_widget && GTK_IS_WIDGET(m_widget)) {
+        gtk_widget_queue_draw(m_widget);
+    }
+}
+
+void InkOverlay::queueDrawArea(int x, int y, int width, int height) {
+    if (m_widget && GTK_IS_WIDGET(m_widget)) {
+        gtk_widget_queue_draw_area(m_widget, x, y, width, height);
+    }
+}
 
 void InkOverlay::setTool(const std::string& tool) {
     m_currentTool = tool;
@@ -255,9 +275,7 @@ void InkOverlay::clearCropSelection() {
 }
 
 void InkOverlay::invalidateCropSelection() {
-    if (m_widget) {
-        gtk_widget_queue_draw(m_widget);
-    }
+    queueDraw();
 }
 
 bool InkOverlay::isPointInsideCropSelection(std::size_t pageIndex, double xp, double yp) const {
@@ -281,7 +299,7 @@ void InkOverlay::invalidateSelection(const FluidCore::MultiPageSelectionState& s
     }
 
     if (m_pane.isSqueezed()) {
-        gtk_widget_queue_draw(m_widget);
+        queueDraw();
         return;
     }
 
@@ -296,8 +314,7 @@ void InkOverlay::invalidateSelection(const FluidCore::MultiPageSelectionState& s
             const auto damage = FluidCore::TextSelection::computePageDamage(
                 pSel, pageX, pages[pSel.pageIndex].y, 4.0);
             if (!damage.isEmpty()) {
-                gtk_widget_queue_draw_area(m_widget, damage.x, damage.y, damage.width,
-                                           damage.height);
+                queueDrawArea(damage.x, damage.y, damage.width, damage.height);
             }
         }
     }
@@ -309,7 +326,7 @@ void InkOverlay::invalidateStroke(const FluidCore::Stroke& stroke) {
     }
 
     if (m_pane.isSqueezed()) {
-        gtk_widget_queue_draw(m_widget);
+        queueDraw();
         return;
     }
 
@@ -339,7 +356,7 @@ void InkOverlay::invalidateStroke(const FluidCore::Stroke& stroke) {
     const int rw = static_cast<int>(std::ceil(maxX - minX + 2.0 * pad));
     const int rh = static_cast<int>(std::ceil(maxY - minY + 2.0 * pad));
 
-    gtk_widget_queue_draw_area(m_widget, rx, ry, rw, rh);
+    queueDrawArea(rx, ry, rw, rh);
 }
 
 void InkOverlay::invalidatePage(std::size_t pageIdx) {
@@ -349,7 +366,7 @@ void InkOverlay::invalidatePage(std::size_t pageIdx) {
     }
 
     if (m_pane.isSqueezed()) {
-        gtk_widget_queue_draw(m_widget);
+        queueDraw();
         return;
     }
 
@@ -359,9 +376,9 @@ void InkOverlay::invalidatePage(std::size_t pageIdx) {
         kPageMargin + std::max(0.0, (allocation.width - m_pane.layoutWidth()) / 2.0);
     const auto& layout = pages[pageIdx];
 
-    gtk_widget_queue_draw_area(
-        m_widget, static_cast<int>(std::floor(pageX)), static_cast<int>(std::floor(layout.y)),
-        static_cast<int>(std::ceil(layout.width)), static_cast<int>(std::ceil(layout.height)));
+    queueDrawArea(static_cast<int>(std::floor(pageX)), static_cast<int>(std::floor(layout.y)),
+                  static_cast<int>(std::ceil(layout.width)),
+                  static_cast<int>(std::ceil(layout.height)));
 }
 
 void InkOverlay::drawCallback(GtkWidget*, cairo_t* cr, gpointer userData) {
@@ -488,7 +505,7 @@ gboolean InkOverlay::onButtonPress(GdkEventButton* event) {
         m_cropSelectionState.rectPt = {xp, yp, 0.0, 0.0};
         m_cropSelectionState.normRect = {xp / layout.width, yp / layout.height, 0.0, 0.0};
 
-        gtk_widget_queue_draw(m_widget);
+        queueDraw();
         return TRUE;
     }
 
@@ -576,7 +593,7 @@ gboolean InkOverlay::onButtonPress(GdkEventButton* event) {
         }
     }
 
-    gtk_widget_queue_draw(m_widget);
+    queueDraw();
     return TRUE;
 }
 
@@ -653,7 +670,7 @@ gboolean InkOverlay::onMotionNotify(GdkEventMotion* event) {
             m_cropSelectionState.normRect = {minX / layout.width, minY / layout.height,
                                              (maxX - minX) / layout.width,
                                              (maxY - minY) / layout.height};
-            gtk_widget_queue_draw(m_widget);
+            queueDraw();
             return TRUE;
         }
     }
@@ -717,7 +734,7 @@ gboolean InkOverlay::onMotionNotify(GdkEventMotion* event) {
             }
         }
         if (erasedAny) {
-            gtk_widget_queue_draw(m_widget);
+            queueDraw();
         }
         return TRUE;
     }
@@ -732,7 +749,7 @@ gboolean InkOverlay::onMotionNotify(GdkEventMotion* event) {
     m_wetTip = pushResult.wetTip;
     m_hasWetSegment = pushResult.hasWetSegment;
 
-    gtk_widget_queue_draw(m_widget);
+    queueDraw();
     m_lastPressure = pressure;
     return TRUE;
 }
@@ -765,7 +782,7 @@ gboolean InkOverlay::onButtonRelease(GdkEventButton* event) {
         if (m_cropSelectionState.rectPt.w < 6.0 || m_cropSelectionState.rectPt.h < 6.0) {
             clearCropSelection();
         }
-        gtk_widget_queue_draw(m_widget);
+        queueDraw();
         return TRUE;
     }
 
@@ -784,11 +801,11 @@ gboolean InkOverlay::onButtonRelease(GdkEventButton* event) {
                 clearSelection();
             }
         }
-        gtk_widget_queue_draw(m_widget);
+        queueDraw();
         return TRUE;
     }
 
-    if (!m_isDrawing || event->button != GDK_BUTTON_PRIMARY) {
+    if (!m_isDrawing) {
         return FALSE;
     }
 
@@ -799,7 +816,7 @@ gboolean InkOverlay::onButtonRelease(GdkEventButton* event) {
         for (const auto& seg : tailSegs) {
             m_activeBezierSegments.push_back(seg);
         }
-        gtk_widget_queue_draw(m_widget);
+        queueDraw();
 
         const auto& samples = m_stabilizer.rawSamples();
         if (m_activeStroke.tool == "eraser") {
@@ -813,20 +830,13 @@ gboolean InkOverlay::onButtonRelease(GdkEventButton* event) {
             }
 
             if (!erasedStrokes.empty()) {
-                if (erasedStrokes.size() == 1) {
-                    invalidateStroke(erasedStrokes[0]);
-                    m_pane.undoStack().pushAndExecute(
-                        std::make_unique<FluidCore::RemoveStrokeCommand>(
-                            m_annotationStore, m_activePageIndex, erasedStrokes[0]));
-                } else {
-                    auto compound = std::make_unique<FluidCore::CompoundCommand>("Erase Strokes");
-                    for (const auto& s : erasedStrokes) {
-                        invalidateStroke(s);
-                        compound->addCommand(std::make_unique<FluidCore::RemoveStrokeCommand>(
-                            m_annotationStore, m_activePageIndex, s));
-                    }
-                    m_pane.undoStack().pushAndExecute(std::move(compound));
+                auto compound = std::make_unique<FluidCore::CompoundCommand>("Erase Strokes");
+                for (const auto& s : erasedStrokes) {
+                    invalidateStroke(s);
+                    compound->addCommand(std::make_unique<FluidCore::RemoveStrokeCommand>(
+                        m_annotationStore, m_activePageIndex, s));
                 }
+                m_pane.undoStack().pushAndExecute(std::move(compound));
             }
         } else if (!samples.empty()) {
             m_activeStroke.points.clear();
@@ -847,7 +857,7 @@ gboolean InkOverlay::onButtonRelease(GdkEventButton* event) {
     m_activeStroke = FluidCore::Stroke{};
     m_activeBezierSegments.clear();
     m_hasWetSegment = false;
-    gtk_widget_queue_draw(m_widget);
+    queueDraw();
     return TRUE;
 }
 
@@ -1074,8 +1084,9 @@ void InkOverlay::draw(cairo_t* cr) {
             }
 
             cairo_save(cr);
-            // Clip to slice
-            cairo_rectangle(cr, pageX, slice.screenYStart, layout.width,
+            // Clip to slice with horizontal margin tolerance so margin annotations render
+            cairo_rectangle(cr, pageX - kPageMargin, slice.screenYStart,
+                            layout.width + 2.0 * kPageMargin,
                             slice.screenYEnd - slice.screenYStart);
             cairo_clip(cr);
 
@@ -1307,9 +1318,7 @@ void InkOverlay::onDragEnd(GdkDragContext*) {
     m_isPotentialExcerptDrag = false;
     m_isSelectingCrop = false;
     m_isSelectingText = false;
-    if (m_widget && GTK_IS_WIDGET(m_widget)) {
-        gtk_widget_queue_draw(m_widget);
-    }
+    queueDraw();
 }
 
 gboolean InkOverlay::onProximityIn(GdkEventProximity* event) {
@@ -1375,9 +1384,7 @@ void InkOverlay::cancelActiveTouches(const std::vector<uint32_t>& /*touchIds*/) 
         m_activeBezierSegments.clear();
         m_hasWetSegment = false;
     }
-    if (m_widget && GTK_IS_WIDGET(m_widget)) {
-        gtk_widget_queue_draw(m_widget);
-    }
+    queueDraw();
 }
 
 } // namespace FluidCoreApp

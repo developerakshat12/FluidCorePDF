@@ -66,7 +66,10 @@ bool AnnotationStore::saveAnnotations(const std::string& pdfPath,
 
 std::string AnnotationStore::addStroke(std::size_t pageIdx, Stroke stroke) {
     stroke.pageIndex = pageIdx;
-    if (stroke.id.empty()) {
+    if (stroke.id.empty() || findStroke(stroke.id) != nullptr) {
+        while (findStroke("stroke-" + std::to_string(m_nextStrokeId)) != nullptr) {
+            ++m_nextStrokeId;
+        }
         stroke.id = "stroke-" + std::to_string(m_nextStrokeId++);
     }
     m_strokes.push_back(std::move(stroke));

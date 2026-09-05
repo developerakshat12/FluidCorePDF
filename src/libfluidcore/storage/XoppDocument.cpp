@@ -922,8 +922,14 @@ bool XoppDocument::save(const std::string& path, std::string* error) const {
     }
 #endif
 
-    // Atomic filesystem rename
+    // Atomic filesystem rename with fallback if target already exists
     std::filesystem::rename(tmpPath, targetPath, ec);
+    if (ec) {
+        std::error_code rmEc;
+        std::filesystem::remove(targetPath, rmEc);
+        ec.clear();
+        std::filesystem::rename(tmpPath, targetPath, ec);
+    }
     if (ec) {
         if (error) {
             *error = "failed to rename '" + tmpPath + "' to '" + path + "': " + ec.message();

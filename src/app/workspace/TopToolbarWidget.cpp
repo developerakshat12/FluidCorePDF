@@ -1,24 +1,64 @@
 #include "workspace/TopToolbarWidget.h"
+#include "ui/AppIcons.h"
 
 namespace FluidCoreApp {
 
 namespace {
 
-GtkWidget* createToolToggleBtn(const char* label, const char* tooltip) {
-    GtkWidget* btn = gtk_toggle_button_new_with_label(label);
+GtkWidget* createToolToggleBtn(AppIcon icon, const char* label, const char* tooltip,
+                               GtkWidget** outIconWidget = nullptr) {
+    GtkWidget* btn = gtk_toggle_button_new();
+    GtkWidget* box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+    GtkWidget* iconWidget = AppIcons::createIconWidget(icon, AppIcons::ToolbarSize, IconState::Default);
+    gtk_box_pack_start(GTK_BOX(box), iconWidget, FALSE, FALSE, 0);
+
+    if (label && *label != '\0') {
+        GtkWidget* labelWidget = gtk_label_new(label);
+        gtk_box_pack_start(GTK_BOX(box), labelWidget, FALSE, FALSE, 0);
+    }
+    gtk_container_add(GTK_CONTAINER(btn), box);
+
     gtk_widget_set_tooltip_text(btn, tooltip);
     gtk_widget_set_can_focus(btn, FALSE);
     GtkStyleContext* ctx = gtk_widget_get_style_context(btn);
     gtk_style_context_add_class(ctx, "fc-tool-btn");
+
+    if (outIconWidget) {
+        *outIconWidget = iconWidget;
+    }
     return btn;
 }
 
-GtkWidget* createActionBtn(const char* label, const char* tooltip) {
-    GtkWidget* btn = gtk_button_new_with_label(label);
+GtkWidget* createActionBtn(AppIcon icon, const char* label, const char* tooltip,
+                           const char* accessibleName = nullptr,
+                           GtkWidget** outIconWidget = nullptr) {
+    GtkWidget* btn = gtk_button_new();
+    GtkWidget* box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+    GtkWidget* iconWidget = AppIcons::createIconWidget(icon, AppIcons::ToolbarSize, IconState::Default);
+    gtk_box_pack_start(GTK_BOX(box), iconWidget, FALSE, FALSE, 0);
+
+    if (label && *label != '\0') {
+        GtkWidget* labelWidget = gtk_label_new(label);
+        gtk_box_pack_start(GTK_BOX(box), labelWidget, FALSE, FALSE, 0);
+    }
+    gtk_container_add(GTK_CONTAINER(btn), box);
+
     gtk_widget_set_tooltip_text(btn, tooltip);
     gtk_widget_set_can_focus(btn, FALSE);
     GtkStyleContext* ctx = gtk_widget_get_style_context(btn);
     gtk_style_context_add_class(ctx, "fc-tool-btn");
+
+    const char* accName = accessibleName ? accessibleName : (label && *label != '\0' ? label : tooltip);
+    if (accName) {
+        AtkObject* accessible = gtk_widget_get_accessible(btn);
+        if (accessible) {
+            atk_object_set_name(accessible, accName);
+        }
+    }
+
+    if (outIconWidget) {
+        *outIconWidget = iconWidget;
+    }
     return btn;
 }
 
@@ -107,12 +147,12 @@ void TopToolbarWidget::createWidgets() {
     gtk_box_pack_start(GTK_BOX(m_rootContainer), m_pillBox, FALSE, FALSE, 0);
 
     // 1. Tool Toggle Buttons (Exclusive Radio-like behavior)
-    m_selectBtn = createToolToggleBtn("↖ Select", "Pointer & Selection Tool [Esc / S]");
-    m_penBtn = createToolToggleBtn("✏️ Pen", "Ink Pen Drawing Tool [P / Alt+1]");
-    m_highlighterBtn = createToolToggleBtn("🖊️ Highlight", "Highlighter Tool [H / Alt+2]");
-    m_eraserBtn = createToolToggleBtn("🧹 Eraser", "Stroke Eraser Tool [E / Alt+3]");
-    m_cropBtn = createToolToggleBtn("✂️ Crop", "Excerpt Crop Tool [C / Alt+5]");
-    m_connectorBtn = createToolToggleBtn("🔗 Link", "Ink Connector / Edge Tool [A / Alt+6]");
+    m_selectBtn = createToolToggleBtn(AppIcon::Select, "Select", "Pointer & Selection Tool [Esc / S]", &m_selectIcon);
+    m_penBtn = createToolToggleBtn(AppIcon::Pen, "Pen", "Ink Pen Drawing Tool [P / Alt+1]", &m_penIcon);
+    m_highlighterBtn = createToolToggleBtn(AppIcon::Highlighter, "Highlight", "Highlighter Tool [H / Alt+2]", &m_highlighterIcon);
+    m_eraserBtn = createToolToggleBtn(AppIcon::Eraser, "Eraser", "Stroke Eraser Tool [E / Alt+3]", &m_eraserIcon);
+    m_cropBtn = createToolToggleBtn(AppIcon::Crop, "Crop", "Excerpt Crop Tool [C / Alt+5]", &m_cropIcon);
+    m_connectorBtn = createToolToggleBtn(AppIcon::Link, "Link", "Ink Connector / Edge Tool [A / Alt+6]", &m_connectorIcon);
 
     gtk_box_pack_start(GTK_BOX(m_pillBox), m_selectBtn, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(m_pillBox), m_penBtn, FALSE, FALSE, 0);
@@ -148,11 +188,13 @@ void TopToolbarWidget::createWidgets() {
     // Separator
     gtk_box_pack_start(GTK_BOX(m_pillBox), createSeparator(), FALSE, FALSE, 0);
 
-    // 2. History Buttons
-    m_undoBtn = createActionBtn("↩ Undo", "Undo [Ctrl+Z]");
-    m_redoBtn = createActionBtn("↪ Redo", "Redo [Ctrl+Shift+Z / Ctrl+Y]");
+    // 2. History Buttons (Compact icon-only with accessible names and shortcut tooltips)
+    m_undoBtn = createActionBtn(AppIcon::Undo, "", "Undo [Ctrl+Z]", "Undo", &m_undoIcon);
+    m_redoBtn = createActionBtn(AppIcon::Redo, "", "Redo [Ctrl+Shift+Z / Ctrl+Y]", "Redo", &m_redoIcon);
     gtk_widget_set_sensitive(m_undoBtn, FALSE);
     gtk_widget_set_sensitive(m_redoBtn, FALSE);
+    AppIcons::setIconState(m_undoIcon, AppIcon::Undo, IconState::Disabled);
+    AppIcons::setIconState(m_redoIcon, AppIcon::Redo, IconState::Disabled);
 
     g_signal_connect(m_undoBtn, "clicked", G_CALLBACK(+[](GtkButton*, gpointer data) {
                          auto* self = static_cast<TopToolbarWidget*>(data);
@@ -175,10 +217,10 @@ void TopToolbarWidget::createWidgets() {
     gtk_box_pack_start(GTK_BOX(m_pillBox), createSeparator(), FALSE, FALSE, 0);
 
     // 3. Navigation & Canvas View
-    m_zoomInBtn = createActionBtn("🔍+", "Zoom In [+]");
-    m_zoomOutBtn = createActionBtn("🔍-", "Zoom Out [-]");
-    m_resetViewBtn = createActionBtn("🎯 Reset", "Reset Canvas View [Ctrl+0]");
-    m_minimapBtn = createToolToggleBtn("🗺️ Minimap", "Toggle Canvas Minimap [Ctrl+M]");
+    m_zoomInBtn = createActionBtn(AppIcon::ZoomIn, "", "Zoom In [Ctrl++ / +]", "Zoom In");
+    m_zoomOutBtn = createActionBtn(AppIcon::ZoomOut, "", "Zoom Out [Ctrl+- / -]", "Zoom Out");
+    m_resetViewBtn = createActionBtn(AppIcon::ResetView, "Reset", "Reset Canvas View [Ctrl+0]", "Reset View");
+    m_minimapBtn = createToolToggleBtn(AppIcon::Minimap, "Minimap", "Toggle Canvas Minimap [Ctrl+M]");
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(m_minimapBtn), TRUE);
 
     g_signal_connect(m_zoomInBtn, "clicked", G_CALLBACK(+[](GtkButton*, gpointer data) {
@@ -218,8 +260,8 @@ void TopToolbarWidget::createWidgets() {
     gtk_box_pack_start(GTK_BOX(m_pillBox), createSeparator(), FALSE, FALSE, 0);
 
     // 4. Global Action Buttons
-    m_searchBtn = createActionBtn("🔍 Search", "Search Document & Canvas [Ctrl+F]");
-    m_exportBtn = createActionBtn("📤 Export", "Export Synthesis to Markdown [Ctrl+E]");
+    m_searchBtn = createActionBtn(AppIcon::Search, "Search", "Search Document & Canvas [Ctrl+F]", "Search");
+    m_exportBtn = createActionBtn(AppIcon::Export, "Export", "Export Synthesis to Markdown [Ctrl+E]", "Export");
 
     g_signal_connect(m_searchBtn, "clicked", G_CALLBACK(+[](GtkButton*, gpointer data) {
                          auto* self = static_cast<TopToolbarWidget*>(data);
@@ -241,19 +283,23 @@ void TopToolbarWidget::createWidgets() {
 
 void TopToolbarWidget::onToolStateChanged(Tool tool) {
     m_updatingToolUI = true;
-    if (m_selectBtn && GTK_IS_TOGGLE_BUTTON(m_selectBtn))
-        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(m_selectBtn), tool == Tool::Select);
-    if (m_penBtn && GTK_IS_TOGGLE_BUTTON(m_penBtn))
-        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(m_penBtn), tool == Tool::Pen);
-    if (m_highlighterBtn && GTK_IS_TOGGLE_BUTTON(m_highlighterBtn))
-        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(m_highlighterBtn),
-                                     tool == Tool::Highlighter);
-    if (m_eraserBtn && GTK_IS_TOGGLE_BUTTON(m_eraserBtn))
-        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(m_eraserBtn), tool == Tool::Eraser);
-    if (m_cropBtn && GTK_IS_TOGGLE_BUTTON(m_cropBtn))
-        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(m_cropBtn), tool == Tool::Crop);
-    if (m_connectorBtn && GTK_IS_TOGGLE_BUTTON(m_connectorBtn))
-        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(m_connectorBtn), tool == Tool::Connector);
+
+    auto updateTool = [](GtkWidget* btn, GtkWidget* iconWidget, AppIcon icon, bool active) {
+        if (btn && GTK_IS_TOGGLE_BUTTON(btn)) {
+            gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(btn), active);
+        }
+        if (iconWidget) {
+            AppIcons::setIconState(iconWidget, icon, active ? IconState::Active : IconState::Default);
+        }
+    };
+
+    updateTool(m_selectBtn, m_selectIcon, AppIcon::Select, tool == Tool::Select);
+    updateTool(m_penBtn, m_penIcon, AppIcon::Pen, tool == Tool::Pen);
+    updateTool(m_highlighterBtn, m_highlighterIcon, AppIcon::Highlighter, tool == Tool::Highlighter);
+    updateTool(m_eraserBtn, m_eraserIcon, AppIcon::Eraser, tool == Tool::Eraser);
+    updateTool(m_cropBtn, m_cropIcon, AppIcon::Crop, tool == Tool::Crop);
+    updateTool(m_connectorBtn, m_connectorIcon, AppIcon::Link, tool == Tool::Connector);
+
     m_updatingToolUI = false;
 }
 
@@ -263,6 +309,12 @@ void TopToolbarWidget::updateUndoRedoState(bool canUndo, bool canRedo) {
     }
     if (m_redoBtn && GTK_IS_WIDGET(m_redoBtn)) {
         gtk_widget_set_sensitive(m_redoBtn, canRedo ? TRUE : FALSE);
+    }
+    if (m_undoIcon) {
+        AppIcons::setIconState(m_undoIcon, AppIcon::Undo, canUndo ? IconState::Default : IconState::Disabled);
+    }
+    if (m_redoIcon) {
+        AppIcons::setIconState(m_redoIcon, AppIcon::Redo, canRedo ? IconState::Default : IconState::Disabled);
     }
 }
 
