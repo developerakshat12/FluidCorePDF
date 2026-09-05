@@ -5,10 +5,12 @@ namespace FluidCoreApp {
 
 namespace {
 
-GtkWidget* createHeaderButton(AppIcon icon, const char* label, const char* tooltip, bool isPrimary = false) {
+GtkWidget* createHeaderButton(AppIcon icon, const char* label, const char* tooltip,
+                              bool isPrimary = false) {
     GtkWidget* btn = gtk_button_new();
     GtkWidget* box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
-    GtkWidget* iconWidget = AppIcons::createIconWidget(icon, AppIcons::HeaderSize, IconState::Active);
+    GtkWidget* iconWidget =
+        AppIcons::createIconWidget(icon, AppIcons::HeaderSize, IconState::Active);
     gtk_box_pack_start(GTK_BOX(box), iconWidget, FALSE, FALSE, 0);
 
     if (label && *label != '\0') {
@@ -167,7 +169,8 @@ void AppHeaderBar::createWidgets(GtkWindow* /*parentWindow*/) {
     m_openMenuBtn = gtk_menu_button_new();
     gtk_widget_set_tooltip_text(m_openMenuBtn, "Open PDF or Project (Ctrl+O / Ctrl+Shift+O)");
     GtkWidget* openBox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
-    GtkWidget* openIcon = AppIcons::createIconWidget(AppIcon::OpenFile, AppIcons::HeaderSize, IconState::Active);
+    GtkWidget* openIcon =
+        AppIcons::createIconWidget(AppIcon::OpenFile, AppIcons::HeaderSize, IconState::Active);
     GtkWidget* openLabel = gtk_label_new("Open ▾");
     gtk_box_pack_start(GTK_BOX(openBox), openIcon, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(openBox), openLabel, FALSE, FALSE, 0);
@@ -198,7 +201,8 @@ void AppHeaderBar::createWidgets(GtkWindow* /*parentWindow*/) {
     gtk_menu_button_set_popup(GTK_MENU_BUTTON(m_openMenuBtn), m_openMenu);
     gtk_box_pack_start(GTK_BOX(leftCluster), m_openMenuBtn, FALSE, FALSE, 0);
 
-    m_saveBtn = createHeaderButton(AppIcon::SaveFile, "Save", "Save Project (.ltproj Bundle) (Ctrl+S)", true);
+    m_saveBtn = createHeaderButton(AppIcon::SaveFile, "Save",
+                                   "Save Project (.ltproj Bundle) (Ctrl+S)", true);
     g_signal_connect_swapped(m_saveBtn, "clicked", G_CALLBACK(+[](AppHeaderBar* self) {
                                  if (self && self->m_onSaveProject)
                                      self->m_onSaveProject();
@@ -211,8 +215,8 @@ void AppHeaderBar::createWidgets(GtkWindow* /*parentWindow*/) {
     // Right Action Cluster: Export
     GtkWidget* rightCluster = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
 
-    m_exportBtn =
-        createHeaderButton(AppIcon::Export, "Export", "Export Annotated PDF / Markdown Outline (Ctrl+E)");
+    m_exportBtn = createHeaderButton(AppIcon::Export, "Export",
+                                     "Export Annotated PDF / Markdown Outline (Ctrl+E)");
     g_signal_connect_swapped(m_exportBtn, "clicked", G_CALLBACK(+[](AppHeaderBar* self) {
                                  if (self && self->m_onExport)
                                      self->m_onExport();

@@ -46,25 +46,32 @@ int main() {
     {
         FluidCore::WorkspaceModel model("proj-1");
         // Pre-existing rehydrated strokes
-        model.insert(std::make_unique<FluidCore::CanvasStrokeNode>(makeTestStroke("stroke-1", 10.0, 10.0)));
-        model.insert(std::make_unique<FluidCore::CanvasStrokeNode>(makeTestStroke("stroke-2", 30.0, 30.0)));
+        model.insert(
+            std::make_unique<FluidCore::CanvasStrokeNode>(makeTestStroke("stroke-1", 10.0, 10.0)));
+        model.insert(
+            std::make_unique<FluidCore::CanvasStrokeNode>(makeTestStroke("stroke-2", 30.0, 30.0)));
 
         failures += check(model.allNodeIds().size() == 2, "initial rehydrated model has 2 strokes");
 
         // User attempts to draw a new stroke with ID "stroke-1" (due to s_strokeCounter reset)
-        auto newStrokeNode = std::make_unique<FluidCore::CanvasStrokeNode>(makeTestStroke("stroke-1", 50.0, 50.0));
+        auto newStrokeNode =
+            std::make_unique<FluidCore::CanvasStrokeNode>(makeTestStroke("stroke-1", 50.0, 50.0));
         FluidCore::InsertNodeCommand cmd(model, std::move(newStrokeNode));
 
         bool executed = cmd.execute();
         failures += check(executed, "InsertNodeCommand::execute returns true for conflicting ID");
-        failures += check(model.allNodeIds().size() == 3, "new stroke successfully inserted into model without being dropped");
-        failures += check(cmd.nodeId() != "stroke-1", "InsertNodeCommand reassigned colliding ID to unique key");
+        failures += check(model.allNodeIds().size() == 3,
+                          "new stroke successfully inserted into model without being dropped");
+        failures += check(cmd.nodeId() != "stroke-1",
+                          "InsertNodeCommand reassigned colliding ID to unique key");
 
         // Verify undo / redo
         bool undone = cmd.undo();
-        failures += check(undone && model.allNodeIds().size() == 2, "undo removes the newly added stroke");
+        failures +=
+            check(undone && model.allNodeIds().size() == 2, "undo removes the newly added stroke");
         bool redone = cmd.redo();
-        failures += check(redone && model.allNodeIds().size() == 3, "redo restores the newly added stroke");
+        failures +=
+            check(redone && model.allNodeIds().size() == 3, "redo restores the newly added stroke");
     }
 
     // 2. Verify AnnotationStore collision-free ID generation after deletion
@@ -80,13 +87,15 @@ int main() {
         // Add stroke with auto-generated ID: must not collide with "stroke-2"
         FluidCore::Stroke emptyIdStroke = makeTestStroke("", 30.0, 30.0);
         std::string newId = store.addStroke(0, std::move(emptyIdStroke));
-        failures += check(newId != "stroke-2", "auto-generated stroke ID does not collide with stroke-2");
+        failures +=
+            check(newId != "stroke-2", "auto-generated stroke ID does not collide with stroke-2");
         failures += check(store.strokes().size() == 2, "store now has 2 strokes with distinct IDs");
 
         // Add stroke with explicit colliding ID "stroke-2": must disambiguate
         FluidCore::Stroke collidingStroke = makeTestStroke("stroke-2", 40.0, 40.0);
         std::string disambiguatedId = store.addStroke(0, std::move(collidingStroke));
-        failures += check(disambiguatedId != "stroke-2", "explicit colliding stroke ID is disambiguated");
+        failures +=
+            check(disambiguatedId != "stroke-2", "explicit colliding stroke ID is disambiguated");
         failures += check(store.strokes().size() == 3, "all 3 strokes survive in AnnotationStore");
     }
 
@@ -102,11 +111,14 @@ int main() {
         failures += check(ok, "openProject succeeds");
 
         FluidCore::WorkspaceModel model("proj-test");
-        model.insert(std::make_unique<FluidCore::CanvasStrokeNode>(makeTestStroke("stroke-1", 10.0, 10.0)));
-        model.insert(std::make_unique<FluidCore::CanvasStrokeNode>(makeTestStroke("stroke-2", 30.0, 30.0)));
+        model.insert(
+            std::make_unique<FluidCore::CanvasStrokeNode>(makeTestStroke("stroke-1", 10.0, 10.0)));
+        model.insert(
+            std::make_unique<FluidCore::CanvasStrokeNode>(makeTestStroke("stroke-2", 30.0, 30.0)));
 
         // Insert new stroke via InsertNodeCommand
-        FluidCore::InsertNodeCommand cmd(model, std::make_unique<FluidCore::CanvasStrokeNode>(makeTestStroke("stroke-1", 70.0, 70.0)));
+        FluidCore::InsertNodeCommand cmd(model, std::make_unique<FluidCore::CanvasStrokeNode>(
+                                                    makeTestStroke("stroke-1", 70.0, 70.0)));
         cmd.execute();
         failures += check(model.allNodeIds().size() == 3, "model has 3 strokes before save");
 
@@ -121,7 +133,8 @@ int main() {
         std::vector<FluidCore::DocumentRecord> rehydratedDocs;
         ok = store.rehydrate(rehydratedModel, rehydratedGraph, rehydratedDocs, &error);
         failures += check(ok, "rehydrate succeeds");
-        failures += check(rehydratedModel.allNodeIds().size() == 3, "all 3 strokes rehydrated from disk without data loss");
+        failures += check(rehydratedModel.allNodeIds().size() == 3,
+                          "all 3 strokes rehydrated from disk without data loss");
 
         store.closeProject();
         std::filesystem::remove_all(bundlePath, ec);

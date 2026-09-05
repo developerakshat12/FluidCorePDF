@@ -58,8 +58,8 @@ bool InsertNodeCommand::execute() {
             }
             std::string newId;
             do {
-                newId = prefix + "-" + std::to_string(nowUs) + "-" +
-                        std::to_string(++s_fallbackSeq);
+                newId =
+                    prefix + "-" + std::to_string(nowUs) + "-" + std::to_string(++s_fallbackSeq);
             } while (m_model.find(newId) != nullptr);
 
             if (auto* strokeNode = dynamic_cast<CanvasStrokeNode*>(m_nodeTemplate.get())) {
@@ -162,8 +162,7 @@ bool StackMergeCommand::execute() {
                              std::chrono::system_clock::now().time_since_epoch())
                              .count();
             do {
-                m_stackId =
-                    "stack-" + std::to_string(nowUs) + "-" + std::to_string(++s_stackSeq);
+                m_stackId = "stack-" + std::to_string(nowUs) + "-" + std::to_string(++s_stackSeq);
             } while (m_model.find(m_stackId) != nullptr);
         }
 

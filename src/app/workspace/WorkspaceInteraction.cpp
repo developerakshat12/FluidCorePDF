@@ -389,8 +389,7 @@ void WorkspaceInteraction::handleExcerptDrop(WorkspaceState& state, FluidCore::F
         const auto& payload = *payloadOpt;
         static std::atomic<uint64_t> s_excerptSeq{0};
         const uint64_t ts = static_cast<uint64_t>(g_get_real_time());
-        std::string cardId =
-            "excerpt-" + std::to_string(ts) + "-" + std::to_string(++s_excerptSeq);
+        std::string cardId = "excerpt-" + std::to_string(ts) + "-" + std::to_string(++s_excerptSeq);
 
         const auto [cardW, cardH] =
             FluidCore::CardLayoutEngine::computeExcerptCardDimensions(payload);
