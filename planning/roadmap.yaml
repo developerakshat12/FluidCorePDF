@@ -74,15 +74,17 @@ milestones:
       - UI project & workspace persistence                              # complete: Native HeaderBar, GtkFileChooserNative, dynamic PDF hot-load, and UI canvas save (TASK-5.2)
       - palm rejection tuning + stylus matrix                           # complete: pure C++20 PalmRejectionEngine with dynamic digitizer presets (Wacom, Surface, HP MPP, Generic), contact debounce, retroactive touch cancellation delivery, pressures_blob persistence, variable-width stroke rendering, and 34/34 passing CTest test targets (TASK-5.3)
       - accurate whole-stroke eraser & live target preview              # complete: pure C++20 two-phase StrokeHitTest (expanded AABB broad-phase + point-to-segment narrow-phase), live hover target aura, eraser drag redraw latency fix, active cursor ring, double-click to center removal, and StrokeHitTestTest
+      - 50-PDF / 5,000-page scalability & memory benchmark              # complete: automated ScalabilityBenchmarkTest loading 50 PDFs/5000 pages, fresh-process cold start 0.01s <= 8s, peak working set 0.061GB <= 1.2GB, and multi-doc cache boundedness (TASK-5.6)
       - keyboard-only accessibility pass
       - i18n framework (EN, DE, ZH)
 
   - id: M6
     name: v1.0-release
     window_weeks: [59, 62]
-    status: pending
+    status: in_progress
     items:
-      - Flatpak/AppImage/deb; Windows beta
+      - Windows native Inno Setup installer (.exe), standalone portable zip, .ltproj file association, and GitHub release automation
+      - Flatpak/AppImage/deb packaging
       - docs site + persona screencasts
       - offline security audit
       - v1.0 tag + launch

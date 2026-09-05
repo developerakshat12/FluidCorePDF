@@ -92,7 +92,7 @@ gantt
 - [x] UI Project & Workspace Persistence: Native HeaderBar, File Choosers (`GtkFileChooserNative`), Document Ingestion, and Live Canvas Save *(complete via TASK-5.2: modern GTK3 `AppHeaderBar` with live save badge [Saved/Unsaved/Save Failed], project title, New/Open/Save/Save As/Export buttons; GtkFileChooserNative wiring with .ltproj validation, schema version checks, atomic bundle directory ingestion with rollback, canonical source switch, unified single-modal dirty checking, pending action resumption, deadlock-free background teardown concurrency; and 31/31 passing CTest test targets)*
 - [x] Palm rejection tuning, stylus matrix testing (Wacom/HP MPP/Surface) *(complete via TASK-5.3: pure C++20 `PalmRejectionEngine` with dynamic hardware profiles [Wacom EMR/AES, Microsoft Surface, HP MPP, Generic], contact debounce, retroactive touch cancellation delivery via PenEventResult, lossless per-point vector pressure persistence via SQLite `pressures_blob` with 8xN cross-validation and base_width fallback, unified variable-width stroke rendering [w = base_width * (0.25 + 0.75 * p)], GTK viewport integration across WorkspaceView, InkOverlay, DocumentPane, and 34/34 passing CTest targets)*
 - [x] Accurate whole-stroke eraser & live target preview *(complete: pure C++20 two-phase `StrokeHitTest` in `libfluidcore/geometry` with expanded AABB broad-phase + clamped point-to-segment narrow-phase, nearest-first sorting, coral-red deletion aura preview, eraser drag redraw latency fix, active cursor ring, double-click to center removal, and headless CTest suite `StrokeHitTestTest`; 34/34 passing CTest targets)*
-- [ ] Memory budget: ≤ 1.2 GB working set on 50-PDF/5000-page project
+- [x] Memory budget: ≤ 1.2 GB working set on 50-PDF/5000-page project *(complete via TASK-5.6: automated headless ScalabilityBenchmarkTest loading 50 PDFs / 5,000 pages, fresh-process cold start <= 0.01s << 8.0s budget, sustained multi-document traversal with cache boundedness verification across 50 docs [+2.4MB growth], peak working set 62.2 MB [0.061 GB] << 1.2 GB budget, and 36/36 passing CTest targets)*
 - [ ] Accessibility pass (keyboard-only operation of all fluid actions)
 - [ ] i18n framework; initial locales: EN, DE, ZH
 
@@ -108,7 +108,8 @@ gantt
 - [x] Build harness: Created `ops/scripts/build-win.ps1` for easy configure, build, test, and run from PowerShell.
 
 ### M6 — v1.0 Launch (Weeks 59–62)
-- [ ] Flatpak, AppImage, .deb packages; Windows MSYS2 build marked beta
+- [x] Windows Native Release Pipeline: Inno Setup native installer (`FluidCore-Setup-x64.exe`) and standalone portable zip (`fluidcore-windows-x64.zip`) with Start Menu integration, desktop shortcut, `.ltproj` file associations (HKA), Windows PE application icon (`fluidcore.ico`), self-contained relative runtime resource resolution (`GSETTINGS_SCHEMA_DIR`, `XDG_DATA_DIRS`, `FONTCONFIG_PATH`, `GDK_PIXBUF_MODULE_FILE`), CI artifact archiving on every commit, and automated GitHub Release publishing on `v*` tags (`.github/workflows/release.yml`).
+- [ ] Flatpak, AppImage, .deb packages
 - [ ] Documentation site: user guide + screencasts per persona
 - [ ] Security review (offline audit: no network syscalls verified)
 - [ ] v1.0 tagged; press/HN/Lobsters announcement; governance handoff

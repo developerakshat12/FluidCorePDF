@@ -1,0 +1,33 @@
+id: TASK-6.1-windows-release-packaging-and-installer
+title: Windows Release Packaging & Inno Setup Installer Pipeline (M6 Prep)
+milestone: M6
+status: completed
+workspace: D:\FluidCorePDF\fluidcore-platform
+specs:
+  - planning/ROADMAP.md (Milestone 6)
+  - planning/roadmap.yaml (Milestone 6)
+  - ops/CONTEXT.md
+dependencies:
+  - TASK-5.1-ltproj-wal-finalization-and-roundtrip-persistence
+  - TASK-5.2-ui-project-workspace-persistence-and-file-choosers
+deliverables:
+  - resources/icons/generate_icons.py — Python utility generating high-resolution multi-size Windows icon (.ico: 256, 128, 64, 48, 32, 16) and PNG assets.
+  - resources/icons/fluidcore.ico & fluidcore.png — branded application iconography with deep indigo canvas and vibrant cyan fluid curve.
+  - src/app/fluidcore.rc — Windows PE resource script defining IDI_APPLICATION icon and VS_VERSION_INFO metadata embedded into fluidcore_app.exe.
+  - src/app/CMakeLists.txt — links fluidcore.rc on WIN32 targets via windres.
+  - src/app/main.cpp — direct-launch runtime environment variable auto-detection (GSETTINGS_SCHEMA_DIR, XDG_DATA_DIRS, FONTCONFIG_PATH, GDK_PIXBUF_MODULE_FILE), .ltproj project bundle argument loading, and native window icon setup.
+  - ops/installer/fluidcore.iss — Inno Setup script compiling FluidCore-Setup-x64.exe with modern wizard style, 64-bit architecture, Start Menu shortcuts, optional Desktop shortcut, .ltproj file associations (HKA), and uninstaller.
+  - ops/scripts/package-windows.ps1 — updated packager script with -BuildInstaller switch, automatic Inno Setup compiler discovery and portable fallback download, generating both standalone zip and native installer.
+  - .github/workflows/ci.yml — updated windows-build job to package and upload Windows distribution artifacts (zip and installer) on every commit.
+  - .github/workflows/release.yml — automated release workflow publishing Windows installer, zip, and SHA256 checksums to GitHub Releases on v* tags.
+acceptance_checks:
+  - "standalone portable zip generated: build-win/dist/fluidcore-windows-x64.zip"
+  - "native Inno Setup installer generated: build-win/dist/FluidCore-Setup-x64.exe"
+  - "all 36 CTest suites pass without regressions"
+  - ".ltproj file association configured in installer and CLI launch supported in fluidcore_app.exe"
+  - "Windows PE executable contains embedded application icon in .rsrc section"
+  - "GitHub Actions CI and release workflows configured"
+constraints:
+  - No administrator privileges required for building or local installation (per-user / portable mode support)
+  - Pure offline execution without network dependency at runtime
+  - 64-bit native UCRT64 runtime architecture

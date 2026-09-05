@@ -1,0 +1,60 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release-windows:
+    name: release (windows-x64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-gtk3
+            mingw-w64-ucrt-x86_64-cairo
+            mingw-w64-ucrt-x86_64-poppler
+            mingw-w64-ucrt-x86_64-sqlite3
+            mingw-w64-ucrt-x86_64-zlib
+      - name: Configure
+        shell: msys2 {0}
+        run: |
+          cmake -S . -B build-win -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DFLUIDCORE_BUILD_APP=ON
+      - name: Build
+        shell: msys2 {0}
+        run: cmake --build build-win
+      - name: Test (ctest)
+        shell: msys2 {0}
+        run: ctest --test-dir build-win --output-on-failure
+      - name: Package Windows distribution and Inno Setup installer
+        run: |
+          $Tag = "${{ github.ref_name }}"
+          $Version = $Tag.TrimStart('v')
+          powershell -ExecutionPolicy Bypass -File ops/scripts/package-windows.ps1 -BuildInstaller -AppVersion $Version
+      - name: Compute SHA256 Checksums
+        run: |
+          Get-FileHash build-win/dist/FluidCore-Setup-x64.exe, build-win/dist/fluidcore-windows-x64.zip -Algorithm SHA256 | Out-File -FilePath build-win/dist/checksums-windows-sha256.txt
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            build-win/dist/FluidCore-Setup-x64.exe
+            build-win/dist/fluidcore-windows-x64.zip
+            build-win/dist/checksums-windows-sha256.txt
+          generate_release_notes: true

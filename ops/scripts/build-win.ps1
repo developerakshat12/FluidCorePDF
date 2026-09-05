@@ -15,6 +15,9 @@
 .PARAMETER Run
     If set, launches fluidcore_app.exe.
 
+.PARAMETER Benchmark
+    If set, executes the 50-PDF scalability and memory benchmark (TASK-5.6).
+
 .PARAMETER Document
     Optional path to a PDF document to open when running.
 
@@ -25,6 +28,7 @@ param (
     [string]$Config = "RelWithDebInfo",
     [switch]$Test,
     [switch]$Run,
+    [switch]$Benchmark,
     [string]$Document = "",
     [switch]$Clean
 )
@@ -70,6 +74,16 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 if ($Test) {
     Write-Host "[FluidCore] Running CTest test suites..." -ForegroundColor Green
     & ctest --test-dir $BuildDir --output-on-failure
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+
+if ($Benchmark) {
+    $BenchPath = Join-Path $BuildDir "src\app\scalability_benchmark_test.exe"
+    if (-not (Test-Path $BenchPath)) {
+        Write-Error "Benchmark binary not found at $BenchPath"
+    }
+    Write-Host "[FluidCore] Running 50-PDF Scalability & Memory Benchmark..." -ForegroundColor Cyan
+    & $BenchPath
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 

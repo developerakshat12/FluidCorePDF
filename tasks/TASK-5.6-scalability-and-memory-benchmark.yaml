@@ -1,0 +1,31 @@
+id: TASK-5.6-scalability-and-memory-benchmark
+title: 50-PDF Scalability & Memory Benchmark (Cold Load <= 8.0s, Peak RAM <= 1.2GB)
+milestone: M5
+status: completed
+workspace: D:\FluidCorePDF\fluidcore-platform
+specs:
+  - planning/ROADMAP.md (Milestone 5 & Section 5 Performance Budgets)
+  - planning/roadmap.yaml (Milestone 5 perf_gates)
+  - ops/CONTEXT.md (Standing gates)
+  - skills/perf-gate/SKILL.md
+dependencies:
+  - TASK-5.1-ltproj-wal-finalization-and-roundtrip-persistence
+  - TASK-5.2-ui-project-workspace-persistence-and-file-choosers
+deliverables:
+  - src/app/tests/ScalabilityBenchmarkTest.cpp — automated headless benchmark harness with synthetic 50-PDF / 5,000-page generator, clean child-process isolation, precise T0/T1 cold-load timing, deterministic sustained multi-document workload, multi-document cache boundedness testing, and live evidence generation.
+  - src/app/CMakeLists.txt — registration of scalability_benchmark_test and CTest target ScalabilityBenchmarkTest.
+  - ops/scripts/build-win.ps1 — added -Benchmark switch for native Windows benchmark invocation.
+  - ops/benchmarks/bench-scalability.md — performance benchmark artifact generated dynamically from measured run.
+acceptance_checks:
+  - "clang-format --dry-run --Werror clean on all touched files"
+  - "python3 ops/scripts/check_invariants.py passes (0 GUI includes in libfluidcore, 0 network syscalls)"
+  - "all registered CTest targets pass (100% - 36/36 test suites)"
+  - "Cold project load time <= 8.0 s"
+  - "Peak working set RAM <= 1.2 GB under sustained 50-doc workload"
+  - "python3 ops/scripts/check_budgets.py ops/benchmarks/bench-scalability.md passes with 0 violations"
+constraints:
+  - Fully headless execution (zero display server or GUI initialization required)
+  - Child-process address space isolation for cold-load measurement
+  - Peak working set as primary release gate
+  - Dynamic evidence-based report generation (never hard-coded PASS)
+  - Exit code 1 on any budget breach or assertion failure

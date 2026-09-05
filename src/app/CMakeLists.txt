@@ -7,8 +7,7 @@ if(WIN32)
     add_compile_definitions(_USE_MATH_DEFINES)
 endif()
 
-# Target name avoids the global CMake namespace of the `fluidcore` library.
-add_executable(fluidcore_app
+set(FLUIDCORE_APP_SOURCES
     main.cpp
     document/DocumentPane.cpp
     document/InkOverlay.cpp
@@ -32,6 +31,12 @@ add_executable(fluidcore_app
     window/AppHeaderBar.cpp
     ui/AppIcons.cpp
 )
+
+if(WIN32)
+    list(APPEND FLUIDCORE_APP_SOURCES fluidcore.rc)
+endif()
+
+add_executable(fluidcore_app ${FLUIDCORE_APP_SOURCES})
 
 target_include_directories(fluidcore_app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(fluidcore_app PRIVATE fluidcore PkgConfig::GTK3 PkgConfig::POPPLER_GLIB
@@ -151,4 +156,22 @@ if(BUILD_TESTING)
         target_compile_options(pdf_export_service_test PRIVATE -Wall -Wextra -Wpedantic)
     endif()
     add_test(NAME PdfExportServiceTest COMMAND pdf_export_service_test)
+
+    add_executable(scalability_benchmark_test
+        tests/ScalabilityBenchmarkTest.cpp
+        services/ExcerptTileCache.cpp
+        services/PdfDocumentService.cpp
+        services/PageTileCache.cpp
+    )
+    target_include_directories(scalability_benchmark_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(scalability_benchmark_test PRIVATE fluidcore PkgConfig::CAIRO PkgConfig::POPPLER_GLIB PkgConfig::GTK3)
+    if(WIN32)
+        target_link_libraries(scalability_benchmark_test PRIVATE psapi)
+    endif()
+    if(MSVC)
+        target_compile_options(scalability_benchmark_test PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(scalability_benchmark_test PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    add_test(NAME ScalabilityBenchmarkTest COMMAND scalability_benchmark_test)
 endif()

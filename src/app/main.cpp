@@ -23,6 +23,12 @@
 #include <utility>
 #include <vector>
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <objbase.h>
+#include <windows.h>
+#endif
+
 #ifndef _WIN32
 #include <csignal>
 #include <execinfo.h>
@@ -100,6 +106,17 @@ std::string normalizePath(std::string path) {
     return path;
 }
 
+std::string resolveLtprojPath(const std::string& inputPath) {
+    std::filesystem::path p(inputPath);
+    std::error_code ec;
+    if (std::filesystem::is_regular_file(p, ec)) {
+        if (p.filename() == "project.db" || p.filename() == "metadata.json") {
+            return p.parent_path().string();
+        }
+    }
+    return inputPath;
+}
+
 void showMessage(GtkWindow* parent, GtkMessageType type, const std::string& title,
                  const std::string& message) {
     GtkWidget* dialog =
@@ -173,6 +190,7 @@ enum class ActivePane { Workspace, Document };
 struct AppContext {
     FluidCoreEngine* engine = nullptr;
     const std::string* pdfPath = nullptr;
+    const std::string* projectPath = nullptr;
 };
 
 struct AppViewContext {
@@ -193,6 +211,10 @@ struct AppViewContext {
 bool validateLtprojBundle(const std::string& path, std::string& errorMsg) {
     std::filesystem::path p(path);
     std::error_code ec;
+    if (std::filesystem::is_regular_file(p, ec) &&
+        (p.filename() == "project.db" || p.filename() == "metadata.json")) {
+        p = p.parent_path();
+    }
     if (!std::filesystem::exists(p, ec) || !std::filesystem::is_directory(p, ec)) {
         errorMsg = "The selected path is not an existing directory.";
         return false;
@@ -326,325 +348,349 @@ void performSaveProjectAs(AppViewContext* ctx) {
     if (!ctx)
         return;
 
-    GtkFileChooserNative* native =
-        gtk_file_chooser_native_new("Save Project As (.ltproj Bundle)", ctx->window,
-                                    GTK_FILE_CHOOSER_ACTION_SAVE, "_Save", "_Cancel");
-    configureNativeFileChooser(native, ctx);
+    try {
+        GtkWidget* dialog = gtk_file_chooser_dialog_new(
+            "Save Project As (.ltproj Bundle)", ctx->window, GTK_FILE_CHOOSER_ACTION_SAVE,
+            "_Cancel", GTK_RESPONSE_CANCEL, "_Save", GTK_RESPONSE_ACCEPT, nullptr);
 
-    const std::string defaultName = (ctx->engine && !ctx->engine->projectTitle().empty() &&
-                                     ctx->engine->projectTitle() != "Untitled Project")
-                                        ? ctx->engine->projectTitle() + ".ltproj"
-                                        : "Research-Synthesis.ltproj";
-    gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(native), defaultName.c_str());
-    gtk_file_chooser_set_do_overwrite_confirmation(GTK_FILE_CHOOSER(native), TRUE);
-
-    gint res = gtk_native_dialog_run(GTK_NATIVE_DIALOG(native));
-    if (res != GTK_RESPONSE_ACCEPT) {
-        g_object_unref(native);
-        ctx->pendingActionProceed = nullptr;
-        return;
-    }
-
-    gchar* rawChosen = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(native));
-    g_object_unref(native);
-    if (!rawChosen) {
-        ctx->pendingActionProceed = nullptr;
-        return;
-    }
-
-    std::string chosenPath = normalizePath(rawChosen);
-    g_free(rawChosen);
-
-    // Enforce .ltproj extension
-    if (chosenPath.size() < 7 || chosenPath.substr(chosenPath.size() - 7) != ".ltproj") {
-        chosenPath += ".ltproj";
-    }
-
-    std::filesystem::path bundlePath(chosenPath);
-    std::error_code ec;
-
-    // Create bundle directory and structure
-    std::filesystem::create_directories(bundlePath / "documents", ec);
-    if (ec) {
-        showMessage(ctx->window, GTK_MESSAGE_ERROR, "Cannot Create Bundle",
-                    "Failed to create project bundle directory:\n" + ec.message());
-        if (ctx->headerBar)
-            ctx->headerBar->setSaveStatus(FluidCoreApp::SaveStatus::Failed);
-        ctx->pendingActionProceed = nullptr;
-        return;
-    }
-    std::filesystem::create_directories(bundlePath / "assets" / "clips", ec);
-    std::filesystem::create_directories(bundlePath / "assets" / "images", ec);
-    std::filesystem::create_directories(bundlePath / "cache" / "thumbnails", ec);
-    ec.clear();
-
-    // Collect all documents and deduplicate by source file path
-    auto allDocs = ctx->pdfDocService ? ctx->pdfDocService->allDocuments()
-                                      : std::vector<std::pair<std::string, std::string>>{};
-
-    // Ensure pane's active document is present in allDocs
-    if (ctx->pane && !ctx->pane->pdfPath().empty()) {
-        bool found = false;
-        for (const auto& [docId, p] : allDocs) {
-            if (p == ctx->pane->pdfPath()) {
-                found = true;
-                break;
+        if (ctx->pane && !ctx->pane->pdfPath().empty()) {
+            std::error_code ec;
+            std::filesystem::path curDir =
+                std::filesystem::path(ctx->pane->pdfPath()).parent_path();
+            if (std::filesystem::exists(curDir, ec)) {
+                gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(dialog),
+                                                    curDir.string().c_str());
             }
         }
-        if (!found) {
-            allDocs.emplace_back(ctx->pane->docId(), ctx->pane->pdfPath());
-        }
-    }
 
-    // Map: canonical source path -> destination filename
-    std::unordered_map<std::string, std::string> copiedPathToDstFilename;
-    std::vector<std::string> copiedFiles;
-    bool copySuccess = true;
-    std::string copyError;
+        const std::string defaultName = (ctx->engine && !ctx->engine->projectTitle().empty() &&
+                                         ctx->engine->projectTitle() != "Untitled Project")
+                                            ? ctx->engine->projectTitle() + ".ltproj"
+                                            : "Research-Synthesis.ltproj";
+        gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(dialog), defaultName.c_str());
+        gtk_file_chooser_set_do_overwrite_confirmation(GTK_FILE_CHOOSER(dialog), TRUE);
 
-    for (const auto& [docId, origPath] : allDocs) {
-        if (origPath.empty())
-            continue;
-        std::filesystem::path srcPdf(origPath);
-        if (!std::filesystem::exists(srcPdf, ec))
-            continue;
-
-        std::string srcKey = srcPdf.string();
-        if (copiedPathToDstFilename.find(srcKey) != copiedPathToDstFilename.end()) {
-            continue; // Already copied this file once
+        gint res = gtk_dialog_run(GTK_DIALOG(dialog));
+        if (res != GTK_RESPONSE_ACCEPT) {
+            gtk_widget_destroy(dialog);
+            ctx->pendingActionProceed = nullptr;
+            return;
         }
 
-        std::string filename = srcPdf.filename().string();
-        std::filesystem::path dstPdf = bundlePath / "documents" / filename;
-
-        bool sameFile = false;
-        if (std::filesystem::exists(dstPdf, ec)) {
-            sameFile = std::filesystem::equivalent(srcPdf, dstPdf, ec);
+        gchar* rawChosen = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
+        gtk_widget_destroy(dialog);
+        if (!rawChosen) {
+            ctx->pendingActionProceed = nullptr;
+            return;
         }
+
+        std::string chosenPath = normalizePath(rawChosen);
+        g_free(rawChosen);
+
+        // Enforce .ltproj extension
+        if (chosenPath.size() < 7 || chosenPath.substr(chosenPath.size() - 7) != ".ltproj") {
+            chosenPath += ".ltproj";
+        }
+
+        std::filesystem::path bundlePath(chosenPath);
+        std::error_code ec;
+
+        // Create bundle directory and structure
+        std::filesystem::create_directories(bundlePath / "documents", ec);
+        if (ec) {
+            showMessage(ctx->window, GTK_MESSAGE_ERROR, "Cannot Create Bundle",
+                        "Failed to create project bundle directory:\n" + ec.message());
+            if (ctx->headerBar)
+                ctx->headerBar->setSaveStatus(FluidCoreApp::SaveStatus::Failed);
+            ctx->pendingActionProceed = nullptr;
+            return;
+        }
+        std::filesystem::create_directories(bundlePath / "assets" / "clips", ec);
+        std::filesystem::create_directories(bundlePath / "assets" / "images", ec);
+        std::filesystem::create_directories(bundlePath / "cache" / "thumbnails", ec);
         ec.clear();
 
-        if (!sameFile) {
-            std::filesystem::copy_file(srcPdf, dstPdf,
-                                       std::filesystem::copy_options::overwrite_existing, ec);
-            if (ec) {
-                copySuccess = false;
-                copyError = "Failed to copy " + filename + ": " + ec.message();
-                break;
+        // Collect all documents and deduplicate by source file path
+        auto allDocs = ctx->pdfDocService ? ctx->pdfDocService->allDocuments()
+                                          : std::vector<std::pair<std::string, std::string>>{};
+
+        // Ensure pane's active document is present in allDocs
+        if (ctx->pane && !ctx->pane->pdfPath().empty()) {
+            bool found = false;
+            for (const auto& [docId, p] : allDocs) {
+                if (p == ctx->pane->pdfPath()) {
+                    found = true;
+                    break;
+                }
             }
-            copiedFiles.push_back(dstPdf.string());
+            if (!found) {
+                allDocs.emplace_back(ctx->pane->docId(), ctx->pane->pdfPath());
+            }
+        }
 
-            // Check both standard companion naming schemes:
-            // 1. file.xopp (replace_extension)
-            // 2. file.pdf.xopp (append)
-            std::filesystem::path srcXopp1 = srcPdf;
-            srcXopp1.replace_extension(".xopp");
-            std::filesystem::path srcXopp2 = srcPdf.string() + ".xopp";
-            std::filesystem::path dstXopp = dstPdf;
-            dstXopp.replace_extension(".xopp");
+        // Map: canonical source path -> destination filename
+        std::unordered_map<std::string, std::string> copiedPathToDstFilename;
+        std::vector<std::string> copiedFiles;
+        bool copySuccess = true;
+        std::string copyError;
 
-            if (std::filesystem::exists(srcXopp1, ec)) {
-                std::filesystem::copy_file(srcXopp1, dstXopp,
-                                           std::filesystem::copy_options::overwrite_existing, ec);
-                if (!ec) {
-                    copiedFiles.push_back(dstXopp.string());
-                }
-            } else if (std::filesystem::exists(srcXopp2, ec)) {
-                std::filesystem::copy_file(srcXopp2, dstXopp,
-                                           std::filesystem::copy_options::overwrite_existing, ec);
-                if (!ec) {
-                    copiedFiles.push_back(dstXopp.string());
-                }
+        for (const auto& [docId, origPath] : allDocs) {
+            if (origPath.empty())
+                continue;
+            std::filesystem::path srcPdf(origPath);
+            if (!std::filesystem::exists(srcPdf, ec))
+                continue;
+
+            std::string srcKey = srcPdf.string();
+            if (copiedPathToDstFilename.find(srcKey) != copiedPathToDstFilename.end()) {
+                continue; // Already copied this file once
+            }
+
+            std::string filename = srcPdf.filename().string();
+            std::filesystem::path dstPdf = bundlePath / "documents" / filename;
+
+            bool sameFile = false;
+            if (std::filesystem::exists(dstPdf, ec)) {
+                sameFile = std::filesystem::equivalent(srcPdf, dstPdf, ec);
             }
             ec.clear();
-        }
 
-        copiedPathToDstFilename[srcKey] = filename;
-    }
-
-    if (!copySuccess) {
-        for (const auto& f : copiedFiles) {
-            std::filesystem::remove(f, ec);
-        }
-        std::filesystem::remove_all(bundlePath, ec);
-        showMessage(ctx->window, GTK_MESSAGE_ERROR, "Copy Failed", copyError);
-        if (ctx->headerBar)
-            ctx->headerBar->setSaveStatus(FluidCoreApp::SaveStatus::Failed);
-        ctx->pendingActionProceed = nullptr;
-        return;
-    }
-
-    // Initialize bundle database
-    std::string err;
-    if (!ctx->engine->projectStore().openProject(chosenPath, &err)) {
-        showMessage(ctx->window, GTK_MESSAGE_ERROR, "Database Initialization Failed",
-                    "Could not initialize project database: " + err);
-        if (ctx->headerBar)
-            ctx->headerBar->setSaveStatus(FluidCoreApp::SaveStatus::Failed);
-        ctx->pendingActionProceed = nullptr;
-        return;
-    }
-
-    // Register all active documents in projectStore
-    const uint64_t now =
-        static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
-                                  std::chrono::system_clock::now().time_since_epoch())
-                                  .count());
-
-    std::unordered_set<std::string> registeredDocIds;
-    for (const auto& [docId, origPath] : allDocs) {
-        if (docId.empty())
-            continue;
-        std::filesystem::path srcPdf(origPath);
-        std::string filename = srcPdf.filename().string();
-        if (filename.empty()) {
-            filename = "document.pdf";
-        }
-        std::string relativePath = "documents/" + filename;
-        size_t pageCount = (ctx->pane && ctx->pane->document() &&
-                            (ctx->pane->docId() == docId || ctx->pane->pdfPath() == origPath))
-                               ? ctx->pane->pages().size()
-                               : 1;
-        size_t fileSizeBytes = 0;
-        std::filesystem::path dstPdf = bundlePath / relativePath;
-        if (std::filesystem::exists(dstPdf, ec)) {
-            fileSizeBytes = std::filesystem::file_size(dstPdf, ec);
-        }
-        ec.clear();
-
-        FluidCore::DocumentRecord rec;
-        rec.docId = docId;
-        rec.filename = filename;
-        rec.relativePath = relativePath;
-        rec.sha256 = "sha256-placeholder";
-        rec.pageCount = pageCount > 0 ? pageCount : 1;
-        rec.fileSizeBytes = fileSizeBytes;
-        rec.createdAt = now;
-
-        ctx->engine->projectStore().registerDocument(rec, nullptr);
-        registeredDocIds.insert(docId);
-    }
-
-    // Ensure every ExcerptCardNode in the workspace has its sourceDocId registered
-    if (ctx->engine) {
-        for (const std::string& nId : ctx->engine->workspaceModel().allNodeIds()) {
-            const auto* node = ctx->engine->workspaceModel().find(nId);
-            if (const auto* card = dynamic_cast<const FluidCore::ExcerptCardNode*>(node)) {
-                const std::string& cardDocId = card->sourceDocId();
-                if (!cardDocId.empty() &&
-                    registeredDocIds.find(cardDocId) == registeredDocIds.end()) {
-                    std::string resolvedPath;
-                    if (ctx->pdfDocService) {
-                        resolvedPath = ctx->pdfDocService->getFilePath(cardDocId);
-                    }
-                    if (resolvedPath.empty() && ctx->pane) {
-                        resolvedPath = ctx->pane->pdfPath();
-                    }
-                    std::filesystem::path p(resolvedPath.empty() ? cardDocId : resolvedPath);
-                    std::string filename = p.filename().string();
-                    if (filename.empty()) {
-                        filename = "document.pdf";
-                    }
-                    std::string relativePath = "documents/" + filename;
-                    size_t fileSizeBytes = 0;
-                    std::filesystem::path dstPdf = bundlePath / relativePath;
-                    if (std::filesystem::exists(dstPdf, ec)) {
-                        fileSizeBytes = std::filesystem::file_size(dstPdf, ec);
-                    }
-                    ec.clear();
-
-                    FluidCore::DocumentRecord rec;
-                    rec.docId = cardDocId;
-                    rec.filename = filename;
-                    rec.relativePath = relativePath;
-                    rec.sha256 = "sha256-placeholder";
-                    rec.pageCount = card->sourcePageNo() + 1;
-                    rec.fileSizeBytes = fileSizeBytes;
-                    rec.createdAt = now;
-
-                    ctx->engine->projectStore().registerDocument(rec, nullptr);
-                    registeredDocIds.insert(cardDocId);
+            if (!sameFile) {
+                std::filesystem::copy_file(srcPdf, dstPdf,
+                                           std::filesystem::copy_options::overwrite_existing, ec);
+                if (ec) {
+                    copySuccess = false;
+                    copyError = "Failed to copy " + filename + ": " + ec.message();
+                    break;
                 }
-            }
-        }
-    }
+                copiedFiles.push_back(dstPdf.string());
 
-    // Canonical source switch: ensure documents and companions reside in bundle before save
-    for (const auto& [docId, origPath] : allDocs) {
-        if (origPath.empty())
-            continue;
-        std::filesystem::path srcPdf(origPath);
-        if (!std::filesystem::exists(srcPdf, ec))
-            continue;
-
-        std::string filename = srcPdf.filename().string();
-        if (filename.empty()) {
-            filename = "document.pdf";
-        }
-        std::filesystem::path dstPdf = bundlePath / "documents" / filename;
-        bool sameFile = false;
-        if (std::filesystem::exists(dstPdf, ec)) {
-            sameFile = std::filesystem::equivalent(srcPdf, dstPdf, ec);
-        }
-        ec.clear();
-
-        if (!sameFile) {
-            std::filesystem::copy_file(srcPdf, dstPdf,
-                                       std::filesystem::copy_options::overwrite_existing, ec);
-            ec.clear();
-            std::filesystem::path srcXopp(srcPdf);
-            srcXopp.replace_extension(".xopp");
-            if (std::filesystem::exists(srcXopp, ec)) {
-                std::filesystem::path dstXopp(dstPdf);
+                // Check both standard companion naming schemes:
+                // 1. file.xopp (replace_extension)
+                // 2. file.pdf.xopp (append)
+                std::filesystem::path srcXopp1 = srcPdf;
+                srcXopp1.replace_extension(".xopp");
+                std::filesystem::path srcXopp2 = srcPdf.string() + ".xopp";
+                std::filesystem::path dstXopp = dstPdf;
                 dstXopp.replace_extension(".xopp");
-                std::filesystem::copy_file(srcXopp, dstXopp,
-                                           std::filesystem::copy_options::overwrite_existing, ec);
+
+                if (std::filesystem::exists(srcXopp1, ec)) {
+                    std::filesystem::copy_file(
+                        srcXopp1, dstXopp, std::filesystem::copy_options::overwrite_existing, ec);
+                    if (!ec) {
+                        copiedFiles.push_back(dstXopp.string());
+                    }
+                } else if (std::filesystem::exists(srcXopp2, ec)) {
+                    std::filesystem::copy_file(
+                        srcXopp2, dstXopp, std::filesystem::copy_options::overwrite_existing, ec);
+                    if (!ec) {
+                        copiedFiles.push_back(dstXopp.string());
+                    }
+                }
                 ec.clear();
             }
+
+            copiedPathToDstFilename[srcKey] = filename;
         }
 
-        std::string newPath = dstPdf.string();
-        if (ctx->pdfDocService) {
-            ctx->pdfDocService->repointDocumentPath(docId, newPath);
-            ctx->pdfDocService->registerMainDocument(
-                newPath, ctx->pane ? ctx->pane->document() : nullptr, newPath);
-        }
-        if (ctx->pane && (ctx->pane->docId() == docId || ctx->pane->pdfPath() == origPath)) {
-            ctx->pane->repointCompanionPath(newPath);
-        }
-    }
-
-    // Execute save
-    bool ok = ctx->engine->saveProjectWithError(&err);
-    if (ctx->pane) {
-        ok = ok && ctx->pane->saveAnnotations();
-    }
-
-    if (ok) {
-
-        ctx->isProjectDirty = false;
-        if (ctx->workspace)
-            ctx->workspace->undoStack().clear();
-        if (ctx->pane)
-            ctx->pane->undoStack().clear();
-
-        std::filesystem::path stemPath(chosenPath);
-        std::string title = stemPath.stem().string();
-        ctx->engine->projectStore().setProjectTitle(title);
-        if (ctx->headerBar) {
-            ctx->headerBar->setProjectTitle(title, chosenPath);
-            ctx->headerBar->setSaveStatus(FluidCoreApp::SaveStatus::Saved);
-        }
-
-        if (ctx->pendingActionProceed) {
-            auto proceed = std::move(ctx->pendingActionProceed);
+        if (!copySuccess) {
+            for (const auto& f : copiedFiles) {
+                std::filesystem::remove(f, ec);
+            }
+            std::filesystem::remove_all(bundlePath, ec);
+            showMessage(ctx->window, GTK_MESSAGE_ERROR, "Copy Failed", copyError);
+            if (ctx->headerBar)
+                ctx->headerBar->setSaveStatus(FluidCoreApp::SaveStatus::Failed);
             ctx->pendingActionProceed = nullptr;
-            proceed();
+            return;
         }
-    } else {
+
+        // Initialize bundle database
+        std::string err;
+        if (!ctx->engine->projectStore().openProject(chosenPath, &err)) {
+            showMessage(ctx->window, GTK_MESSAGE_ERROR, "Database Initialization Failed",
+                        "Could not initialize project database: " + err);
+            if (ctx->headerBar)
+                ctx->headerBar->setSaveStatus(FluidCoreApp::SaveStatus::Failed);
+            ctx->pendingActionProceed = nullptr;
+            return;
+        }
+
+        // Register all active documents in projectStore
+        const uint64_t now =
+            static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                      std::chrono::system_clock::now().time_since_epoch())
+                                      .count());
+
+        std::unordered_set<std::string> registeredDocIds;
+        for (const auto& [docId, origPath] : allDocs) {
+            if (docId.empty())
+                continue;
+            std::filesystem::path srcPdf(origPath);
+            std::string filename = srcPdf.filename().string();
+            if (filename.empty()) {
+                filename = "document.pdf";
+            }
+            std::string relativePath = "documents/" + filename;
+            size_t pageCount = (ctx->pane && ctx->pane->document() &&
+                                (ctx->pane->docId() == docId || ctx->pane->pdfPath() == origPath))
+                                   ? ctx->pane->pages().size()
+                                   : 1;
+            size_t fileSizeBytes = 0;
+            std::filesystem::path dstPdf = bundlePath / relativePath;
+            if (std::filesystem::exists(dstPdf, ec)) {
+                fileSizeBytes = std::filesystem::file_size(dstPdf, ec);
+            }
+            ec.clear();
+
+            FluidCore::DocumentRecord rec;
+            rec.docId = docId;
+            rec.filename = filename;
+            rec.relativePath = relativePath;
+            rec.sha256 = "sha256-placeholder";
+            rec.pageCount = pageCount > 0 ? pageCount : 1;
+            rec.fileSizeBytes = fileSizeBytes;
+            rec.createdAt = now;
+
+            ctx->engine->projectStore().registerDocument(rec, nullptr);
+            registeredDocIds.insert(docId);
+        }
+
+        // Ensure every ExcerptCardNode in the workspace has its sourceDocId registered
+        if (ctx->engine) {
+            for (const std::string& nId : ctx->engine->workspaceModel().allNodeIds()) {
+                const auto* node = ctx->engine->workspaceModel().find(nId);
+                if (const auto* card = dynamic_cast<const FluidCore::ExcerptCardNode*>(node)) {
+                    const std::string& cardDocId = card->sourceDocId();
+                    if (!cardDocId.empty() &&
+                        registeredDocIds.find(cardDocId) == registeredDocIds.end()) {
+                        std::string resolvedPath;
+                        if (ctx->pdfDocService) {
+                            resolvedPath = ctx->pdfDocService->getFilePath(cardDocId);
+                        }
+                        if (resolvedPath.empty() && ctx->pane) {
+                            resolvedPath = ctx->pane->pdfPath();
+                        }
+                        std::filesystem::path p(resolvedPath.empty() ? cardDocId : resolvedPath);
+                        std::string filename = p.filename().string();
+                        if (filename.empty()) {
+                            filename = "document.pdf";
+                        }
+                        std::string relativePath = "documents/" + filename;
+                        size_t fileSizeBytes = 0;
+                        std::filesystem::path dstPdf = bundlePath / relativePath;
+                        if (std::filesystem::exists(dstPdf, ec)) {
+                            fileSizeBytes = std::filesystem::file_size(dstPdf, ec);
+                        }
+                        ec.clear();
+
+                        FluidCore::DocumentRecord rec;
+                        rec.docId = cardDocId;
+                        rec.filename = filename;
+                        rec.relativePath = relativePath;
+                        rec.sha256 = "sha256-placeholder";
+                        rec.pageCount = card->sourcePageNo() + 1;
+                        rec.fileSizeBytes = fileSizeBytes;
+                        rec.createdAt = now;
+
+                        ctx->engine->projectStore().registerDocument(rec, nullptr);
+                        registeredDocIds.insert(cardDocId);
+                    }
+                }
+            }
+        }
+
+        // Canonical source switch: ensure documents and companions reside in bundle before save
+        for (const auto& [docId, origPath] : allDocs) {
+            if (origPath.empty())
+                continue;
+            std::filesystem::path srcPdf(origPath);
+            if (!std::filesystem::exists(srcPdf, ec))
+                continue;
+
+            std::string filename = srcPdf.filename().string();
+            if (filename.empty()) {
+                filename = "document.pdf";
+            }
+            std::filesystem::path dstPdf = bundlePath / "documents" / filename;
+            bool sameFile = false;
+            if (std::filesystem::exists(dstPdf, ec)) {
+                sameFile = std::filesystem::equivalent(srcPdf, dstPdf, ec);
+            }
+            ec.clear();
+
+            if (!sameFile) {
+                std::filesystem::copy_file(srcPdf, dstPdf,
+                                           std::filesystem::copy_options::overwrite_existing, ec);
+                ec.clear();
+                std::filesystem::path srcXopp(srcPdf);
+                srcXopp.replace_extension(".xopp");
+                if (std::filesystem::exists(srcXopp, ec)) {
+                    std::filesystem::path dstXopp(dstPdf);
+                    dstXopp.replace_extension(".xopp");
+                    std::filesystem::copy_file(
+                        srcXopp, dstXopp, std::filesystem::copy_options::overwrite_existing, ec);
+                    ec.clear();
+                }
+            }
+
+            std::string newPath = dstPdf.string();
+            if (ctx->pdfDocService) {
+                ctx->pdfDocService->repointDocumentPath(docId, newPath);
+                ctx->pdfDocService->registerMainDocument(
+                    newPath, ctx->pane ? ctx->pane->document() : nullptr, newPath);
+            }
+            if (ctx->pane && (ctx->pane->docId() == docId || ctx->pane->pdfPath() == origPath)) {
+                ctx->pane->repointCompanionPath(newPath);
+            }
+        }
+
+        // Execute save
+        bool ok = ctx->engine->saveProjectWithError(&err);
+        if (ctx->pane) {
+            ok = ok && ctx->pane->saveAnnotations();
+        }
+
+        if (ok) {
+
+            ctx->isProjectDirty = false;
+            if (ctx->workspace)
+                ctx->workspace->undoStack().clear();
+            if (ctx->pane)
+                ctx->pane->undoStack().clear();
+
+            std::filesystem::path stemPath(chosenPath);
+            std::string title = stemPath.stem().string();
+            ctx->engine->projectStore().setProjectTitle(title);
+            if (ctx->headerBar) {
+                ctx->headerBar->setProjectTitle(title, chosenPath);
+                ctx->headerBar->setSaveStatus(FluidCoreApp::SaveStatus::Saved);
+            }
+
+            if (ctx->pendingActionProceed) {
+                auto proceed = std::move(ctx->pendingActionProceed);
+                ctx->pendingActionProceed = nullptr;
+                proceed();
+            }
+        } else {
+            if (ctx->headerBar)
+                ctx->headerBar->setSaveStatus(FluidCoreApp::SaveStatus::Failed);
+            showMessage(ctx->window, GTK_MESSAGE_ERROR, "Save Failed",
+                        "Could not save project: " + err);
+            ctx->pendingActionProceed = nullptr;
+        }
+    } catch (const std::exception& ex) {
+        std::cerr << "[FluidCore] Exception in performSaveProjectAs: " << ex.what() << std::endl;
+        if (ctx->headerBar)
+            ctx->headerBar->setSaveStatus(FluidCoreApp::SaveStatus::Failed);
+        showMessage(ctx->window, GTK_MESSAGE_ERROR, "Save Failed", ex.what());
+        ctx->pendingActionProceed = nullptr;
+    } catch (...) {
+        std::cerr << "[FluidCore] Unknown exception in performSaveProjectAs" << std::endl;
         if (ctx->headerBar)
             ctx->headerBar->setSaveStatus(FluidCoreApp::SaveStatus::Failed);
         showMessage(ctx->window, GTK_MESSAGE_ERROR, "Save Failed",
-                    "Could not save project: " + err);
+                    "An unexpected error occurred while saving.");
         ctx->pendingActionProceed = nullptr;
     }
 }
@@ -657,145 +703,158 @@ void performSaveProject(AppViewContext* ctx) {
         return;
     }
 
-    std::filesystem::path bundlePath(ctx->engine->projectPath());
-    std::error_code ec;
+    try {
+        std::filesystem::path bundlePath(ctx->engine->projectPath());
+        std::error_code ec;
 
-    // Incremental document copy: ensure all active and referenced documents exist in
-    // bundle/documents/
-    auto allDocs = ctx->pdfDocService ? ctx->pdfDocService->allDocuments()
-                                      : std::vector<std::pair<std::string, std::string>>{};
-    if (ctx->pane && !ctx->pane->pdfPath().empty()) {
-        bool found = false;
-        for (const auto& [docId, p] : allDocs) {
-            if (p == ctx->pane->pdfPath()) {
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
-            allDocs.emplace_back(ctx->pane->docId(), ctx->pane->pdfPath());
-        }
-    }
-
-    std::unordered_set<std::string> knownDocIds;
-    for (const auto& d : ctx->engine->projectStore().listDocuments()) {
-        knownDocIds.insert(d.docId);
-    }
-
-    const uint64_t now =
-        static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
-                                  std::chrono::system_clock::now().time_since_epoch())
-                                  .count());
-
-    for (const auto& [docId, origPath] : allDocs) {
-        if (origPath.empty())
-            continue;
-        std::filesystem::path srcPdf(origPath);
-        if (!std::filesystem::exists(srcPdf, ec))
-            continue;
-
-        std::string filename = srcPdf.filename().string();
-        if (filename.empty()) {
-            filename = "document.pdf";
-        }
-        std::filesystem::path dstPdf = bundlePath / "documents" / filename;
-        bool sameFile = false;
-        if (std::filesystem::exists(dstPdf, ec)) {
-            sameFile = std::filesystem::equivalent(srcPdf, dstPdf, ec);
-        }
-        ec.clear();
-
-        if (!sameFile) {
-            std::filesystem::copy_file(srcPdf, dstPdf,
-                                       std::filesystem::copy_options::overwrite_existing, ec);
-            if (!ec) {
-                std::string newPath = dstPdf.string();
-                if (ctx->pdfDocService) {
-                    ctx->pdfDocService->repointDocumentPath(docId, newPath);
-                    ctx->pdfDocService->registerMainDocument(
-                        newPath, ctx->pane ? ctx->pane->document() : nullptr, newPath);
-                }
-                if (ctx->pane &&
-                    (ctx->pane->docId() == docId || ctx->pane->pdfPath() == origPath)) {
-                    ctx->pane->repointCompanionPath(newPath);
+        // Incremental document copy: ensure all active and referenced documents exist in
+        // bundle/documents/
+        auto allDocs = ctx->pdfDocService ? ctx->pdfDocService->allDocuments()
+                                          : std::vector<std::pair<std::string, std::string>>{};
+        if (ctx->pane && !ctx->pane->pdfPath().empty()) {
+            bool found = false;
+            for (const auto& [docId, p] : allDocs) {
+                if (p == ctx->pane->pdfPath()) {
+                    found = true;
+                    break;
                 }
             }
-            ec.clear();
+            if (!found) {
+                allDocs.emplace_back(ctx->pane->docId(), ctx->pane->pdfPath());
+            }
         }
 
-        if (knownDocIds.find(docId) == knownDocIds.end()) {
-            size_t fileSizeBytes = 0;
+        std::unordered_set<std::string> knownDocIds;
+        for (const auto& d : ctx->engine->projectStore().listDocuments()) {
+            knownDocIds.insert(d.docId);
+        }
+
+        const uint64_t now =
+            static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                      std::chrono::system_clock::now().time_since_epoch())
+                                      .count());
+
+        for (const auto& [docId, origPath] : allDocs) {
+            if (origPath.empty())
+                continue;
+            std::filesystem::path srcPdf(origPath);
+            if (!std::filesystem::exists(srcPdf, ec))
+                continue;
+
+            std::string filename = srcPdf.filename().string();
+            if (filename.empty()) {
+                filename = "document.pdf";
+            }
+            std::filesystem::path dstPdf = bundlePath / "documents" / filename;
+            bool sameFile = false;
             if (std::filesystem::exists(dstPdf, ec)) {
-                fileSizeBytes = std::filesystem::file_size(dstPdf, ec);
+                sameFile = std::filesystem::equivalent(srcPdf, dstPdf, ec);
             }
             ec.clear();
-            FluidCore::DocumentRecord rec;
-            rec.docId = docId;
-            rec.filename = filename;
-            rec.relativePath = "documents/" + filename;
-            rec.sha256 = "sha256-placeholder";
-            rec.pageCount = (ctx->pane && ctx->pane->document() &&
-                             (ctx->pane->docId() == docId || ctx->pane->pdfPath() == origPath))
-                                ? ctx->pane->pages().size()
-                                : 1;
-            rec.fileSizeBytes = fileSizeBytes;
-            rec.createdAt = now;
-            ctx->engine->projectStore().registerDocument(rec, nullptr);
-            knownDocIds.insert(docId);
-        }
-    }
 
-    // Ensure newly created cards have documents registered
-    if (ctx->engine) {
-        for (const std::string& nId : ctx->engine->workspaceModel().allNodeIds()) {
-            const auto* node = ctx->engine->workspaceModel().find(nId);
-            if (const auto* card = dynamic_cast<const FluidCore::ExcerptCardNode*>(node)) {
-                const std::string& cardDocId = card->sourceDocId();
-                if (!cardDocId.empty() && knownDocIds.find(cardDocId) == knownDocIds.end()) {
-                    std::string resPath =
-                        ctx->pdfDocService ? ctx->pdfDocService->getFilePath(cardDocId) : "";
-                    if (resPath.empty() && ctx->pane) {
-                        resPath = ctx->pane->pdfPath();
+            if (!sameFile) {
+                std::filesystem::copy_file(srcPdf, dstPdf,
+                                           std::filesystem::copy_options::overwrite_existing, ec);
+                if (!ec) {
+                    std::string newPath = dstPdf.string();
+                    if (ctx->pdfDocService) {
+                        ctx->pdfDocService->repointDocumentPath(docId, newPath);
+                        ctx->pdfDocService->registerMainDocument(
+                            newPath, ctx->pane ? ctx->pane->document() : nullptr, newPath);
                     }
-                    std::filesystem::path p(resPath.empty() ? cardDocId : resPath);
-                    std::string filename = p.filename().string();
-                    if (filename.empty())
-                        filename = "document.pdf";
-                    FluidCore::DocumentRecord rec{cardDocId,
-                                                  filename,
-                                                  "documents/" + filename,
-                                                  "sha256-placeholder",
-                                                  card->sourcePageNo() + 1,
-                                                  0,
-                                                  now};
-                    ctx->engine->projectStore().registerDocument(rec, nullptr);
-                    knownDocIds.insert(cardDocId);
+                    if (ctx->pane &&
+                        (ctx->pane->docId() == docId || ctx->pane->pdfPath() == origPath)) {
+                        ctx->pane->repointCompanionPath(newPath);
+                    }
+                }
+                ec.clear();
+            }
+
+            if (knownDocIds.find(docId) == knownDocIds.end()) {
+                size_t fileSizeBytes = 0;
+                if (std::filesystem::exists(dstPdf, ec)) {
+                    fileSizeBytes = std::filesystem::file_size(dstPdf, ec);
+                }
+                ec.clear();
+                FluidCore::DocumentRecord rec;
+                rec.docId = docId;
+                rec.filename = filename;
+                rec.relativePath = "documents/" + filename;
+                rec.sha256 = "sha256-placeholder";
+                rec.pageCount = (ctx->pane && ctx->pane->document() &&
+                                 (ctx->pane->docId() == docId || ctx->pane->pdfPath() == origPath))
+                                    ? ctx->pane->pages().size()
+                                    : 1;
+                rec.fileSizeBytes = fileSizeBytes;
+                rec.createdAt = now;
+                ctx->engine->projectStore().registerDocument(rec, nullptr);
+                knownDocIds.insert(docId);
+            }
+        }
+
+        // Ensure newly created cards have documents registered
+        if (ctx->engine) {
+            for (const std::string& nId : ctx->engine->workspaceModel().allNodeIds()) {
+                const auto* node = ctx->engine->workspaceModel().find(nId);
+                if (const auto* card = dynamic_cast<const FluidCore::ExcerptCardNode*>(node)) {
+                    const std::string& cardDocId = card->sourceDocId();
+                    if (!cardDocId.empty() && knownDocIds.find(cardDocId) == knownDocIds.end()) {
+                        std::string resPath =
+                            ctx->pdfDocService ? ctx->pdfDocService->getFilePath(cardDocId) : "";
+                        if (resPath.empty() && ctx->pane) {
+                            resPath = ctx->pane->pdfPath();
+                        }
+                        std::filesystem::path p(resPath.empty() ? cardDocId : resPath);
+                        std::string filename = p.filename().string();
+                        if (filename.empty())
+                            filename = "document.pdf";
+                        FluidCore::DocumentRecord rec{cardDocId,
+                                                      filename,
+                                                      "documents/" + filename,
+                                                      "sha256-placeholder",
+                                                      card->sourcePageNo() + 1,
+                                                      0,
+                                                      now};
+                        ctx->engine->projectStore().registerDocument(rec, nullptr);
+                        knownDocIds.insert(cardDocId);
+                    }
                 }
             }
         }
-    }
 
-    std::string err;
-    bool ok = ctx->engine->saveProjectWithError(&err);
-    if (ctx->pane) {
-        ok = ok && ctx->pane->saveAnnotations();
-    }
-
-    if (ok) {
-        ctx->isProjectDirty = false;
-        if (ctx->workspace)
-            ctx->workspace->undoStack().clear();
-        if (ctx->pane)
-            ctx->pane->undoStack().clear();
-        if (ctx->headerBar) {
-            ctx->headerBar->setSaveStatus(FluidCoreApp::SaveStatus::Saved);
+        std::string err;
+        bool ok = ctx->engine->saveProjectWithError(&err);
+        if (ctx->pane) {
+            ok = ok && ctx->pane->saveAnnotations();
         }
-    } else {
-        if (ctx->headerBar) {
+
+        if (ok) {
+            ctx->isProjectDirty = false;
+            if (ctx->workspace)
+                ctx->workspace->undoStack().clear();
+            if (ctx->pane)
+                ctx->pane->undoStack().clear();
+            if (ctx->headerBar) {
+                ctx->headerBar->setSaveStatus(FluidCoreApp::SaveStatus::Saved);
+            }
+        } else {
+            if (ctx->headerBar) {
+                ctx->headerBar->setSaveStatus(FluidCoreApp::SaveStatus::Failed);
+            }
+            showMessage(ctx->window, GTK_MESSAGE_ERROR, "Save Failed",
+                        "Could not save project: " + err);
+        }
+    } catch (const std::exception& ex) {
+        std::cerr << "[FluidCore] Exception in performSaveProject: " << ex.what() << std::endl;
+        if (ctx->headerBar)
             ctx->headerBar->setSaveStatus(FluidCoreApp::SaveStatus::Failed);
-        }
+        showMessage(ctx->window, GTK_MESSAGE_ERROR, "Save Failed", ex.what());
+    } catch (...) {
+        std::cerr << "[FluidCore] Unknown exception in performSaveProject" << std::endl;
+        if (ctx->headerBar)
+            ctx->headerBar->setSaveStatus(FluidCoreApp::SaveStatus::Failed);
         showMessage(ctx->window, GTK_MESSAGE_ERROR, "Save Failed",
-                    "Could not save project: " + err);
+                    "An unexpected error occurred while saving.");
     }
 }
 
@@ -804,74 +863,95 @@ void performOpenProject(AppViewContext* ctx) {
         return;
 
     confirmDiscardUnsavedChanges(ctx, [ctx]() {
-        GtkFileChooserNative* native =
-            gtk_file_chooser_native_new("Open FluidCore Project (.ltproj Bundle)", ctx->window,
-                                        GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER, "_Open", "_Cancel");
-        configureNativeFileChooser(native, ctx);
+        try {
+            GtkWidget* dialog = gtk_file_chooser_dialog_new(
+                "Open FluidCore Project (.ltproj Bundle)", ctx->window,
+                GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER, "_Cancel", GTK_RESPONSE_CANCEL, "_Open",
+                GTK_RESPONSE_ACCEPT, nullptr);
 
-        gint res = gtk_native_dialog_run(GTK_NATIVE_DIALOG(native));
-        if (res != GTK_RESPONSE_ACCEPT) {
-            g_object_unref(native);
-            return;
-        }
-
-        gchar* rawChosen = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(native));
-        g_object_unref(native);
-        if (!rawChosen)
-            return;
-
-        std::string chosenPath = normalizePath(rawChosen);
-        g_free(rawChosen);
-
-        std::string error;
-        if (!validateLtprojBundle(chosenPath, error)) {
-            showMessage(ctx->window, GTK_MESSAGE_ERROR, "Invalid Project Bundle", error);
-            return;
-        }
-
-        std::string openErr;
-        if (!ctx->engine->openProjectWithError(chosenPath, &openErr)) {
-            showMessage(ctx->window, GTK_MESSAGE_ERROR, "Open Project Failed",
-                        "Failed to open project: " + openErr);
-            return;
-        }
-
-        if (ctx->workspace) {
-            ctx->workspace->notifyModelReloaded();
-        }
-
-        auto docs = ctx->engine->projectStore().listDocuments();
-        if (!docs.empty()) {
-            std::filesystem::path bundle(chosenPath);
-            std::filesystem::path primaryDoc = bundle / docs[0].relativePath;
-            if (ctx->pane) {
-                ctx->pane->loadDocument(primaryDoc.string(), docs[0].docId);
-            }
-            if (ctx->pdfDocService && ctx->pane && ctx->pane->document()) {
-                ctx->pdfDocService->clear();
-                for (const auto& doc : docs) {
-                    std::string dPath = (bundle / doc.relativePath).string();
-                    if (doc.docId == docs[0].docId) {
-                        ctx->pdfDocService->registerMainDocument(doc.docId, ctx->pane->document(),
-                                                                 dPath);
-                    } else {
-                        ctx->pdfDocService->registerMainDocument(doc.docId, nullptr, dPath);
-                    }
+            if (ctx->pane && !ctx->pane->pdfPath().empty()) {
+                std::error_code ec;
+                std::filesystem::path curDir =
+                    std::filesystem::path(ctx->pane->pdfPath()).parent_path();
+                if (std::filesystem::exists(curDir, ec)) {
+                    gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(dialog),
+                                                        curDir.string().c_str());
                 }
             }
-        } else {
-            if (ctx->pane) {
-                ctx->pane->closeDocument();
-            }
-        }
 
-        ctx->isProjectDirty = false;
-        if (ctx->headerBar) {
-            ctx->headerBar->setProjectTitle(ctx->engine->projectTitle(), chosenPath);
-            ctx->headerBar->setSaveStatus(FluidCoreApp::SaveStatus::Saved);
-        }
-        if (ctx->updateUndoRedoUI) {
-            ctx->updateUndoRedoUI();
+            gint res = gtk_dialog_run(GTK_DIALOG(dialog));
+            if (res != GTK_RESPONSE_ACCEPT) {
+                gtk_widget_destroy(dialog);
+                return;
+            }
+
+            gchar* rawChosen = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
+            gtk_widget_destroy(dialog);
+            if (!rawChosen)
+                return;
+
+            std::string chosenPath = normalizePath(rawChosen);
+            g_free(rawChosen);
+
+            chosenPath = resolveLtprojPath(chosenPath);
+
+            std::string error;
+            if (!validateLtprojBundle(chosenPath, error)) {
+                showMessage(ctx->window, GTK_MESSAGE_ERROR, "Invalid Project Bundle", error);
+                return;
+            }
+
+            std::string openErr;
+            if (!ctx->engine->openProjectWithError(chosenPath, &openErr)) {
+                showMessage(ctx->window, GTK_MESSAGE_ERROR, "Open Project Failed",
+                            "Failed to open project: " + openErr);
+                return;
+            }
+
+            if (ctx->workspace) {
+                ctx->workspace->notifyModelReloaded();
+            }
+
+            auto docs = ctx->engine->projectStore().listDocuments();
+            if (!docs.empty()) {
+                std::filesystem::path bundle(chosenPath);
+                std::filesystem::path primaryDoc = bundle / docs[0].relativePath;
+                if (ctx->pane) {
+                    ctx->pane->loadDocument(primaryDoc.string(), docs[0].docId);
+                }
+                if (ctx->pdfDocService && ctx->pane && ctx->pane->document()) {
+                    ctx->pdfDocService->clear();
+                    for (const auto& doc : docs) {
+                        std::string dPath = (bundle / doc.relativePath).string();
+                        if (doc.docId == docs[0].docId) {
+                            ctx->pdfDocService->registerMainDocument(doc.docId,
+                                                                     ctx->pane->document(), dPath);
+                        } else {
+                            ctx->pdfDocService->registerMainDocument(doc.docId, nullptr, dPath);
+                        }
+                    }
+                }
+            } else {
+                if (ctx->pane) {
+                    ctx->pane->closeDocument();
+                }
+            }
+
+            ctx->isProjectDirty = false;
+            if (ctx->headerBar) {
+                ctx->headerBar->setProjectTitle(ctx->engine->projectTitle(), chosenPath);
+                ctx->headerBar->setSaveStatus(FluidCoreApp::SaveStatus::Saved);
+            }
+            if (ctx->updateUndoRedoUI) {
+                ctx->updateUndoRedoUI();
+            }
+        } catch (const std::exception& ex) {
+            std::cerr << "[FluidCore] Exception in performOpenProject: " << ex.what() << std::endl;
+            showMessage(ctx->window, GTK_MESSAGE_ERROR, "Error Opening Project", ex.what());
+        } catch (...) {
+            std::cerr << "[FluidCore] Unknown error in performOpenProject" << std::endl;
+            showMessage(ctx->window, GTK_MESSAGE_ERROR, "Error Opening Project",
+                        "An unexpected error occurred while opening the project.");
         }
     });
 }
@@ -881,50 +961,59 @@ void performOpenPdf(AppViewContext* ctx) {
         return;
 
     confirmDiscardUnsavedChanges(ctx, [ctx]() {
-        GtkFileChooserNative* native = gtk_file_chooser_native_new(
-            "Open PDF Document", ctx->window, GTK_FILE_CHOOSER_ACTION_OPEN, "_Open", "_Cancel");
-        configureNativeFileChooser(native, ctx);
+        try {
+            GtkFileChooserNative* native = gtk_file_chooser_native_new(
+                "Open PDF Document", ctx->window, GTK_FILE_CHOOSER_ACTION_OPEN, "_Open", "_Cancel");
+            configureNativeFileChooser(native, ctx);
 
-        GtkFileFilter* filter = gtk_file_filter_new();
-        gtk_file_filter_set_name(filter, "PDF Documents (*.pdf)");
-        gtk_file_filter_add_pattern(filter, "*.pdf");
-        gtk_file_filter_add_mime_type(filter, "application/pdf");
-        gtk_file_chooser_add_filter(GTK_FILE_CHOOSER(native), filter);
+            GtkFileFilter* filter = gtk_file_filter_new();
+            gtk_file_filter_set_name(filter, "PDF Documents (*.pdf)");
+            gtk_file_filter_add_pattern(filter, "*.pdf");
+            gtk_file_filter_add_mime_type(filter, "application/pdf");
+            gtk_file_chooser_add_filter(GTK_FILE_CHOOSER(native), filter);
 
-        gint res = gtk_native_dialog_run(GTK_NATIVE_DIALOG(native));
-        if (res != GTK_RESPONSE_ACCEPT) {
-            g_object_unref(native);
-            return;
-        }
-
-        gchar* rawChosen = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(native));
-        g_object_unref(native);
-        if (!rawChosen)
-            return;
-
-        std::string chosenPath = normalizePath(rawChosen);
-        g_free(rawChosen);
-
-        if (ctx->pane) {
-            bool loaded = ctx->pane->loadDocument(chosenPath);
-            if (loaded && ctx->pane->document() && ctx->pdfDocService) {
-                ctx->pdfDocService->registerMainDocument(ctx->pane->docId(), ctx->pane->document(),
-                                                         chosenPath);
-                ctx->pdfDocService->registerMainDocument(chosenPath, ctx->pane->document(),
-                                                         chosenPath);
+            gint res = gtk_native_dialog_run(GTK_NATIVE_DIALOG(native));
+            if (res != GTK_RESPONSE_ACCEPT) {
+                g_object_unref(native);
+                return;
             }
-        }
 
-        ctx->isProjectDirty = false;
-        if (ctx->headerBar) {
-            std::filesystem::path p(chosenPath);
-            ctx->headerBar->setProjectTitle(ctx->engine ? ctx->engine->projectTitle()
-                                                        : "Untitled Project",
-                                            p.filename().string());
-            ctx->headerBar->setSaveStatus(FluidCoreApp::SaveStatus::Saved);
-        }
-        if (ctx->updateUndoRedoUI) {
-            ctx->updateUndoRedoUI();
+            gchar* rawChosen = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(native));
+            g_object_unref(native);
+            if (!rawChosen)
+                return;
+
+            std::string chosenPath = normalizePath(rawChosen);
+            g_free(rawChosen);
+
+            if (ctx->pane) {
+                bool loaded = ctx->pane->loadDocument(chosenPath);
+                if (loaded && ctx->pane->document() && ctx->pdfDocService) {
+                    ctx->pdfDocService->registerMainDocument(ctx->pane->docId(),
+                                                             ctx->pane->document(), chosenPath);
+                    ctx->pdfDocService->registerMainDocument(chosenPath, ctx->pane->document(),
+                                                             chosenPath);
+                }
+            }
+
+            ctx->isProjectDirty = false;
+            if (ctx->headerBar) {
+                std::filesystem::path p(chosenPath);
+                ctx->headerBar->setProjectTitle(ctx->engine ? ctx->engine->projectTitle()
+                                                            : "Untitled Project",
+                                                p.filename().string());
+                ctx->headerBar->setSaveStatus(FluidCoreApp::SaveStatus::Saved);
+            }
+            if (ctx->updateUndoRedoUI) {
+                ctx->updateUndoRedoUI();
+            }
+        } catch (const std::exception& ex) {
+            std::cerr << "[FluidCore] Exception in performOpenPdf: " << ex.what() << std::endl;
+            showMessage(ctx->window, GTK_MESSAGE_ERROR, "Error Opening PDF", ex.what());
+        } catch (...) {
+            std::cerr << "[FluidCore] Unknown error in performOpenPdf" << std::endl;
+            showMessage(ctx->window, GTK_MESSAGE_ERROR, "Error Opening PDF",
+                        "An unexpected error occurred while opening the PDF.");
         }
     });
 }
@@ -934,25 +1023,34 @@ void performNewProject(AppViewContext* ctx) {
         return;
 
     confirmDiscardUnsavedChanges(ctx, [ctx]() {
-        if (ctx->engine) {
-            ctx->engine->newProject("Untitled Project");
-        }
-        if (ctx->workspace) {
-            ctx->workspace->notifyModelReloaded();
-        }
-        if (ctx->pane) {
-            ctx->pane->closeDocument();
-        }
-        if (ctx->pdfDocService) {
-            ctx->pdfDocService->clear();
-        }
-        ctx->isProjectDirty = false;
-        if (ctx->headerBar) {
-            ctx->headerBar->setProjectTitle("Untitled Project", "Workspace Canvas");
-            ctx->headerBar->setSaveStatus(FluidCoreApp::SaveStatus::Saved);
-        }
-        if (ctx->updateUndoRedoUI) {
-            ctx->updateUndoRedoUI();
+        try {
+            if (ctx->engine) {
+                ctx->engine->newProject("Untitled Project");
+            }
+            if (ctx->workspace) {
+                ctx->workspace->notifyModelReloaded();
+            }
+            if (ctx->pane) {
+                ctx->pane->closeDocument();
+            }
+            if (ctx->pdfDocService) {
+                ctx->pdfDocService->clear();
+            }
+            ctx->isProjectDirty = false;
+            if (ctx->headerBar) {
+                ctx->headerBar->setProjectTitle("Untitled Project", "Workspace Canvas");
+                ctx->headerBar->setSaveStatus(FluidCoreApp::SaveStatus::Saved);
+            }
+            if (ctx->updateUndoRedoUI) {
+                ctx->updateUndoRedoUI();
+            }
+        } catch (const std::exception& ex) {
+            std::cerr << "[FluidCore] Exception in performNewProject: " << ex.what() << std::endl;
+            showMessage(ctx->window, GTK_MESSAGE_ERROR, "Error Creating Project", ex.what());
+        } catch (...) {
+            std::cerr << "[FluidCore] Unknown error in performNewProject" << std::endl;
+            showMessage(ctx->window, GTK_MESSAGE_ERROR, "Error Creating Project",
+                        "An unexpected error occurred.");
         }
     });
 }
@@ -966,9 +1064,19 @@ void performExport(AppViewContext* ctx) {
 void onActivate(GtkApplication* app, gpointer userData) {
     auto* context = static_cast<AppContext*>(userData);
 
+    std::string activePdfPath = (context->pdfPath ? *context->pdfPath : "");
+    if (activePdfPath.empty() && context->projectPath && !context->projectPath->empty() &&
+        context->engine && context->engine->isProjectOpen()) {
+        auto docs = context->engine->projectStore().listDocuments();
+        if (!docs.empty()) {
+            std::filesystem::path bundle(*context->projectPath);
+            activePdfPath = (bundle / docs[0].relativePath).string();
+        }
+    }
+
     // Widgets may only be created after gtk_init(), which happens inside
     // g_application_run() — so views are built here, not in main().
-    auto* documentPane = new FluidCoreApp::DocumentPane(*context->pdfPath);
+    auto* documentPane = new FluidCoreApp::DocumentPane(activePdfPath);
     g_object_set_data_full(
         G_OBJECT(app), "document-pane", documentPane,
         +[](gpointer data) { delete static_cast<FluidCoreApp::DocumentPane*>(data); });
@@ -1013,14 +1121,26 @@ void onActivate(GtkApplication* app, gpointer userData) {
         G_OBJECT(app), "pdf-doc-service", pdfDocService,
         +[](gpointer data) { delete static_cast<FluidCoreApp::PdfDocumentService*>(data); });
 
-    if (documentPane->document()) {
+    if (context->projectPath && !context->projectPath->empty() && context->engine &&
+        context->engine->isProjectOpen()) {
+        auto docs = context->engine->projectStore().listDocuments();
+        std::filesystem::path bundle(*context->projectPath);
+        for (const auto& doc : docs) {
+            std::string dPath = (bundle / doc.relativePath).string();
+            if (documentPane->document() && doc.docId == docs[0].docId) {
+                pdfDocService->registerMainDocument(doc.docId, documentPane->document(), dPath);
+            } else {
+                pdfDocService->registerMainDocument(doc.docId, nullptr, dPath);
+            }
+        }
+    } else if (documentPane->document()) {
         pdfDocService->registerMainDocument(documentPane->docId(), documentPane->document(),
-                                            *context->pdfPath);
+                                            activePdfPath);
         pdfDocService->registerMainDocument("doc-primary.pdf", documentPane->document(),
-                                            *context->pdfPath);
-        if (!context->pdfPath->empty()) {
-            pdfDocService->registerMainDocument(*context->pdfPath, documentPane->document(),
-                                                *context->pdfPath);
+                                            activePdfPath);
+        if (!activePdfPath.empty()) {
+            pdfDocService->registerMainDocument(activePdfPath, documentPane->document(),
+                                                activePdfPath);
         }
     }
 
@@ -1079,6 +1199,19 @@ void onActivate(GtkApplication* app, gpointer userData) {
 
     GtkWidget* window = gtk_application_window_new(app);
     gtk_window_set_default_size(GTK_WINDOW(window), 1200, 800);
+
+    // Set application window icon if available
+    {
+        std::error_code ec;
+        std::vector<std::string> iconCandidates = {"fluidcore.png", "share/icons/fluidcore.png",
+                                                   "resources/icons/fluidcore.png"};
+        for (const auto& candidate : iconCandidates) {
+            if (std::filesystem::exists(candidate, ec)) {
+                gtk_window_set_icon_from_file(GTK_WINDOW(window), candidate.c_str(), nullptr);
+                break;
+            }
+        }
+    }
 
     auto* headerBar = new FluidCoreApp::AppHeaderBar(GTK_WINDOW(window));
     g_object_set_data_full(
@@ -1155,9 +1288,16 @@ void onActivate(GtkApplication* app, gpointer userData) {
     headerBar->setOnExport([viewCtx]() { performExport(viewCtx); });
 
     // Initialize HeaderBar Project Title
-    headerBar->setProjectTitle(context->engine ? context->engine->projectTitle()
-                                               : "Untitled Project",
-                               context->pdfPath->empty() ? "Workspace Canvas" : *context->pdfPath);
+    if (context->projectPath && !context->projectPath->empty()) {
+        headerBar->setProjectTitle(context->engine ? context->engine->projectTitle()
+                                                   : "Untitled Project",
+                                   *context->projectPath);
+    } else {
+        std::string sub =
+            context->pdfPath && !context->pdfPath->empty() ? *context->pdfPath : "Workspace Canvas";
+        headerBar->setProjectTitle(
+            context->engine ? context->engine->projectTitle() : "Untitled Project", sub);
+    }
     headerBar->setSaveStatus(FluidCoreApp::SaveStatus::Saved);
 
     // Global window-level event capture to immediately detect clicks/scrolls across Document vs
@@ -1704,51 +1844,113 @@ void onActivate(GtkApplication* app, gpointer userData) {
 } // namespace
 
 int main(int argc, char** argv) {
+#ifdef _WIN32
+    HRESULT hrCom = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+#endif
+
 #ifndef _WIN32
     installCrashHandlers();
 #else
-    // Ensure Fontconfig can locate fonts.conf and Windows system fonts
-    if (!g_getenv("FONTCONFIG_PATH") && !g_getenv("FONTCONFIG_FILE")) {
+    // On Windows, set default paths for bundled resources if not already in environment
+    if (argc > 0 && argv[0]) {
         std::error_code ec;
-        if (argc > 0 && argv[0]) {
-            std::filesystem::path exePath = std::filesystem::absolute(argv[0], ec);
-            std::filesystem::path appDir = exePath.parent_path();
-            if (std::filesystem::exists(appDir / "etc" / "fonts" / "fonts.conf", ec)) {
-                g_setenv("FONTCONFIG_PATH", (appDir / "etc" / "fonts").string().c_str(), TRUE);
+        std::filesystem::path exePath = std::filesystem::absolute(argv[0], ec);
+        std::filesystem::path appDir = exePath.parent_path();
+
+        if (!g_getenv("GSETTINGS_SCHEMA_DIR")) {
+            auto schemaDir = appDir / "share" / "glib-2.0" / "schemas";
+            if (std::filesystem::exists(schemaDir, ec)) {
+                g_setenv("GSETTINGS_SCHEMA_DIR", schemaDir.string().c_str(), TRUE);
+            }
+        }
+        if (!g_getenv("XDG_DATA_DIRS")) {
+            auto shareDir = appDir / "share";
+            if (std::filesystem::exists(shareDir, ec)) {
+                g_setenv("XDG_DATA_DIRS", shareDir.string().c_str(), TRUE);
+            }
+        }
+        if (!g_getenv("FONTCONFIG_PATH") && !g_getenv("FONTCONFIG_FILE")) {
+            auto fontsDir = appDir / "etc" / "fonts";
+            if (std::filesystem::exists(fontsDir / "fonts.conf", ec)) {
+                g_setenv("FONTCONFIG_PATH", fontsDir.string().c_str(), TRUE);
             } else if (std::filesystem::exists("C:/msys64/ucrt64/etc/fonts/fonts.conf", ec)) {
                 g_setenv("FONTCONFIG_PATH", "C:/msys64/ucrt64/etc/fonts", TRUE);
+            }
+        }
+        if (!g_getenv("GDK_PIXBUF_MODULE_FILE")) {
+            auto loadersFile = appDir / "lib" / "gdk-pixbuf-2.0" / "2.10.0" / "loaders.cache";
+            if (std::filesystem::exists(loadersFile, ec)) {
+                g_setenv("GDK_PIXBUF_MODULE_FILE", loadersFile.string().c_str(), TRUE);
             }
         }
     }
 #endif
     // Suppress known spurious GLib-GIO critical warnings when enumerating WSL DrvFS mounts (/mnt/c,
-    // /mnt/d)
+    // /mnt/d) and win32 dbus warnings
     g_log_set_handler(
         "GLib-GIO", static_cast<GLogLevelFlags>(G_LOG_LEVEL_CRITICAL | G_LOG_LEVEL_WARNING),
         [](const gchar* log_domain, GLogLevelFlags log_level, const gchar* message,
            gpointer user_data) {
             if (message && (std::strstr(message, "standard::size") ||
-                            std::strstr(message, "g_file_info_get_size"))) {
-                return; // Silence harmless DrvFS GIO size warning
+                            std::strstr(message, "g_file_info_get_size") ||
+                            std::strstr(message, "win32 session dbus binary not found"))) {
+                return; // Silence harmless DrvFS GIO size and win32 dbus warning
             }
             g_log_default_handler(log_domain, log_level, message, user_data);
         },
         nullptr);
 
     const std::string rawArg = argc > 1 ? argv[1] : "";
-    const std::string pdfPath = normalizePath(rawArg);
+    const std::string inputPath = normalizePath(rawArg);
+
+    std::string pdfPath;
+    std::string projectPath;
+
+    std::error_code ec;
+    bool isLtproj = false;
+    if (!inputPath.empty()) {
+        if (inputPath.size() >= 7 && inputPath.substr(inputPath.size() - 7) == ".ltproj") {
+            isLtproj = true;
+        } else if (std::filesystem::is_directory(inputPath, ec) &&
+                   std::filesystem::exists(std::filesystem::path(inputPath) / "project.db", ec)) {
+            isLtproj = true;
+        }
+    }
 
     FluidCoreEngine engine("default-project");
-    seedDemoContent(engine, pdfPath);
 
-    AppContext context{&engine, &pdfPath};
+    if (isLtproj) {
+        projectPath = inputPath;
+        std::string openErr;
+        if (!engine.openProjectWithError(projectPath, &openErr)) {
+            std::cerr << "[FluidCore] Failed to open project " << projectPath << ": " << openErr
+                      << std::endl;
+        } else {
+            std::cout << "[FluidCore] Loaded project: " << projectPath << " ("
+                      << engine.projectTitle() << ")" << std::endl;
+        }
+    } else {
+        pdfPath = inputPath;
+        seedDemoContent(engine, pdfPath);
+    }
 
-    std::cout << "[FluidCore] Starting application with document: "
-              << (pdfPath.empty() ? "(none)" : pdfPath) << std::endl;
+    AppContext context{&engine, &pdfPath, &projectPath};
+
+    std::cout << "[FluidCore] Starting application with "
+              << (!projectPath.empty() ? ("project: " + projectPath)
+                                       : ("document: " + (pdfPath.empty() ? "(none)" : pdfPath)))
+              << std::endl;
 
     GtkApplication* app = gtk_application_new("org.fluidcore.platform", G_APPLICATION_NON_UNIQUE);
     g_signal_connect(app, "activate", G_CALLBACK(onActivate), &context);
     const int status = g_application_run(G_APPLICATION(app), 1, argv);
     g_object_unref(app);
+
+#ifdef _WIN32
+    if (SUCCEEDED(hrCom)) {
+        CoUninitialize();
+    }
+#endif
+
     return status;
 }

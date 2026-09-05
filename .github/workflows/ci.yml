@@ -124,3 +124,14 @@ jobs:
       - name: Test (ctest)
         shell: msys2 {0}
         run: ctest --test-dir build-win --output-on-failure
+      - name: Package Windows standalone distribution & installer
+        run: powershell -ExecutionPolicy Bypass -File ops/scripts/package-windows.ps1 -BuildInstaller
+      - name: Upload Windows distribution artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: fluidcore-windows-x64
+          path: |
+            build-win/dist/fluidcore-windows-x64.zip
+            build-win/dist/FluidCore-Setup-x64.exe
+          if-no-files-found: error
+
