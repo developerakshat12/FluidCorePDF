@@ -49,7 +49,7 @@ CardLayoutEngine::computeExcerptCardDimensions(const ExcerptDropPayload& payload
 }
 
 Rectangle CardLayoutEngine::getExcerptAnchorRect(const Rectangle& cardWorldBounds, double originX,
-                                                double originY, double zoom) {
+                                                 double originY, double zoom) {
     const double sx = (cardWorldBounds.x - originX) * zoom;
     const double sy = (cardWorldBounds.y - originY) * zoom;
     const double sh = cardWorldBounds.h * zoom;

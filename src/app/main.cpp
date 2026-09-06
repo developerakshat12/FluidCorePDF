@@ -1,8 +1,8 @@
 #include "FluidCoreEngine.h"
 #include "document/DocumentPane.h"
 #include "export/ExportDialog.h"
-#include "input/PalmRejectionEngine.h"
 #include "geometry/StrokeHitTest.h"
+#include "input/PalmRejectionEngine.h"
 #include "services/ExcerptTileCache.h"
 #include "services/PdfDocumentService.h"
 #include "services/ToolManager.h"
@@ -1191,17 +1191,14 @@ void onActivate(GtkApplication* app, gpointer userData) {
                 return;
             }
 
-            FluidCore::Rectangle cropPdfRect{
-                cropNormRect.x * pw,
-                cropNormRect.y * ph,
-                cropNormRect.w * pw,
-                cropNormRect.h * ph
-            };
+            FluidCore::Rectangle cropPdfRect{cropNormRect.x * pw, cropNormRect.y * ph,
+                                             cropNormRect.w * pw, cropNormRect.h * ph};
 
             const auto& allStrokes = documentPane->annotationStore().strokes();
             for (const auto& s : allStrokes) {
                 if (s.pageIndex == pageNo) {
-                    if (FluidCore::rectanglesIntersect(FluidCore::computeStrokeBounds(s), cropPdfRect)) {
+                    if (FluidCore::rectanglesIntersect(FluidCore::computeStrokeBounds(s),
+                                                       cropPdfRect)) {
                         outStrokes.push_back(s);
                     }
                 }
@@ -1820,7 +1817,8 @@ void onActivate(GtkApplication* app, gpointer userData) {
                 }
             }
 
-            // Global Zoom shortcuts: Ctrl++, Ctrl+=, Ctrl+KP_Add, Ctrl+-, Ctrl+_, Ctrl+KP_Subtract, Ctrl+0, Ctrl+KP_0
+            // Global Zoom shortcuts: Ctrl++, Ctrl+=, Ctrl+KP_Add, Ctrl+-, Ctrl+_, Ctrl+KP_Subtract,
+            // Ctrl+0, Ctrl+KP_0
             if (ctrl && !shift && !alt &&
                 (event->keyval == GDK_KEY_plus || event->keyval == GDK_KEY_equal ||
                  event->keyval == GDK_KEY_KP_Add)) {

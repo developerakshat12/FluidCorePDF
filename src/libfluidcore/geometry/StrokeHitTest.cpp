@@ -125,8 +125,10 @@ bool rectanglesIntersect(const Rectangle& a, const Rectangle& b, double toleranc
 }
 
 Rectangle uniteRectangles(const Rectangle& a, const Rectangle& b) {
-    if (a.w <= 0.0 || a.h <= 0.0) return b;
-    if (b.w <= 0.0 || b.h <= 0.0) return a;
+    if (a.w <= 0.0 || a.h <= 0.0)
+        return b;
+    if (b.w <= 0.0 || b.h <= 0.0)
+        return a;
     const double minX = std::min(a.x, b.x);
     const double minY = std::min(a.y, b.y);
     const double maxX = std::max(a.x + a.w, b.x + b.w);

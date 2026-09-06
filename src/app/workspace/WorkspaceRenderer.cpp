@@ -411,7 +411,8 @@ void WorkspaceRenderer::drawExcerptCard(cairo_t* cr, const WorkspaceState& state
             cairo_close_path(cr);
 
             // Contrast-aware arrow coloring based on background luminance
-            const double lum = 0.299 * (col.r / 255.0) + 0.587 * (col.g / 255.0) + 0.114 * (col.b / 255.0);
+            const double lum =
+                0.299 * (col.r / 255.0) + 0.587 * (col.g / 255.0) + 0.114 * (col.b / 255.0);
             if (lum > 0.75) {
                 cairo_set_source_rgba(cr, 0.15, 0.20, 0.28, isHovered ? 1.0 : 0.85);
             } else {

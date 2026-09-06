@@ -153,11 +153,7 @@ void testStrokeBoundsAndWidth() {
     FluidCore::Stroke stroke;
     stroke.id = "bounds-test";
     stroke.width = 4.0; // maxRenderedWidth with p=1.0: 4.0 * (0.25 + 0.75 * 1.0) = 4.0
-    stroke.points = {
-        {10.0, 20.0},
-        {50.0, 80.0},
-        {30.0, 40.0}
-    };
+    stroke.points = {{10.0, 20.0}, {50.0, 80.0}, {30.0, 40.0}};
     stroke.pressures = {0.2, 1.0};
 
     double maxW = FluidCore::maxRenderedStrokeWidth(stroke);
@@ -176,9 +172,9 @@ void testStrokeBoundsAndWidth() {
 }
 
 void testRectangleIntersectionAndUnion() {
-    FluidCore::Rectangle r1{10.0, 10.0, 50.0, 50.0}; // [10, 60] x [10, 60]
-    FluidCore::Rectangle r2{40.0, 40.0, 50.0, 50.0}; // [40, 90] x [40, 90]
-    FluidCore::Rectangle r3{70.0, 70.0, 20.0, 20.0}; // [70, 90] x [70, 90] - disjoint from r1
+    FluidCore::Rectangle r1{10.0, 10.0, 50.0, 50.0};    // [10, 60] x [10, 60]
+    FluidCore::Rectangle r2{40.0, 40.0, 50.0, 50.0};    // [40, 90] x [40, 90]
+    FluidCore::Rectangle r3{70.0, 70.0, 20.0, 20.0};    // [70, 90] x [70, 90] - disjoint from r1
     FluidCore::Rectangle rEdge{60.0, 10.0, 20.0, 50.0}; // Touching r1 exactly on right border
 
     assert(FluidCore::rectanglesIntersect(r1, r2));

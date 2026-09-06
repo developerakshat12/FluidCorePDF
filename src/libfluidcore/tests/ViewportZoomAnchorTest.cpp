@@ -23,8 +23,8 @@ void testCursorZoomInInvariance() {
     const double viewportOffset = 400.0;
     const double canvasFocal = oldScroll + viewportOffset; // 5400.0
 
-    const double newScroll = FluidCore::ViewportZoomAnchor::computeNewScroll(
-        oldScroll, canvasFocal, oldZoom, newZoom);
+    const double newScroll =
+        FluidCore::ViewportZoomAnchor::computeNewScroll(oldScroll, canvasFocal, oldZoom, newZoom);
 
     // Expected newScroll = 5000 + 5400 * (2.0 - 1.0) = 10400.0
     expect(std::abs(newScroll - 10400.0) < 1e-6, "Cursor zoom in scroll offset should be 10400");
@@ -32,7 +32,8 @@ void testCursorZoomInInvariance() {
     // Verify document coordinate under the cursor remains invariant:
     const double oldDocY = (oldScroll + viewportOffset) / oldZoom; // 5400.0
     const double newDocY = (newScroll + viewportOffset) / newZoom; // (10400 + 400) / 2.0 = 5400.0
-    expect(std::abs(newDocY - oldDocY) < 1e-6, "Document coordinate under cursor must remain identical");
+    expect(std::abs(newDocY - oldDocY) < 1e-6,
+           "Document coordinate under cursor must remain identical");
 }
 
 void testCursorZoomOutInvariance() {
@@ -44,15 +45,16 @@ void testCursorZoomOutInvariance() {
     const double viewportOffset = 400.0;
     const double canvasFocal = oldScroll + viewportOffset; // 10800.0
 
-    const double newScroll = FluidCore::ViewportZoomAnchor::computeNewScroll(
-        oldScroll, canvasFocal, oldZoom, newZoom);
+    const double newScroll =
+        FluidCore::ViewportZoomAnchor::computeNewScroll(oldScroll, canvasFocal, oldZoom, newZoom);
 
     // Expected newScroll = 10400 + 10800 * (0.5 - 1.0) = 5000.0
     expect(std::abs(newScroll - 5000.0) < 1e-6, "Cursor zoom out scroll offset should be 5000");
 
     const double oldDocY = (oldScroll + viewportOffset) / oldZoom;
     const double newDocY = (newScroll + viewportOffset) / newZoom;
-    expect(std::abs(newDocY - oldDocY) < 1e-6, "Document coordinate under cursor must remain identical after zoom out");
+    expect(std::abs(newDocY - oldDocY) < 1e-6,
+           "Document coordinate under cursor must remain identical after zoom out");
 }
 
 void testCenterZoomInvariancePage87() {
@@ -65,11 +67,12 @@ void testCenterZoomInvariancePage87() {
     const double viewportH = 800.0;
     const double canvasFocal = oldScroll + viewportH / 2.0; // 70400.0
 
-    const double newScroll = FluidCore::ViewportZoomAnchor::computeNewScroll(
-        oldScroll, canvasFocal, oldZoom, newZoom);
+    const double newScroll =
+        FluidCore::ViewportZoomAnchor::computeNewScroll(oldScroll, canvasFocal, oldZoom, newZoom);
 
     // Expected newScroll = 70000 + 70400 * (1.2 - 1.0) = 84080.0
-    expect(std::abs(newScroll - 84080.0) < 1e-6, "Page 87 center zoom should scale scroll to 84080");
+    expect(std::abs(newScroll - 84080.0) < 1e-6,
+           "Page 87 center zoom should scale scroll to 84080");
 
     const double oldDocCenter = (oldScroll + viewportH / 2.0) / oldZoom; // 70400.0
     const double newDocCenter = (newScroll + viewportH / 2.0) / newZoom; // 84480 / 1.2 = 70400.0
@@ -78,8 +81,8 @@ void testCenterZoomInvariancePage87() {
 
 void testClampingBounds() {
     // Clamping at top boundary: zooming out near top should clamp to 0.0
-    const double newScrollTop = FluidCore::ViewportZoomAnchor::computeNewScroll(
-        100.0, 200.0, 1.0, 0.5, 10000.0, 800.0);
+    const double newScrollTop =
+        FluidCore::ViewportZoomAnchor::computeNewScroll(100.0, 200.0, 1.0, 0.5, 10000.0, 800.0);
     // 100 + 200 * (0.5 - 1.0) = 0.0
     expect(newScrollTop == 0.0, "Zoom out near top must clamp to 0.0");
 

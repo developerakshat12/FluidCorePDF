@@ -1,5 +1,5 @@
-#include "geometry/StrokeHitTest.h"
 #include "services/ExcerptTileCache.h"
+#include "geometry/StrokeHitTest.h"
 #include "services/PdfDocumentService.h"
 #include "services/PdfExportService.h"
 
@@ -257,16 +257,16 @@ int testStrokeProviderWiring() {
         outStrokes.push_back(stroke);
     });
 
-    uint64_t req = cache.requestCropAsync("card-mock", "doc-test", 2, {0.1, 0.2, 0.4, 0.3}, 200, 150, 1.0);
+    uint64_t req =
+        cache.requestCropAsync("card-mock", "doc-test", 2, {0.1, 0.2, 0.4, 0.3}, 200, 150, 1.0);
     failures += check(req > 0, "requestCropAsync dispatched request with stroke provider");
     failures += check(providerCalled, "StrokeProvider was invoked during requestCropAsync");
     failures += check(passedDocId == "doc-test", "Correct docId passed to provider");
     failures += check(passedPageNo == 2, "Correct pageNo passed to provider");
-    failures += check(std::abs(passedCropRect.x - 0.1) < 1e-6 &&
-                      std::abs(passedCropRect.y - 0.2) < 1e-6 &&
-                      std::abs(passedCropRect.w - 0.4) < 1e-6 &&
-                      std::abs(passedCropRect.h - 0.3) < 1e-6,
-                      "Normalized crop coordinates passed directly without geometry alteration");
+    failures += check(
+        std::abs(passedCropRect.x - 0.1) < 1e-6 && std::abs(passedCropRect.y - 0.2) < 1e-6 &&
+            std::abs(passedCropRect.w - 0.4) < 1e-6 && std::abs(passedCropRect.h - 0.3) < 1e-6,
+        "Normalized crop coordinates passed directly without geometry alteration");
 
     return failures;
 }
@@ -301,12 +301,8 @@ int testNonStandardPageFilteringAndPointToPixelAlignment() {
     FluidCore::Rectangle normRect{0.1, 0.6542, 0.8, 0.2081};
 
     // 1. Verify that when denormalized using authoritative 459 x 666 geometry:
-    FluidCore::Rectangle cropPdfRect{
-        normRect.x * pageWidth,
-        normRect.y * pageHeight,
-        normRect.w * pageWidth,
-        normRect.h * pageHeight
-    };
+    FluidCore::Rectangle cropPdfRect{normRect.x * pageWidth, normRect.y * pageHeight,
+                                     normRect.w * pageWidth, normRect.h * pageHeight};
 
     // cropPdfRect.y is 0.6542 * 666.0 = 435.6972
     // cropPdfRect.h is 0.2081 * 666.0 = 138.5946
@@ -317,13 +313,17 @@ int testNonStandardPageFilteringAndPointToPixelAlignment() {
     bool hlIntersects = FluidCore::rectanglesIntersect(hlBounds, cropPdfRect);
     bool penIntersects = FluidCore::rectanglesIntersect(penBounds, cropPdfRect);
 
-    failures += check(hlIntersects, "Highlighter correctly intersects crop under authoritative 459x666 geometry");
-    failures += check(penIntersects, "Pen correctly intersects crop under authoritative 459x666 geometry");
+    failures += check(hlIntersects,
+                      "Highlighter correctly intersects crop under authoritative 459x666 geometry");
+    failures +=
+        check(penIntersects, "Pen correctly intersects crop under authoritative 459x666 geometry");
 
     // Contrast with the old 612 x 792 bug:
-    FluidCore::Rectangle badPdfRect{normRect.x * 612.0, normRect.y * 792.0, normRect.w * 612.0, normRect.h * 792.0};
+    FluidCore::Rectangle badPdfRect{normRect.x * 612.0, normRect.y * 792.0, normRect.w * 612.0,
+                                    normRect.h * 792.0};
     bool badHlIntersects = FluidCore::rectanglesIntersect(hlBounds, badPdfRect);
-    failures += check(!badHlIntersects, "Proves bug root cause: 612x792 fallback falsely excludes highlighter");
+    failures += check(!badHlIntersects,
+                      "Proves bug root cause: 612x792 fallback falsely excludes highlighter");
 
     // 2. Point-to-Pixel Invariant Verification (Regular and Rotated):
     // For regular 459x666:
@@ -339,7 +339,8 @@ int testNonStandardPageFilteringAndPointToPixelAlignment() {
     cairo_paint(cr);
 
     // Apply exact Cairo transform pipeline:
-    cairo_scale(cr, static_cast<double>(targetW) / cropPdfRect.w, static_cast<double>(targetH) / cropPdfRect.h);
+    cairo_scale(cr, static_cast<double>(targetW) / cropPdfRect.w,
+                static_cast<double>(targetH) / cropPdfRect.h);
     cairo_translate(cr, -cropPdfRect.x, -cropPdfRect.y);
     PdfExportService::renderStroke(cr, highlighter);
     cairo_destroy(cr);
@@ -350,11 +351,13 @@ int testNonStandardPageFilteringAndPointToPixelAlignment() {
     sampleX = std::clamp(sampleX, 0, targetW - 1);
     sampleY = std::clamp(sampleY, 0, targetH - 1);
 
-    const uint32_t* pixels = reinterpret_cast<const uint32_t*>(cairo_image_surface_get_data(surface));
+    const uint32_t* pixels =
+        reinterpret_cast<const uint32_t*>(cairo_image_surface_get_data(surface));
     uint32_t renderedPixel = pixels[sampleY * targetW + sampleX];
     uint32_t backgroundPixel = pixels[0]; // Top-left should be blank
 
-    failures += check(renderedPixel != 0, "Highlighter rendered exactly at expected device pixel coordinate");
+    failures += check(renderedPixel != 0,
+                      "Highlighter rendered exactly at expected device pixel coordinate");
     failures += check(backgroundPixel == 0, "Background untouched outside annotation stroke");
 
     cairo_surface_destroy(surface);
@@ -384,9 +387,11 @@ int testNonStandardPageFilteringAndPointToPixelAlignment() {
     cairo_destroy(rotCr);
     cairo_surface_flush(rotSurface);
 
-    const uint32_t* rotPixels = reinterpret_cast<const uint32_t*>(cairo_image_surface_get_data(rotSurface));
+    const uint32_t* rotPixels =
+        reinterpret_cast<const uint32_t*>(cairo_image_surface_get_data(rotSurface));
     // Center of 200x200 is (100, 100)
-    failures += check(rotPixels[100 * 200 + 100] != 0, "Rotated page annotation lands at target device pixel center (100, 100)");
+    failures += check(rotPixels[100 * 200 + 100] != 0,
+                      "Rotated page annotation lands at target device pixel center (100, 100)");
 
     cairo_surface_destroy(rotSurface);
     return failures;

@@ -77,10 +77,9 @@ class ExcerptTileCache {
     using RenderReadyCallback =
         std::function<void(const std::string& excerptId, uint64_t requestId)>;
 
-    using StrokeProvider = std::function<void(
-        const std::string& docId, std::size_t pageNo,
-        const FluidCore::Rectangle& cropNormRect,
-        std::vector<FluidCore::Stroke>& outStrokes)>;
+    using StrokeProvider = std::function<void(const std::string& docId, std::size_t pageNo,
+                                              const FluidCore::Rectangle& cropNormRect,
+                                              std::vector<FluidCore::Stroke>& outStrokes)>;
 
     explicit ExcerptTileCache(PdfDocumentService& docService,
                               std::size_t maxBytes = kDefaultMaxBytes);

@@ -730,7 +730,8 @@ gboolean InkOverlay::onMotionNotify(GdkEventMotion* event) {
         for (const auto& s : existingStrokes) {
             if (strokeIntersectsEraser(s, samples, 24.0)) {
                 invalidateStroke(s);
-                m_pane.notifyAnnotationChangedSpatial(m_activePageIndex, FluidCore::computeStrokeBounds(s));
+                m_pane.notifyAnnotationChangedSpatial(m_activePageIndex,
+                                                      FluidCore::computeStrokeBounds(s));
                 m_pane.undoStack().pushAndExecute(std::make_unique<FluidCore::RemoveStrokeCommand>(
                     m_annotationStore, m_activePageIndex, s));
                 erasedAny = true;
@@ -836,7 +837,8 @@ gboolean InkOverlay::onButtonRelease(GdkEventButton* event) {
                 auto compound = std::make_unique<FluidCore::CompoundCommand>("Erase Strokes");
                 for (const auto& s : erasedStrokes) {
                     invalidateStroke(s);
-                    m_pane.notifyAnnotationChangedSpatial(m_activePageIndex, FluidCore::computeStrokeBounds(s));
+                    m_pane.notifyAnnotationChangedSpatial(m_activePageIndex,
+                                                          FluidCore::computeStrokeBounds(s));
                     compound->addCommand(std::make_unique<FluidCore::RemoveStrokeCommand>(
                         m_annotationStore, m_activePageIndex, s));
                 }

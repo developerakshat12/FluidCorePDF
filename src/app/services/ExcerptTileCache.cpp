@@ -359,12 +359,8 @@ void ExcerptTileCache::invalidateSpatial(const std::string& docId, std::size_t p
     auto it = m_lruList.begin();
     while (it != m_lruList.end()) {
         if (it->key.docId == docId && it->key.pageNo == pageNo) {
-            FluidCore::Rectangle tileNormRect{
-                it->key.xNorm / 65535.0,
-                it->key.yNorm / 65535.0,
-                it->key.wNorm / 65535.0,
-                it->key.hNorm / 65535.0
-            };
+            FluidCore::Rectangle tileNormRect{it->key.xNorm / 65535.0, it->key.yNorm / 65535.0,
+                                              it->key.wNorm / 65535.0, it->key.hNorm / 65535.0};
             if (FluidCore::rectanglesIntersect(tileNormRect, changedNormRect, 0.001)) {
                 m_currentBytes -= it->bytes;
                 m_lookup.erase(it->key);

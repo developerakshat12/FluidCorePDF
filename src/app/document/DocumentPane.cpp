@@ -332,14 +332,18 @@ DocumentPane::~DocumentPane() {
 
 bool DocumentPane::getPageDimensions(std::size_t pageNo, double* outW, double* outH) const {
     if (pageNo < m_pages.size() && m_pages[pageNo].width > 0.0 && m_pages[pageNo].height > 0.0) {
-        if (outW) *outW = m_pages[pageNo].width;
-        if (outH) *outH = m_pages[pageNo].height;
+        if (outW)
+            *outW = m_pages[pageNo].width;
+        if (outH)
+            *outH = m_pages[pageNo].height;
         return true;
     }
     const auto& dims = m_annotationStore.pageDimensions();
     if (pageNo < dims.size() && dims[pageNo].first > 0.0 && dims[pageNo].second > 0.0) {
-        if (outW) *outW = dims[pageNo].first;
-        if (outH) *outH = dims[pageNo].second;
+        if (outW)
+            *outW = dims[pageNo].first;
+        if (outH)
+            *outH = dims[pageNo].second;
         return true;
     }
     return false;
@@ -500,12 +504,12 @@ void DocumentPane::updateLayoutDimensions() {
         GtkAdjustment* vadj = gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(m_scroller));
         GtkAdjustment* hadj = gtk_scrolled_window_get_hadjustment(GTK_SCROLLED_WINDOW(m_scroller));
         if (vadj) {
-            gtk_adjustment_set_upper(
-                vadj, std::max(static_cast<double>(scaledHeight), gtk_adjustment_get_page_size(vadj)));
+            gtk_adjustment_set_upper(vadj, std::max(static_cast<double>(scaledHeight),
+                                                    gtk_adjustment_get_page_size(vadj)));
         }
         if (hadj) {
-            gtk_adjustment_set_upper(
-                hadj, std::max(static_cast<double>(scaledWidth), gtk_adjustment_get_page_size(hadj)));
+            gtk_adjustment_set_upper(hadj, std::max(static_cast<double>(scaledWidth),
+                                                    gtk_adjustment_get_page_size(hadj)));
         }
     }
 }
@@ -1130,9 +1134,12 @@ bool DocumentPane::undo() {
                 gtk_widget_queue_draw(m_inkOverlay->widget());
             }
             if (const auto* addCmd = dynamic_cast<const FluidCore::AddStrokeCommand*>(topCmd)) {
-                notifyAnnotationChangedSpatial(addCmd->pageIndex(), FluidCore::computeStrokeBounds(addCmd->stroke()));
-            } else if (const auto* rmCmd = dynamic_cast<const FluidCore::RemoveStrokeCommand*>(topCmd)) {
-                notifyAnnotationChangedSpatial(rmCmd->pageIndex(), FluidCore::computeStrokeBounds(rmCmd->stroke()));
+                notifyAnnotationChangedSpatial(addCmd->pageIndex(),
+                                               FluidCore::computeStrokeBounds(addCmd->stroke()));
+            } else if (const auto* rmCmd =
+                           dynamic_cast<const FluidCore::RemoveStrokeCommand*>(topCmd)) {
+                notifyAnnotationChangedSpatial(rmCmd->pageIndex(),
+                                               FluidCore::computeStrokeBounds(rmCmd->stroke()));
             }
         }
     }
@@ -1159,9 +1166,12 @@ bool DocumentPane::redo() {
                 gtk_widget_queue_draw(m_inkOverlay->widget());
             }
             if (const auto* addCmd = dynamic_cast<const FluidCore::AddStrokeCommand*>(topCmd)) {
-                notifyAnnotationChangedSpatial(addCmd->pageIndex(), FluidCore::computeStrokeBounds(addCmd->stroke()));
-            } else if (const auto* rmCmd = dynamic_cast<const FluidCore::RemoveStrokeCommand*>(topCmd)) {
-                notifyAnnotationChangedSpatial(rmCmd->pageIndex(), FluidCore::computeStrokeBounds(rmCmd->stroke()));
+                notifyAnnotationChangedSpatial(addCmd->pageIndex(),
+                                               FluidCore::computeStrokeBounds(addCmd->stroke()));
+            } else if (const auto* rmCmd =
+                           dynamic_cast<const FluidCore::RemoveStrokeCommand*>(topCmd)) {
+                notifyAnnotationChangedSpatial(rmCmd->pageIndex(),
+                                               FluidCore::computeStrokeBounds(rmCmd->stroke()));
             }
         }
     }
@@ -1593,20 +1603,20 @@ void DocumentPane::setPalmRejectionEngine(FluidCore::PalmRejectionEngine* engine
     }
 }
 
-void DocumentPane::notifyAnnotationChangedSpatial(std::size_t pageNo, const FluidCore::Rectangle& strokeBoundsPdf) {
+void DocumentPane::notifyAnnotationChangedSpatial(std::size_t pageNo,
+                                                  const FluidCore::Rectangle& strokeBoundsPdf) {
     if (!m_onAnnotationsChangedSpatial) {
         return;
     }
 
-    double pw = (pageNo < m_pages.size() && m_pages[pageNo].width > 0.0) ? m_pages[pageNo].width : 612.0;
-    double ph = (pageNo < m_pages.size() && m_pages[pageNo].height > 0.0) ? m_pages[pageNo].height : 792.0;
+    double pw =
+        (pageNo < m_pages.size() && m_pages[pageNo].width > 0.0) ? m_pages[pageNo].width : 612.0;
+    double ph =
+        (pageNo < m_pages.size() && m_pages[pageNo].height > 0.0) ? m_pages[pageNo].height : 792.0;
 
     FluidCore::Rectangle normBounds{
-        std::clamp(strokeBoundsPdf.x / pw, 0.0, 1.0),
-        std::clamp(strokeBoundsPdf.y / ph, 0.0, 1.0),
-        std::clamp(strokeBoundsPdf.w / pw, 0.0, 1.0),
-        std::clamp(strokeBoundsPdf.h / ph, 0.0, 1.0)
-    };
+        std::clamp(strokeBoundsPdf.x / pw, 0.0, 1.0), std::clamp(strokeBoundsPdf.y / ph, 0.0, 1.0),
+        std::clamp(strokeBoundsPdf.w / pw, 0.0, 1.0), std::clamp(strokeBoundsPdf.h / ph, 0.0, 1.0)};
 
     auto& pending = m_pendingSpatialInvalidations[pageNo];
     pending.pageNo = pageNo;
@@ -1620,24 +1630,28 @@ void DocumentPane::notifyAnnotationChangedSpatial(std::size_t pageNo, const Flui
             std::size_t pageNo;
         };
         auto* ctx = new Context{this, pageNo};
-        pending.timeoutSourceId = g_timeout_add(50, [](gpointer data) -> gboolean {
-            auto* c = static_cast<Context*>(data);
-            DocumentPane* self = c->pane;
-            std::size_t pNo = c->pageNo;
-            delete c;
+        pending.timeoutSourceId = g_timeout_add(
+            50,
+            [](gpointer data) -> gboolean {
+                auto* c = static_cast<Context*>(data);
+                DocumentPane* self = c->pane;
+                std::size_t pNo = c->pageNo;
+                delete c;
 
-            auto it = self->m_pendingSpatialInvalidations.find(pNo);
-            if (it != self->m_pendingSpatialInvalidations.end()) {
-                it->second.timeoutSourceId = 0;
-                FluidCore::Rectangle coalesced = it->second.normBounds;
-                self->m_pendingSpatialInvalidations.erase(it);
-                if (self->m_onAnnotationsChangedSpatial) {
-                    const std::string id = self->pdfPath().empty() ? self->docId() : self->pdfPath();
-                    self->m_onAnnotationsChangedSpatial(id, pNo, coalesced);
+                auto it = self->m_pendingSpatialInvalidations.find(pNo);
+                if (it != self->m_pendingSpatialInvalidations.end()) {
+                    it->second.timeoutSourceId = 0;
+                    FluidCore::Rectangle coalesced = it->second.normBounds;
+                    self->m_pendingSpatialInvalidations.erase(it);
+                    if (self->m_onAnnotationsChangedSpatial) {
+                        const std::string id =
+                            self->pdfPath().empty() ? self->docId() : self->pdfPath();
+                        self->m_onAnnotationsChangedSpatial(id, pNo, coalesced);
+                    }
                 }
-            }
-            return G_SOURCE_REMOVE;
-        }, ctx);
+                return G_SOURCE_REMOVE;
+            },
+            ctx);
     }
 }
 

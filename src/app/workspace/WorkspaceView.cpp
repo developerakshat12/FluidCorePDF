@@ -1070,8 +1070,10 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
                                     FluidCore::CardLayoutEngine::getExcerptAnchorRect(
                                         cExcerpt->bounds(), m_state.viewport.originX,
                                         m_state.viewport.originY, m_state.viewport.zoom);
-                                if (event->x >= anchorRect.x && event->x <= anchorRect.x + anchorRect.w &&
-                                    event->y >= anchorRect.y && event->y <= anchorRect.y + anchorRect.h) {
+                                if (event->x >= anchorRect.x &&
+                                    event->x <= anchorRect.x + anchorRect.w &&
+                                    event->y >= anchorRect.y &&
+                                    event->y <= anchorRect.y + anchorRect.h) {
                                     const auto b = cExcerpt->bounds();
                                     const FluidCore::Point centerWorldPt{b.x + b.w / 2.0,
                                                                          b.y + b.h / 2.0};
@@ -1663,11 +1665,13 @@ gboolean WorkspaceView::onMotion(GdkEventMotion* event) {
                             newHoveredId = node->id();
                             break;
                         }
-                    } else if (const auto* stack = dynamic_cast<const FluidCore::CardStackNode*>(node)) {
+                    } else if (const auto* stack =
+                                   dynamic_cast<const FluidCore::CardStackNode*>(node)) {
                         if (!stack->isCollapsed()) {
                             for (const auto& child : stack->children()) {
                                 if (const auto* cExcerpt =
-                                        dynamic_cast<const FluidCore::ExcerptCardNode*>(child.get())) {
+                                        dynamic_cast<const FluidCore::ExcerptCardNode*>(
+                                            child.get())) {
                                     const auto anchorRect =
                                         FluidCore::CardLayoutEngine::getExcerptAnchorRect(
                                             cExcerpt->bounds(), m_state.viewport.originX,

@@ -65,7 +65,8 @@ int testAnchorPillAndStackHeaderBounds() {
         CardLayoutEngine::getExcerptAnchorRect(cardBounds, originX, originY, zoom);
     failed += check(anchorRect.w == 16.0 * zoom, "Anchor width scaled with zoom");
     failed += check(anchorRect.h == 140.0 * zoom, "Anchor height matches card height");
-    failed += check(anchorRect.x == (cardBounds.x - originX) * zoom, "Anchor positioned on left edge of card");
+    failed += check(anchorRect.x == (cardBounds.x - originX) * zoom,
+                    "Anchor positioned on left edge of card");
     failed += check(anchorRect.y == (cardBounds.y - originY) * zoom, "Anchor y matches card top");
 
     Rectangle pillRect =

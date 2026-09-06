@@ -100,7 +100,8 @@ class DocumentPane {
     void setOnAnnotationsChangedSpatialCallback(AnnotationSpatialCallback cb) {
         m_onAnnotationsChangedSpatial = std::move(cb);
     }
-    void notifyAnnotationChangedSpatial(std::size_t pageNo, const FluidCore::Rectangle& strokeBoundsPdf);
+    void notifyAnnotationChangedSpatial(std::size_t pageNo,
+                                        const FluidCore::Rectangle& strokeBoundsPdf);
 
     InkOverlay* inkOverlay() const { return m_inkOverlay.get(); }
     PageTileCache& pageTileCache() { return m_pageTileCache; }

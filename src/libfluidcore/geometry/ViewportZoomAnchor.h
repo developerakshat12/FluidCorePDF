@@ -16,16 +16,16 @@ struct ViewportZoomAnchor {
      * @brief Computes the new scroll adjustment value after zoom.
      *
      * @param currentScroll Current scroll adjustment value in pixels (e.g. vadj->value).
-     * @param canvasFocal   Focal coordinate in canvas/widget space (e.g. event->y or currentScroll + viewportH / 2.0).
+     * @param canvasFocal   Focal coordinate in canvas/widget space (e.g. event->y or currentScroll
+     * + viewportH / 2.0).
      * @param oldZoom       Previous zoom factor (> 0).
      * @param newZoom       Target zoom factor (> 0).
      * @param upper         Adjustment upper limit in pixels (optional, 0 to bypass clamping).
      * @param pageSize      Adjustment page size / visible dimension in pixels (optional).
      * @return Clamped new scroll adjustment value.
      */
-    static double computeNewScroll(double currentScroll, double canvasFocal,
-                                   double oldZoom, double newZoom,
-                                   double upper = 0.0, double pageSize = 0.0) {
+    static double computeNewScroll(double currentScroll, double canvasFocal, double oldZoom,
+                                   double newZoom, double upper = 0.0, double pageSize = 0.0) {
         if (oldZoom <= 1e-6) {
             return currentScroll;
         }
