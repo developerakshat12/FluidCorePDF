@@ -12,6 +12,7 @@
 
 #include "FluidCoreAPI.h"
 #include "services/PageTileCache.h"
+#include "storage/AnnotationStore.h"
 
 namespace FluidCoreApp {
 
@@ -57,7 +58,8 @@ class PdfDocumentService {
     PopplerPagePtr getBackgroundPage(const std::string& docId, std::size_t pageNo);
     CairoSurfaceHandle renderBackgroundCrop(const std::string& docId, std::size_t pageNo,
                                             const FluidCore::Rectangle& normRect, int targetW,
-                                            int targetH);
+                                            int targetH,
+                                            const std::vector<FluidCore::Stroke>& strokes = {});
 
     // In-flight cancellation query
     bool isDocumentCancelled(const std::string& docId) const;

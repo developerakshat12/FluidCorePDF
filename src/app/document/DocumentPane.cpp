@@ -2,6 +2,8 @@
 #include "FluidCoreAPI.h"
 #include "document/InkOverlay.h"
 #include "document/SqueezeRenderHelper.h"
+#include "geometry/StrokeHitTest.h"
+#include "geometry/ViewportZoomAnchor.h"
 #include "input/PalmRejectionEngine.h"
 #include "search/AnchorSqueezePlanner.h"
 #include "search/SearchSqueezePlanner.h"
@@ -118,6 +120,13 @@ void DocumentPane::closeDocument() {
         g_source_remove(m_zoomDebounceTimerId);
         m_zoomDebounceTimerId = 0;
     }
+    for (auto& [pageNo, pending] : m_pendingSpatialInvalidations) {
+        if (pending.timeoutSourceId != 0) {
+            g_source_remove(pending.timeoutSourceId);
+            pending.timeoutSourceId = 0;
+        }
+    }
+    m_pendingSpatialInvalidations.clear();
     if (m_pinchGesture) {
         g_object_unref(m_pinchGesture);
         m_pinchGesture = nullptr;
@@ -160,6 +169,8 @@ void DocumentPane::closeDocument() {
     m_pdfPath.clear();
     m_layoutWidth = 0.0;
     m_layoutHeight = 0.0;
+    m_rawDocHeight = 0.0;
+    m_rawDocWidth = 0.0;
 }
 
 void DocumentPane::repointCompanionPath(const std::string& newPdfPath) {
@@ -234,7 +245,9 @@ bool DocumentPane::loadDocument(const std::string& pdfPath, const std::string& d
         m_pages.push_back(layout);
     }
     m_layoutWidth += 2.0 * kPageMargin;
-    m_layoutHeight = y;
+    m_rawDocHeight = y;
+    m_rawDocWidth = m_layoutWidth;
+    m_layoutHeight = y + 24.0;
 
     // Register full geometry with SqueezeEngine
     m_squeezeEngine.registerDocumentGeometry(m_docId, pageGeometries);
@@ -317,6 +330,105 @@ DocumentPane::~DocumentPane() {
     closeDocument();
 }
 
+bool DocumentPane::getPageDimensions(std::size_t pageNo, double* outW, double* outH) const {
+    if (pageNo < m_pages.size() && m_pages[pageNo].width > 0.0 && m_pages[pageNo].height > 0.0) {
+        if (outW) *outW = m_pages[pageNo].width;
+        if (outH) *outH = m_pages[pageNo].height;
+        return true;
+    }
+    const auto& dims = m_annotationStore.pageDimensions();
+    if (pageNo < dims.size() && dims[pageNo].first > 0.0 && dims[pageNo].second > 0.0) {
+        if (outW) *outW = dims[pageNo].first;
+        if (outH) *outH = dims[pageNo].second;
+        return true;
+    }
+    return false;
+}
+
+bool DocumentPane::matchesDocId(const std::string& queryId,
+                                const std::vector<std::string>& allKnownDocPaths) const {
+    if (queryId.empty()) {
+        return false;
+    }
+
+    // Tier 1: Exact document ID match
+    if (m_docId == queryId) {
+        return true;
+    }
+
+    // Tier 2: Canonical absolute path match
+    std::error_code ec1, ec2;
+    if (!m_pdfPath.empty()) {
+        if (m_pdfPath == queryId) {
+            return true;
+        }
+        std::filesystem::path pCurrent(m_pdfPath);
+        std::filesystem::path pQuery(queryId);
+        if (std::filesystem::exists(pCurrent, ec1) && std::filesystem::exists(pQuery, ec2)) {
+            std::error_code eqEc;
+            if (std::filesystem::equivalent(pCurrent, pQuery, eqEc)) {
+                return true;
+            }
+        }
+        auto c1 = std::filesystem::weakly_canonical(pCurrent, ec1).lexically_normal();
+        auto c2 = std::filesystem::weakly_canonical(pQuery, ec2).lexically_normal();
+        if (!ec1 && !ec2 && c1 == c2 && !c1.empty()) {
+            return true;
+        }
+    }
+
+    // Tier 3: Normalized project-relative path match (only if query contains directory structure)
+    std::filesystem::path pQueryPath(queryId);
+    if (pQueryPath.has_parent_path() && !pQueryPath.parent_path().empty()) {
+        auto normalizeSeparators = [](std::string s) {
+            std::replace(s.begin(), s.end(), '\\', '/');
+            while (s.rfind("./", 0) == 0) {
+                s.erase(0, 2);
+            }
+            return s;
+        };
+        std::string normQuery = normalizeSeparators(queryId);
+        std::string normDocId = normalizeSeparators(m_docId);
+        std::string normPath = normalizeSeparators(m_pdfPath);
+
+        if (!normQuery.empty()) {
+            if (normDocId == normQuery || normPath == normQuery) {
+                return true;
+            }
+            if (normPath.size() > normQuery.size() &&
+                normPath.rfind("/" + normQuery) == normPath.size() - (normQuery.size() + 1)) {
+                return true;
+            }
+        }
+    }
+
+    // Tier 4: Filename match ONLY if unique across all known documents
+    std::string queryFilename = std::filesystem::path(queryId).filename().string();
+    std::string curFilename = std::filesystem::path(m_pdfPath).filename().string();
+    if (curFilename.empty()) {
+        curFilename = std::filesystem::path(m_docId).filename().string();
+    }
+
+    if (!queryFilename.empty() && !curFilename.empty() && queryFilename == curFilename) {
+        // Check uniqueness if known document list is provided
+        if (!allKnownDocPaths.empty()) {
+            std::size_t count = 0;
+            for (const auto& pathOrId : allKnownDocPaths) {
+                if (std::filesystem::path(pathOrId).filename().string() == queryFilename) {
+                    ++count;
+                }
+            }
+            if (count > 1) {
+                // Ambiguous filename across multiple documents in project!
+                return false;
+            }
+        }
+        return true;
+    }
+
+    return false;
+}
+
 double DocumentPane::docYToScreen(double docY) const {
     if (!m_squeezeEngine.hasDocument(m_docId)) {
         return docY * m_zoom;
@@ -359,12 +471,15 @@ bool DocumentPane::isSqueezed() const {
 }
 
 void DocumentPane::updateLayoutDimensions() {
-    double baseH = m_layoutHeight;
+    double baseH = m_rawDocHeight > 0.0 ? m_rawDocHeight : m_layoutHeight;
     if (m_squeezeEngine.hasDocument(m_docId)) {
         baseH = m_squeezeEngine.totalSqueezedHeight(m_docId);
     }
     const double squeezedH = baseH + 24.0;
     m_layoutHeight = squeezedH;
+    if (m_rawDocWidth > 0.0) {
+        m_layoutWidth = m_rawDocWidth;
+    }
 
     const int scaledWidth = static_cast<int>(m_layoutWidth * m_zoom);
     const int scaledHeight = static_cast<int>(m_layoutHeight * m_zoom);
@@ -380,19 +495,83 @@ void DocumentPane::updateLayoutDimensions() {
         gtk_widget_set_size_request(m_inkOverlay->widget(), scaledWidth, scaledHeight);
         gtk_widget_queue_draw(m_inkOverlay->widget());
     }
+
+    if (m_scroller && GTK_IS_WIDGET(m_scroller)) {
+        GtkAdjustment* vadj = gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(m_scroller));
+        GtkAdjustment* hadj = gtk_scrolled_window_get_hadjustment(GTK_SCROLLED_WINDOW(m_scroller));
+        if (vadj) {
+            gtk_adjustment_set_upper(
+                vadj, std::max(static_cast<double>(scaledHeight), gtk_adjustment_get_page_size(vadj)));
+        }
+        if (hadj) {
+            gtk_adjustment_set_upper(
+                hadj, std::max(static_cast<double>(scaledWidth), gtk_adjustment_get_page_size(hadj)));
+        }
+    }
 }
 
-void DocumentPane::setZoom(double zoom) {
+void DocumentPane::setZoom(double zoom, double focalCanvasX, double focalCanvasY) {
     const double oldZoom = m_zoom;
-    m_zoom = std::clamp(zoom, 0.5, 2.0);
+    const double newZoom = std::clamp(zoom, 0.5, 2.0);
 
-    if (m_zoom == oldZoom) {
+    if (std::abs(newZoom - oldZoom) < 1e-6) {
         return;
     }
 
+    // 1. Capture old scroll position and viewport dimensions
+    GtkAdjustment* vadj =
+        m_scroller ? gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(m_scroller)) : nullptr;
+    GtkAdjustment* hadj =
+        m_scroller ? gtk_scrolled_window_get_hadjustment(GTK_SCROLLED_WINDOW(m_scroller)) : nullptr;
+
+    const double currentScrollY = vadj ? gtk_adjustment_get_value(vadj) : 0.0;
+    const double currentScrollX = hadj ? gtk_adjustment_get_value(hadj) : 0.0;
+
+    double viewportH = vadj ? gtk_adjustment_get_page_size(vadj) : 0.0;
+    double viewportW = hadj ? gtk_adjustment_get_page_size(hadj) : 0.0;
+    if (viewportH <= 0.0 && m_scroller && GTK_IS_WIDGET(m_scroller)) {
+        GtkAllocation alloc;
+        gtk_widget_get_allocation(m_scroller, &alloc);
+        viewportH = alloc.height;
+    }
+    if (viewportW <= 0.0 && m_scroller && GTK_IS_WIDGET(m_scroller)) {
+        GtkAllocation alloc;
+        gtk_widget_get_allocation(m_scroller, &alloc);
+        viewportW = alloc.width;
+    }
+
+    // 2. Determine canvas focal coordinate (cursor if specified, else viewport center)
+    const double canvasFocalY =
+        (focalCanvasY >= 0.0) ? focalCanvasY : (currentScrollY + viewportH / 2.0);
+    const double canvasFocalX =
+        (focalCanvasX >= 0.0) ? focalCanvasX : (currentScrollX + viewportW / 2.0);
+
+    // 3. Change zoom
     m_isZooming = true;
+    m_zoom = newZoom;
+
+    // 4. Update widget/document dimensions (and adjustment upper bounds)
     updateLayoutDimensions();
 
+    // 5. Calculate and clamp new scroll offsets via ViewportZoomAnchor
+    if (vadj && hadj) {
+        const double upperY = gtk_adjustment_get_upper(vadj);
+        const double upperX = gtk_adjustment_get_upper(hadj);
+        const double pageSizeY = gtk_adjustment_get_page_size(vadj);
+        const double pageSizeX = gtk_adjustment_get_page_size(hadj);
+
+        const double newScrollY = FluidCore::ViewportZoomAnchor::computeNewScroll(
+            currentScrollY, canvasFocalY, oldZoom, newZoom, upperY, pageSizeY);
+        const double newScrollX = FluidCore::ViewportZoomAnchor::computeNewScroll(
+            currentScrollX, canvasFocalX, oldZoom, newZoom, upperX, pageSizeX);
+
+        m_isAdjustingScrollPosition = true;
+        gtk_adjustment_set_value(vadj, newScrollY);
+        gtk_adjustment_set_value(hadj, newScrollX);
+        m_isAdjustingScrollPosition = false;
+    }
+
+    // 6. Debounce tile cache clearing and re-rendering
     if (m_zoomDebounceTimerId != 0) {
         g_source_remove(m_zoomDebounceTimerId);
     }
@@ -950,6 +1129,11 @@ bool DocumentPane::undo() {
             if (m_inkOverlay && m_inkOverlay->widget() && GTK_IS_WIDGET(m_inkOverlay->widget())) {
                 gtk_widget_queue_draw(m_inkOverlay->widget());
             }
+            if (const auto* addCmd = dynamic_cast<const FluidCore::AddStrokeCommand*>(topCmd)) {
+                notifyAnnotationChangedSpatial(addCmd->pageIndex(), FluidCore::computeStrokeBounds(addCmd->stroke()));
+            } else if (const auto* rmCmd = dynamic_cast<const FluidCore::RemoveStrokeCommand*>(topCmd)) {
+                notifyAnnotationChangedSpatial(rmCmd->pageIndex(), FluidCore::computeStrokeBounds(rmCmd->stroke()));
+            }
         }
     }
     return ok;
@@ -973,6 +1157,11 @@ bool DocumentPane::redo() {
         } else {
             if (m_inkOverlay && m_inkOverlay->widget() && GTK_IS_WIDGET(m_inkOverlay->widget())) {
                 gtk_widget_queue_draw(m_inkOverlay->widget());
+            }
+            if (const auto* addCmd = dynamic_cast<const FluidCore::AddStrokeCommand*>(topCmd)) {
+                notifyAnnotationChangedSpatial(addCmd->pageIndex(), FluidCore::computeStrokeBounds(addCmd->stroke()));
+            } else if (const auto* rmCmd = dynamic_cast<const FluidCore::RemoveStrokeCommand*>(topCmd)) {
+                notifyAnnotationChangedSpatial(rmCmd->pageIndex(), FluidCore::computeStrokeBounds(rmCmd->stroke()));
             }
         }
     }
@@ -1004,33 +1193,8 @@ gboolean DocumentPane::onScroll(GdkEventScroll* event) {
         }
 
         if (delta != 0.0) {
-            const double oldZoom = m_zoom;
-            const double newZoom = (delta > 0) ? (m_zoom / 1.1) : (m_zoom * 1.1);
-
-            GtkAdjustment* vadj =
-                gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(m_scroller));
-            GtkAdjustment* hadj =
-                gtk_scrolled_window_get_hadjustment(GTK_SCROLLED_WINDOW(m_scroller));
-
-            if (vadj && hadj) {
-                const double cursorScreenY = event->y;
-                const double cursorScreenX = event->x;
-                const double oldScrollY = gtk_adjustment_get_value(vadj);
-                const double oldScrollX = gtk_adjustment_get_value(hadj);
-
-                setZoom(newZoom);
-
-                const double zoomRatio = m_zoom / oldZoom;
-                const double newScrollY = (oldScrollY + cursorScreenY) * zoomRatio - cursorScreenY;
-                const double newScrollX = (oldScrollX + cursorScreenX) * zoomRatio - cursorScreenX;
-
-                m_isAdjustingScrollPosition = true;
-                gtk_adjustment_set_value(vadj, std::max(0.0, newScrollY));
-                gtk_adjustment_set_value(hadj, std::max(0.0, newScrollX));
-                m_isAdjustingScrollPosition = false;
-            } else {
-                setZoom(newZoom);
-            }
+            const double zoomMultiplier = std::pow(1.15, -delta);
+            setZoom(m_zoom * zoomMultiplier, event->x, event->y);
             return TRUE;
         }
         return FALSE;
@@ -1426,6 +1590,54 @@ void DocumentPane::setPalmRejectionEngine(FluidCore::PalmRejectionEngine* engine
     m_palmEngine = engine;
     if (m_inkOverlay) {
         m_inkOverlay->setPalmRejectionEngine(engine);
+    }
+}
+
+void DocumentPane::notifyAnnotationChangedSpatial(std::size_t pageNo, const FluidCore::Rectangle& strokeBoundsPdf) {
+    if (!m_onAnnotationsChangedSpatial) {
+        return;
+    }
+
+    double pw = (pageNo < m_pages.size() && m_pages[pageNo].width > 0.0) ? m_pages[pageNo].width : 612.0;
+    double ph = (pageNo < m_pages.size() && m_pages[pageNo].height > 0.0) ? m_pages[pageNo].height : 792.0;
+
+    FluidCore::Rectangle normBounds{
+        std::clamp(strokeBoundsPdf.x / pw, 0.0, 1.0),
+        std::clamp(strokeBoundsPdf.y / ph, 0.0, 1.0),
+        std::clamp(strokeBoundsPdf.w / pw, 0.0, 1.0),
+        std::clamp(strokeBoundsPdf.h / ph, 0.0, 1.0)
+    };
+
+    auto& pending = m_pendingSpatialInvalidations[pageNo];
+    pending.pageNo = pageNo;
+    pending.pane = this;
+    if (pending.timeoutSourceId != 0) {
+        pending.normBounds = FluidCore::uniteRectangles(pending.normBounds, normBounds);
+    } else {
+        pending.normBounds = normBounds;
+        struct Context {
+            DocumentPane* pane;
+            std::size_t pageNo;
+        };
+        auto* ctx = new Context{this, pageNo};
+        pending.timeoutSourceId = g_timeout_add(50, [](gpointer data) -> gboolean {
+            auto* c = static_cast<Context*>(data);
+            DocumentPane* self = c->pane;
+            std::size_t pNo = c->pageNo;
+            delete c;
+
+            auto it = self->m_pendingSpatialInvalidations.find(pNo);
+            if (it != self->m_pendingSpatialInvalidations.end()) {
+                it->second.timeoutSourceId = 0;
+                FluidCore::Rectangle coalesced = it->second.normBounds;
+                self->m_pendingSpatialInvalidations.erase(it);
+                if (self->m_onAnnotationsChangedSpatial) {
+                    const std::string id = self->pdfPath().empty() ? self->docId() : self->pdfPath();
+                    self->m_onAnnotationsChangedSpatial(id, pNo, coalesced);
+                }
+            }
+            return G_SOURCE_REMOVE;
+        }, ctx);
     }
 }
 

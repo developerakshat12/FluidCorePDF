@@ -140,4 +140,8 @@ if(BUILD_TESTING)
     add_executable(stroke_persistence_regression_test tests/workspace/StrokePersistenceRegressionTest.cpp)
     target_link_libraries(stroke_persistence_regression_test PRIVATE fluidcore)
     add_test(NAME StrokePersistenceRegressionTest COMMAND stroke_persistence_regression_test)
+
+    add_executable(viewport_zoom_anchor_test tests/ViewportZoomAnchorTest.cpp)
+    target_link_libraries(viewport_zoom_anchor_test PRIVATE fluidcore)
+    add_test(NAME ViewportZoomAnchorTest COMMAND viewport_zoom_anchor_test)
 endif()

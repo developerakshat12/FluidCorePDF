@@ -85,7 +85,7 @@ class DocumentPane {
     double layoutHeight() const { return m_layoutHeight; }
 
     double zoom() const { return m_zoom; }
-    void setZoom(double zoom);
+    void setZoom(double zoom, double focalCanvasX = -1.0, double focalCanvasY = -1.0);
     void zoomIn();
     void zoomOut();
     void resetZoom();
@@ -94,6 +94,13 @@ class DocumentPane {
     const FluidCore::AnnotationStore& annotationStore() const { return m_annotationStore; }
     FluidCore::UndoStack& undoStack() { return m_undoStack; }
     const FluidCore::UndoStack& undoStack() const { return m_undoStack; }
+
+    using AnnotationSpatialCallback = std::function<void(
+        const std::string& docId, std::size_t pageNo, const FluidCore::Rectangle& changedNormRect)>;
+    void setOnAnnotationsChangedSpatialCallback(AnnotationSpatialCallback cb) {
+        m_onAnnotationsChangedSpatial = std::move(cb);
+    }
+    void notifyAnnotationChangedSpatial(std::size_t pageNo, const FluidCore::Rectangle& strokeBoundsPdf);
 
     InkOverlay* inkOverlay() const { return m_inkOverlay.get(); }
     PageTileCache& pageTileCache() { return m_pageTileCache; }
@@ -111,6 +118,10 @@ class DocumentPane {
     FluidCore::SqueezeEngine& squeezeEngine() { return m_squeezeEngine; }
     const FluidCore::SqueezeEngine& squeezeEngine() const { return m_squeezeEngine; }
     const std::string& docId() const { return m_docId; }
+
+    bool getPageDimensions(std::size_t pageNo, double* outW, double* outH) const;
+    bool matchesDocId(const std::string& queryId,
+                      const std::vector<std::string>& allKnownDocPaths = {}) const;
 
     // Transactional Squeeze controls
     void setSqueezeFold(double yStart, double yEnd, double alpha);
@@ -212,6 +223,8 @@ class DocumentPane {
     double m_zoom = 1.0;
     bool m_isZooming = false;
     guint m_zoomDebounceTimerId = 0;
+    double m_rawDocHeight = 0.0;
+    double m_rawDocWidth = 0.0;
 
     // Search subsystem state
     std::unique_ptr<SearchBarWidget> m_searchBar;
@@ -231,6 +244,15 @@ class DocumentPane {
 
     WorkspaceView* m_workspaceView = nullptr;
     FluidCore::FluidCoreAPI* m_coreApi = nullptr;
+
+    struct PendingSpatialInvalidation {
+        std::size_t pageNo = 0;
+        FluidCore::Rectangle normBounds{0.0, 0.0, 0.0, 0.0};
+        guint timeoutSourceId = 0;
+        DocumentPane* pane = nullptr;
+    };
+    std::unordered_map<std::size_t, PendingSpatialInvalidation> m_pendingSpatialInvalidations;
+    AnnotationSpatialCallback m_onAnnotationsChangedSpatial;
 };
 
 } // namespace FluidCoreApp

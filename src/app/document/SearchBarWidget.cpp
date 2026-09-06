@@ -36,9 +36,9 @@ SearchBarWidget::SearchBarWidget() {
 
     // 1. Scope Selector dropdown
     m_scopeCombo = gtk_combo_box_text_new();
-    gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(m_scopeCombo), "0", "📄 Doc");
-    gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(m_scopeCombo), "1", "🗂️ Canvas");
-    gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(m_scopeCombo), "2", "🌐 All");
+    gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(m_scopeCombo), "0", "Doc");
+    gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(m_scopeCombo), "1", "Canvas");
+    gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(m_scopeCombo), "2", "All");
     gtk_combo_box_set_active(GTK_COMBO_BOX(m_scopeCombo), 0);
     gtk_widget_set_tooltip_text(m_scopeCombo,
                                 "Search Scope: Document PDF, Workspace Canvas, or All");

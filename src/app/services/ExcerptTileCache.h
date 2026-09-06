@@ -2,6 +2,7 @@
 
 #include "services/PageTileCache.h"
 #include "services/PdfDocumentService.h"
+#include "storage/AnnotationStore.h"
 #include "workspace/ExcerptCardNode.h"
 
 #include <atomic>
@@ -76,6 +77,11 @@ class ExcerptTileCache {
     using RenderReadyCallback =
         std::function<void(const std::string& excerptId, uint64_t requestId)>;
 
+    using StrokeProvider = std::function<void(
+        const std::string& docId, std::size_t pageNo,
+        const FluidCore::Rectangle& cropNormRect,
+        std::vector<FluidCore::Stroke>& outStrokes)>;
+
     explicit ExcerptTileCache(PdfDocumentService& docService,
                               std::size_t maxBytes = kDefaultMaxBytes);
     ~ExcerptTileCache();
@@ -84,6 +90,7 @@ class ExcerptTileCache {
     ExcerptTileCache& operator=(const ExcerptTileCache&) = delete;
 
     void setRenderReadyCallback(RenderReadyCallback cb) { m_onRenderReady = std::move(cb); }
+    void setStrokeProvider(StrokeProvider provider) { m_strokeProvider = std::move(provider); }
 
     // Retrieves cached surface for the requested key, promoting it to MRU.
     CairoSurfaceHandle get(const CropCacheKey& key);
@@ -109,6 +116,11 @@ class ExcerptTileCache {
     void cancelRequest(uint64_t requestId);
     void cancelDocumentRequests(const std::string& docId);
     void invalidate(const std::string& docId);
+
+    // Evicts cached crop tiles for docId and pageNo intersecting changedNormRect
+    void invalidateSpatial(const std::string& docId, std::size_t pageNo,
+                           const FluidCore::Rectangle& changedNormRect);
+
     void clear();
 
     std::size_t currentBytes() const { return m_currentBytes; }
@@ -133,6 +145,7 @@ class ExcerptTileCache {
         CropCacheKey cacheKey;
         int targetPixelW = 0;
         int targetPixelH = 0;
+        std::vector<FluidCore::Stroke> intersectingStrokes;
         ExcerptTileCache* cache = nullptr;
     };
 
@@ -154,6 +167,7 @@ class ExcerptTileCache {
     std::unordered_set<CropCacheKey, CropCacheKeyHash> m_inFlightKeys;
 
     RenderReadyCallback m_onRenderReady;
+    StrokeProvider m_strokeProvider;
 };
 
 } // namespace FluidCoreApp

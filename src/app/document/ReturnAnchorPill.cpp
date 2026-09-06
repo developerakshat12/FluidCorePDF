@@ -115,12 +115,29 @@ void ReturnAnchorPill::draw(cairo_t* cr) {
         cairo_fill(cr);
     }
 
-    // 6. Return arrow icon [ ↶ ]
-    cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
-    cairo_set_font_size(cr, 15.0);
+    // 6. Return arrow icon [ ↶ ] drawn as crisp vector geometry
+    cairo_save(cr);
     cairo_set_source_rgba(cr, 0.38, 0.82, 0.98, 1.0); // Vibrant sky cyan
-    cairo_move_to(cr, 12.0, h * 0.68);
-    cairo_show_text(cr, "↶");
+    cairo_set_line_width(cr, 1.6);
+    cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+    cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
+
+    const double rx = 18.0;
+    const double ry = h / 2.0;
+
+    // Curved shaft: arcs up from lower-right over the top to the left
+    cairo_new_sub_path(cr);
+    cairo_arc_negative(cr, rx + 1.0, ry + 1.0, 4.8, M_PI * 0.35, -M_PI * 0.75);
+    cairo_stroke(cr);
+
+    // Arrowhead at the tip (pointing down-left)
+    const double tipX = rx + 1.0 - 4.8 * 0.7071;
+    const double tipY = ry + 1.0 - 4.8 * 0.7071;
+    cairo_move_to(cr, tipX + 3.6, tipY - 0.5);
+    cairo_line_to(cr, tipX, tipY);
+    cairo_line_to(cr, tipX - 0.5, tipY + 3.6);
+    cairo_stroke(cr);
+    cairo_restore(cr);
 
     // 7. Label: "Return to Workspace Excerpt" or ID
     std::string labelText = "Return to Excerpt";
@@ -146,16 +163,22 @@ void ReturnAnchorPill::draw(cairo_t* cr) {
     cairo_set_line_width(cr, 1.0);
     cairo_stroke(cr);
 
-    // 9. Close button [ ✕ ]
-    cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
-    cairo_set_font_size(cr, 12.0);
+    // 9. Close button [ ✕ ] drawn as crisp vector geometry
+    const double cx = divX + closeW / 2.0;
+    const double cy = h / 2.0;
+    const double r = 3.8;
     if (m_hoverClose) {
         cairo_set_source_rgba(cr, 1.0, 0.45, 0.45, 1.0);
     } else {
         cairo_set_source_rgba(cr, 0.75, 0.80, 0.88, 0.75);
     }
-    cairo_move_to(cr, divX + 9.0, h * 0.65);
-    cairo_show_text(cr, "✕");
+    cairo_set_line_width(cr, 1.6);
+    cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+    cairo_move_to(cr, cx - r, cy - r);
+    cairo_line_to(cr, cx + r, cy + r);
+    cairo_move_to(cr, cx + r, cy - r);
+    cairo_line_to(cr, cx - r, cy + r);
+    cairo_stroke(cr);
 
     cairo_restore(cr);
 }

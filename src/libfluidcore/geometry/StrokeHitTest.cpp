@@ -87,4 +87,51 @@ findStrokesUnderPoint(double px, double py, const std::vector<const Stroke*>& ca
     return matches;
 }
 
+double maxRenderedStrokeWidth(const Stroke& stroke) {
+    if (stroke.points.empty()) {
+        return 0.0;
+    }
+    double maxP = 1.0;
+    for (double p : stroke.pressures) {
+        if (p > maxP) {
+            maxP = p;
+        }
+    }
+    // FluidCore Cairo renderer equation: width * (0.25 + 0.75 * p)
+    return stroke.width * (0.25 + 0.75 * maxP);
+}
+
+Rectangle computeStrokeBounds(const Stroke& stroke) {
+    if (stroke.points.empty()) {
+        return {0.0, 0.0, 0.0, 0.0};
+    }
+    double minX = stroke.points[0].x;
+    double maxX = stroke.points[0].x;
+    double minY = stroke.points[0].y;
+    double maxY = stroke.points[0].y;
+    for (const auto& pt : stroke.points) {
+        minX = std::min(minX, pt.x);
+        maxX = std::max(maxX, pt.x);
+        minY = std::min(minY, pt.y);
+        maxY = std::max(maxY, pt.y);
+    }
+    const double pad = (maxRenderedStrokeWidth(stroke) * 0.5) + 1.0; // 1.0pt safety epsilon
+    return {minX - pad, minY - pad, (maxX - minX) + 2.0 * pad, (maxY - minY) + 2.0 * pad};
+}
+
+bool rectanglesIntersect(const Rectangle& a, const Rectangle& b, double tolerance) {
+    return (a.x <= b.x + b.w + tolerance && a.x + a.w + tolerance >= b.x &&
+            a.y <= b.y + b.h + tolerance && a.y + a.h + tolerance >= b.y);
+}
+
+Rectangle uniteRectangles(const Rectangle& a, const Rectangle& b) {
+    if (a.w <= 0.0 || a.h <= 0.0) return b;
+    if (b.w <= 0.0 || b.h <= 0.0) return a;
+    const double minX = std::min(a.x, b.x);
+    const double minY = std::min(a.y, b.y);
+    const double maxX = std::max(a.x + a.w, b.x + b.w);
+    const double maxY = std::max(a.y + a.h, b.y + b.h);
+    return {minX, minY, maxX - minX, maxY - minY};
+}
+
 } // namespace FluidCore

@@ -375,13 +375,50 @@ void WorkspaceRenderer::drawExcerptCard(cairo_t* cr, const WorkspaceState& state
     cairo_set_line_width(cr, std::max(0.75, 0.85 * zoom));
     cairo_stroke(cr);
 
-    // 5. Left accent indicator bar
+    const double anchorW = 16.0 * zoom;
+    const bool isHovered = (excerpt && excerpt->id() == state.hoveredAnchorCardId);
+
+    // 5. Left Anchor bar with clickable arrow indicator
     if (excerpt) {
         const auto col = excerpt->color();
-        cairo_set_source_rgba(cr, col.r / 255.0, col.g / 255.0, col.b / 255.0, 0.95);
-        const double barW = std::max(3.0, 4.5 * zoom);
-        cairo_rectangle(cr, sx, sy, barW, sh);
+        // Anchor bar background
+        cairo_rectangle(cr, sx, sy, anchorW, sh);
+        if (isHovered) {
+            cairo_set_source_rgba(cr, col.r / 255.0, col.g / 255.0, col.b / 255.0, 1.0);
+        } else {
+            cairo_set_source_rgba(cr, col.r / 255.0, col.g / 255.0, col.b / 255.0, 0.90);
+        }
         cairo_fill(cr);
+
+        // Subtle divider separating anchor bar from card content
+        cairo_move_to(cr, sx + anchorW, sy);
+        cairo_line_to(cr, sx + anchorW, sy + sh);
+        cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.15);
+        cairo_set_line_width(cr, std::max(0.5, 0.75 * zoom));
+        cairo_stroke(cr);
+
+        // Clickable arrow indicator pointing left towards the source document
+        if (zoom >= 0.2) {
+            const double arrowW = 6.0 * zoom;
+            const double arrowH = 9.0 * zoom;
+            const double nudge = isHovered ? -1.2 * zoom : 0.0;
+            const double arrowCenterX = sx + anchorW / 2.0 + nudge;
+            const double arrowCenterY = sy + sh / 2.0;
+
+            cairo_move_to(cr, arrowCenterX - arrowW * 0.5, arrowCenterY);
+            cairo_line_to(cr, arrowCenterX + arrowW * 0.5, arrowCenterY - arrowH * 0.5);
+            cairo_line_to(cr, arrowCenterX + arrowW * 0.5, arrowCenterY + arrowH * 0.5);
+            cairo_close_path(cr);
+
+            // Contrast-aware arrow coloring based on background luminance
+            const double lum = 0.299 * (col.r / 255.0) + 0.587 * (col.g / 255.0) + 0.114 * (col.b / 255.0);
+            if (lum > 0.75) {
+                cairo_set_source_rgba(cr, 0.15, 0.20, 0.28, isHovered ? 1.0 : 0.85);
+            } else {
+                cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, isHovered ? 1.0 : 0.90);
+            }
+            cairo_fill(cr);
+        }
     }
 
     if (zoom >= 0.2) {
@@ -411,43 +448,8 @@ void WorkspaceRenderer::drawExcerptCard(cairo_t* cr, const WorkspaceState& state
         cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
         cairo_set_font_size(cr, 10.5 * zoom);
         cairo_set_source_rgb(cr, 0.22, 0.28, 0.38);
-        cairo_move_to(cr, sx + 14.0 * zoom, sy + headerH * 0.67);
+        cairo_move_to(cr, sx + anchorW + 10.0 * zoom, sy + headerH * 0.67);
         cairo_show_text(cr, headerStr.c_str());
-
-        // Return Anchor Pill on header right
-        if (excerpt) {
-            const double pillW = 72.0 * zoom;
-            const double pillH = 20.0 * zoom;
-            const double pillX = sx + sw - pillW - 8.0 * zoom;
-            const double pillY = sy + (headerH - pillH) / 2.0;
-            const bool isHovered = (excerpt->id() == state.hoveredAnchorCardId);
-
-            if (pillW > 20.0) {
-                drawRoundedRect(cr, pillX, pillY, pillW, pillH, pillH / 2.0);
-                if (isHovered) {
-                    cairo_set_source_rgba(cr, 0.05, 0.50, 0.95, 0.20);
-                } else {
-                    cairo_set_source_rgba(cr, 0.05, 0.45, 0.90, 0.08);
-                }
-                cairo_fill_preserve(cr);
-                cairo_set_source_rgba(cr, 0.05, 0.50, 0.95, isHovered ? 0.80 : 0.40);
-                cairo_set_line_width(cr, isHovered ? 1.5 * zoom : 1.0 * zoom);
-                cairo_stroke(cr);
-
-                cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
-                cairo_set_font_size(cr, 8.5 * zoom);
-                if (isHovered) {
-                    cairo_set_source_rgb(cr, 0.01, 0.30, 0.85);
-                } else {
-                    cairo_set_source_rgb(cr, 0.05, 0.40, 0.85);
-                }
-                cairo_text_extents_t ext;
-                cairo_text_extents(cr, "↗ Anchor", &ext);
-                cairo_move_to(cr, pillX + (pillW - ext.width) / 2.0,
-                              pillY + (pillH + ext.height) / 2.0 - 0.5 * zoom);
-                cairo_show_text(cr, "↗ Anchor");
-            }
-        }
     }
 
     // Return focus flash aura
@@ -469,9 +471,9 @@ void WorkspaceRenderer::drawExcerptCard(cairo_t* cr, const WorkspaceState& state
     // Body Content Rendering
     if (excerpt) {
         if (excerpt->isImageExcerpt()) {
-            const double bodyX = sx + 10.0 * zoom;
+            const double bodyX = sx + anchorW + 8.0 * zoom;
             const double bodyY = sy + headerH + 6.0 * zoom;
-            const double bodyW = sw - 20.0 * zoom;
+            const double bodyW = sw - anchorW - 16.0 * zoom;
             const double bodyH = sh - headerH - 12.0 * zoom;
 
             if (bodyW > 8.0 && bodyH > 8.0) {
@@ -553,8 +555,8 @@ void WorkspaceRenderer::drawExcerptCard(cairo_t* cr, const WorkspaceState& state
             }
         } else {
             if (zoom < 0.25) {
-                const double barStartX = sx + 14.0 * zoom;
-                const double barW = sw - 28.0 * zoom;
+                const double barStartX = sx + anchorW + 8.0 * zoom;
+                const double barW = sw - anchorW - 16.0 * zoom;
                 double curY = sy + headerH + 6.0 * zoom;
                 cairo_set_source_rgba(cr, 0.70, 0.75, 0.83, 0.7);
                 for (int i = 0; i < 4 && curY + 4.0 * zoom < sy + sh - 4.0 * zoom; ++i) {
@@ -564,8 +566,8 @@ void WorkspaceRenderer::drawExcerptCard(cairo_t* cr, const WorkspaceState& state
                     curY += 5.0 * zoom;
                 }
             } else {
-                const double textStartX = sx + 16.0 * zoom;
-                const double maxW = sw - 32.0 * zoom;
+                const double textStartX = sx + anchorW + 10.0 * zoom;
+                const double maxW = sw - anchorW - 20.0 * zoom;
                 const double fontSize = 11.5 * zoom;
                 const double lineSpacing = 16.5 * zoom;
                 double curY = sy + headerH + 18.0 * zoom;

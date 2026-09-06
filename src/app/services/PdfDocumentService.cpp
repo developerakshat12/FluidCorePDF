@@ -1,4 +1,5 @@
 #include "PdfDocumentService.h"
+#include "services/PdfExportService.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -224,7 +225,8 @@ PopplerPagePtr PdfDocumentService::getBackgroundPage(const std::string& docId, s
 CairoSurfaceHandle PdfDocumentService::renderBackgroundCrop(const std::string& docId,
                                                             std::size_t pageNo,
                                                             const FluidCore::Rectangle& normRect,
-                                                            int targetW, int targetH) {
+                                                            int targetW, int targetH,
+                                                            const std::vector<FluidCore::Stroke>& strokes) {
     std::lock_guard<std::mutex> workerLock(globalPopplerMutex());
 
     std::string filePath;
@@ -316,6 +318,9 @@ CairoSurfaceHandle PdfDocumentService::renderBackgroundCrop(const std::string& d
     cairo_translate(cr, -cropX, -cropY);
 
     poppler_page_render(page, cr);
+    for (const auto& stroke : strokes) {
+        PdfExportService::renderStroke(cr, stroke);
+    }
     cairo_destroy(cr);
 
     g_object_unref(page);

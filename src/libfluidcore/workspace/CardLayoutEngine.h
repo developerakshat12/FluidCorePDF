@@ -16,7 +16,11 @@ class CardLayoutEngine {
     static std::pair<double, double>
     computeExcerptCardDimensions(const ExcerptDropPayload& payload);
 
-    // Bounding box of [ ↗ Anchor ] pill button in screen coordinates
+    // Bounding box of left anchor bar / button in screen coordinates
+    static Rectangle getExcerptAnchorRect(const Rectangle& cardWorldBounds, double originX,
+                                          double originY, double zoom);
+
+    // Backwards compatibility wrapper for getExcerptAnchorRect
     static Rectangle getExcerptAnchorPillRect(const Rectangle& cardWorldBounds, double originX,
                                               double originY, double zoom);
 

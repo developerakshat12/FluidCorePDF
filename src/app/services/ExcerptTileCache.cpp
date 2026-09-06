@@ -1,4 +1,6 @@
 #include "ExcerptTileCache.h"
+#include "geometry/StrokeHitTest.h"
+#include "services/PdfExportService.h"
 
 #include <algorithm>
 #include <cmath>
@@ -198,6 +200,14 @@ CairoSurfaceHandle ExcerptTileCache::renderCropSync(const std::string& docId, st
         std::lock_guard<std::mutex> popplerLock(PdfDocumentService::globalPopplerMutex());
         poppler_page_render(page, cr);
     }
+
+    if (m_strokeProvider) {
+        std::vector<FluidCore::Stroke> strokes;
+        m_strokeProvider(docId, pageNo, normRect, strokes);
+        for (const auto& stroke : strokes) {
+            PdfExportService::renderStroke(cr, stroke);
+        }
+    }
     cairo_destroy(cr);
 
     CairoSurfaceHandle handle(surface, true);
@@ -247,6 +257,10 @@ uint64_t ExcerptTileCache::requestCropAsync(const std::string& excerptId, const 
     task->targetPixelH = targetH;
     task->cache = this;
 
+    if (m_strokeProvider) {
+        m_strokeProvider(docId, pageNo, normRect, task->intersectingStrokes);
+    }
+
     GError* error = nullptr;
     g_thread_pool_push(m_threadPool, task, &error);
     if (error) {
@@ -276,7 +290,8 @@ void ExcerptTileCache::asyncWorkerFunc(gpointer data, gpointer /*userData*/) {
     }
 
     CairoSurfaceHandle surface = cache->m_docService.renderBackgroundCrop(
-        task->docId, task->pageNo, task->normRect, task->targetPixelW, task->targetPixelH);
+        task->docId, task->pageNo, task->normRect, task->targetPixelW, task->targetPixelH,
+        task->intersectingStrokes);
 
     auto* result = new AsyncRenderResult();
     result->requestId = task->requestId;
@@ -336,6 +351,28 @@ void ExcerptTileCache::invalidate(const std::string& docId) {
         } else {
             ++it;
         }
+    }
+}
+
+void ExcerptTileCache::invalidateSpatial(const std::string& docId, std::size_t pageNo,
+                                         const FluidCore::Rectangle& changedNormRect) {
+    auto it = m_lruList.begin();
+    while (it != m_lruList.end()) {
+        if (it->key.docId == docId && it->key.pageNo == pageNo) {
+            FluidCore::Rectangle tileNormRect{
+                it->key.xNorm / 65535.0,
+                it->key.yNorm / 65535.0,
+                it->key.wNorm / 65535.0,
+                it->key.hNorm / 65535.0
+            };
+            if (FluidCore::rectanglesIntersect(tileNormRect, changedNormRect, 0.001)) {
+                m_currentBytes -= it->bytes;
+                m_lookup.erase(it->key);
+                it = m_lruList.erase(it);
+                continue;
+            }
+        }
+        ++it;
     }
 }
 

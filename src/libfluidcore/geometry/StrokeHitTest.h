@@ -40,4 +40,18 @@ std::vector<StrokeHitMatch>
 findStrokesUnderPoint(double px, double py, const std::vector<const Stroke*>& candidateStrokes,
                       double eraserRadius);
 
+// Returns the maximum physical stroke width as rendered by Cairo,
+// accounting for dynamic pressure modulation: stroke.width * (0.25 + 0.75 * maxP).
+double maxRenderedStrokeWidth(const Stroke& stroke);
+
+// Computes the conservative Axis-Aligned Bounding Box (AABB) in page points
+// with pad = (maxRenderedStrokeWidth(stroke) / 2.0) + 1.0pt epsilon.
+Rectangle computeStrokeBounds(const Stroke& stroke);
+
+// Evaluates inclusive rectangle intersection with a tolerance margin (default 0.5pt).
+bool rectanglesIntersect(const Rectangle& a, const Rectangle& b, double tolerance = 0.5);
+
+// Calculates the minimal bounding box enclosing both rectangles.
+Rectangle uniteRectangles(const Rectangle& a, const Rectangle& b);
+
 } // namespace FluidCore

@@ -1042,15 +1042,15 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
             }
         }
 
-        // 2. Check if click hits any visible ExcerptCardNode's [ ↗ Anchor ] pill button
+        // 2. Check if click hits any visible ExcerptCardNode's left anchor bar / arrow
         if (m_state.viewport.zoom >= 0.2) {
             for (const auto* node : visibleNodes) {
                 if (const auto* excerpt = dynamic_cast<const FluidCore::ExcerptCardNode*>(node)) {
-                    const auto pillRect = FluidCore::CardLayoutEngine::getExcerptAnchorPillRect(
+                    const auto anchorRect = FluidCore::CardLayoutEngine::getExcerptAnchorRect(
                         node->bounds(), m_state.viewport.originX, m_state.viewport.originY,
                         m_state.viewport.zoom);
-                    if (event->x >= pillRect.x && event->x <= pillRect.x + pillRect.w &&
-                        event->y >= pillRect.y && event->y <= pillRect.y + pillRect.h) {
+                    if (event->x >= anchorRect.x && event->x <= anchorRect.x + anchorRect.w &&
+                        event->y >= anchorRect.y && event->y <= anchorRect.y + anchorRect.h) {
                         const auto b = excerpt->bounds();
                         const FluidCore::Point centerWorldPt{b.x + b.w / 2.0, b.y + b.h / 2.0};
                         if (m_onNavigateToSource) {
@@ -1066,12 +1066,12 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
                         for (const auto& child : stack->children()) {
                             if (const auto* cExcerpt =
                                     dynamic_cast<const FluidCore::ExcerptCardNode*>(child.get())) {
-                                const auto pillRect =
-                                    FluidCore::CardLayoutEngine::getExcerptAnchorPillRect(
+                                const auto anchorRect =
+                                    FluidCore::CardLayoutEngine::getExcerptAnchorRect(
                                         cExcerpt->bounds(), m_state.viewport.originX,
                                         m_state.viewport.originY, m_state.viewport.zoom);
-                                if (event->x >= pillRect.x && event->x <= pillRect.x + pillRect.w &&
-                                    event->y >= pillRect.y && event->y <= pillRect.y + pillRect.h) {
+                                if (event->x >= anchorRect.x && event->x <= anchorRect.x + anchorRect.w &&
+                                    event->y >= anchorRect.y && event->y <= anchorRect.y + anchorRect.h) {
                                     const auto b = cExcerpt->bounds();
                                     const FluidCore::Point centerWorldPt{b.x + b.w / 2.0,
                                                                          b.y + b.h / 2.0};
@@ -1655,13 +1655,35 @@ gboolean WorkspaceView::onMotion(GdkEventMotion* event) {
                     }
 
                     if (dynamic_cast<const FluidCore::ExcerptCardNode*>(node)) {
-                        const auto pillRect = FluidCore::CardLayoutEngine::getExcerptAnchorPillRect(
+                        const auto anchorRect = FluidCore::CardLayoutEngine::getExcerptAnchorRect(
                             node->bounds(), m_state.viewport.originX, m_state.viewport.originY,
                             m_state.viewport.zoom);
-                        if (event->x >= pillRect.x && event->x <= pillRect.x + pillRect.w &&
-                            event->y >= pillRect.y && event->y <= pillRect.y + pillRect.h) {
+                        if (event->x >= anchorRect.x && event->x <= anchorRect.x + anchorRect.w &&
+                            event->y >= anchorRect.y && event->y <= anchorRect.y + anchorRect.h) {
                             newHoveredId = node->id();
                             break;
+                        }
+                    } else if (const auto* stack = dynamic_cast<const FluidCore::CardStackNode*>(node)) {
+                        if (!stack->isCollapsed()) {
+                            for (const auto& child : stack->children()) {
+                                if (const auto* cExcerpt =
+                                        dynamic_cast<const FluidCore::ExcerptCardNode*>(child.get())) {
+                                    const auto anchorRect =
+                                        FluidCore::CardLayoutEngine::getExcerptAnchorRect(
+                                            cExcerpt->bounds(), m_state.viewport.originX,
+                                            m_state.viewport.originY, m_state.viewport.zoom);
+                                    if (event->x >= anchorRect.x &&
+                                        event->x <= anchorRect.x + anchorRect.w &&
+                                        event->y >= anchorRect.y &&
+                                        event->y <= anchorRect.y + anchorRect.h) {
+                                        newHoveredId = cExcerpt->id();
+                                        break;
+                                    }
+                                }
+                            }
+                            if (!newHoveredId.empty()) {
+                                break;
+                            }
                         }
                     }
                 }

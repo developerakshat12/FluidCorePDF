@@ -41,25 +41,25 @@ CardLayoutEngine::computeExcerptCardDimensions(const ExcerptDropPayload& payload
     const double imgW = s * cropW_pt;
     const double imgH = s * cropH_pt;
 
-    // Outer card container: width floor of 200pt ensures title and [ ↗ Anchor ] pill fit cleanly
-    const double cardW = std::max(200.0, imgW + 20.0);
+    // Outer card container: width floor of 200pt ensures title and left anchor bar fit cleanly
+    const double cardW = std::max(200.0, imgW + 28.0);
     const double cardH = imgH + 46.0; // 28pt header + 6pt top gap + 12pt bottom margin
 
     return {cardW, cardH};
 }
 
-Rectangle CardLayoutEngine::getExcerptAnchorPillRect(const Rectangle& cardWorldBounds,
-                                                     double originX, double originY, double zoom) {
+Rectangle CardLayoutEngine::getExcerptAnchorRect(const Rectangle& cardWorldBounds, double originX,
+                                                double originY, double zoom) {
     const double sx = (cardWorldBounds.x - originX) * zoom;
     const double sy = (cardWorldBounds.y - originY) * zoom;
-    const double sw = cardWorldBounds.w * zoom;
     const double sh = cardWorldBounds.h * zoom;
-    const double headerH = std::min(28.0 * zoom, sh * 0.35);
-    const double pillW = 72.0 * zoom;
-    const double pillH = 20.0 * zoom;
-    const double pillX = sx + sw - pillW - 8.0 * zoom;
-    const double pillY = sy + (headerH - pillH) / 2.0;
-    return {pillX, pillY, pillW, pillH};
+    const double anchorW = 16.0 * zoom;
+    return {sx, sy, anchorW, sh};
+}
+
+Rectangle CardLayoutEngine::getExcerptAnchorPillRect(const Rectangle& cardWorldBounds,
+                                                     double originX, double originY, double zoom) {
+    return getExcerptAnchorRect(cardWorldBounds, originX, originY, zoom);
 }
 
 Rectangle CardLayoutEngine::getStackHeaderRect(const Rectangle& stackWorldBounds, double originX,

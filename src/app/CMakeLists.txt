@@ -117,7 +117,7 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME BiDirectionalAnchorTest COMMAND bi_directional_anchor_test)
 
-    add_executable(excerpt_tile_cache_test tests/ExcerptTileCacheTest.cpp services/ExcerptTileCache.cpp services/PdfDocumentService.cpp)
+    add_executable(excerpt_tile_cache_test tests/ExcerptTileCacheTest.cpp services/ExcerptTileCache.cpp services/PdfDocumentService.cpp services/PdfExportService.cpp services/StrokeStabilizer.cpp)
     target_include_directories(excerpt_tile_cache_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(excerpt_tile_cache_test PRIVATE fluidcore PkgConfig::CAIRO PkgConfig::POPPLER_GLIB PkgConfig::GTK3)
     if(MSVC)
@@ -137,7 +137,7 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME WorkspaceInteractionTest COMMAND workspace_interaction_test)
 
-    add_executable(crop_drag_crash_test tests/CropDragCrashTest.cpp workspace/WorkspaceRenderer.cpp workspace/WorkspaceInteraction.cpp services/ExcerptTileCache.cpp services/PdfDocumentService.cpp services/StrokeStabilizer.cpp)
+    add_executable(crop_drag_crash_test tests/CropDragCrashTest.cpp workspace/WorkspaceRenderer.cpp workspace/WorkspaceInteraction.cpp services/ExcerptTileCache.cpp services/PdfDocumentService.cpp services/PdfExportService.cpp services/StrokeStabilizer.cpp)
     target_include_directories(crop_drag_crash_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(crop_drag_crash_test PRIVATE fluidcore PkgConfig::GTK3 PkgConfig::CAIRO PkgConfig::POPPLER_GLIB)
     if(MSVC)
@@ -162,6 +162,8 @@ if(BUILD_TESTING)
         services/ExcerptTileCache.cpp
         services/PdfDocumentService.cpp
         services/PageTileCache.cpp
+        services/PdfExportService.cpp
+        services/StrokeStabilizer.cpp
     )
     target_include_directories(scalability_benchmark_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(scalability_benchmark_test PRIVATE fluidcore PkgConfig::CAIRO PkgConfig::POPPLER_GLIB PkgConfig::GTK3)

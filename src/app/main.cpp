@@ -2,6 +2,7 @@
 #include "document/DocumentPane.h"
 #include "export/ExportDialog.h"
 #include "input/PalmRejectionEngine.h"
+#include "geometry/StrokeHitTest.h"
 #include "services/ExcerptTileCache.h"
 #include "services/PdfDocumentService.h"
 #include "services/ToolManager.h"
@@ -912,6 +913,10 @@ void performOpenProject(AppViewContext* ctx) {
                 ctx->workspace->notifyModelReloaded();
             }
 
+            if (ctx->excerptTileCache) {
+                ctx->excerptTileCache->clear();
+            }
+
             auto docs = ctx->engine->projectStore().listDocuments();
             if (!docs.empty()) {
                 std::filesystem::path bundle(chosenPath);
@@ -987,12 +992,20 @@ void performOpenPdf(AppViewContext* ctx) {
             g_free(rawChosen);
 
             if (ctx->pane) {
+                std::string previousPdf = ctx->pane->pdfPath();
                 bool loaded = ctx->pane->loadDocument(chosenPath);
                 if (loaded && ctx->pane->document() && ctx->pdfDocService) {
                     ctx->pdfDocService->registerMainDocument(ctx->pane->docId(),
                                                              ctx->pane->document(), chosenPath);
                     ctx->pdfDocService->registerMainDocument(chosenPath, ctx->pane->document(),
                                                              chosenPath);
+                }
+                if (ctx->excerptTileCache) {
+                    if (!previousPdf.empty() && previousPdf == chosenPath) {
+                        ctx->excerptTileCache->invalidate(chosenPath);
+                    } else {
+                        ctx->excerptTileCache->clear();
+                    }
                 }
             }
 
@@ -1150,6 +1163,61 @@ void onActivate(GtkApplication* app, gpointer userData) {
         +[](gpointer data) { delete static_cast<FluidCoreApp::ExcerptTileCache*>(data); });
 
     workspace->setExcerptTileCache(excerptTileCache);
+
+    excerptTileCache->setStrokeProvider(
+        [documentPane, engine = context->engine](const std::string& docId, std::size_t pageNo,
+                                                 const FluidCore::Rectangle& cropNormRect,
+                                                 std::vector<FluidCore::Stroke>& outStrokes) {
+            if (!documentPane) {
+                return;
+            }
+
+            std::vector<std::string> allDocPaths;
+            if (engine && engine->isProjectOpen()) {
+                for (const auto& d : engine->projectStore().listDocuments()) {
+                    allDocPaths.push_back(d.docId);
+                    allDocPaths.push_back(d.relativePath);
+                }
+            }
+
+            if (!documentPane->matchesDocId(docId, allDocPaths)) {
+                return;
+            }
+
+            double pw = 0.0, ph = 0.0;
+            if (!documentPane->getPageDimensions(pageNo, &pw, &ph)) {
+                std::cerr << "[CropFilter] ERROR: missing page geometry for doc=" << docId
+                          << " p=" << pageNo << " (aborting filtering)\n";
+                return;
+            }
+
+            FluidCore::Rectangle cropPdfRect{
+                cropNormRect.x * pw,
+                cropNormRect.y * ph,
+                cropNormRect.w * pw,
+                cropNormRect.h * ph
+            };
+
+            const auto& allStrokes = documentPane->annotationStore().strokes();
+            for (const auto& s : allStrokes) {
+                if (s.pageIndex == pageNo) {
+                    if (FluidCore::rectanglesIntersect(FluidCore::computeStrokeBounds(s), cropPdfRect)) {
+                        outStrokes.push_back(s);
+                    }
+                }
+            }
+        });
+
+    documentPane->setOnAnnotationsChangedSpatialCallback(
+        [excerptTileCache, workspace](const std::string& docId, std::size_t pageNo,
+                                      const FluidCore::Rectangle& changedNormRect) {
+            if (excerptTileCache) {
+                excerptTileCache->invalidateSpatial(docId, pageNo, changedNormRect);
+            }
+            if (workspace && workspace->drawingArea() && GTK_IS_WIDGET(workspace->drawingArea())) {
+                gtk_widget_queue_draw(workspace->drawingArea());
+            }
+        });
 
     // Wire Bi-Directional Anchor Navigation (TASK-3.3)
     workspace->setNavigateToSourceCallback(
@@ -1752,11 +1820,88 @@ void onActivate(GtkApplication* app, gpointer userData) {
                 }
             }
 
-            // Quick single-key tool switching when no modifier is held
+            // Global Zoom shortcuts: Ctrl++, Ctrl+=, Ctrl+KP_Add, Ctrl+-, Ctrl+_, Ctrl+KP_Subtract, Ctrl+0, Ctrl+KP_0
+            if (ctrl && !shift && !alt &&
+                (event->keyval == GDK_KEY_plus || event->keyval == GDK_KEY_equal ||
+                 event->keyval == GDK_KEY_KP_Add)) {
+                if (ctx->lastActivePane && *ctx->lastActivePane == ActivePane::Workspace) {
+                    if (ws) {
+                        GtkAllocation alloc;
+                        gtk_widget_get_allocation(ws->widget(), &alloc);
+                        const double cx = alloc.width > 0 ? alloc.width / 2.0 : 400.0;
+                        const double cy = alloc.height > 0 ? alloc.height / 2.0 : 300.0;
+                        ws->zoomAt(1.2, cx, cy);
+                    }
+                } else if (pane) {
+                    pane->zoomIn();
+                }
+                return TRUE;
+            }
+
+            if (ctrl && !shift && !alt &&
+                (event->keyval == GDK_KEY_minus || event->keyval == GDK_KEY_underscore ||
+                 event->keyval == GDK_KEY_KP_Subtract)) {
+                if (ctx->lastActivePane && *ctx->lastActivePane == ActivePane::Workspace) {
+                    if (ws) {
+                        GtkAllocation alloc;
+                        gtk_widget_get_allocation(ws->widget(), &alloc);
+                        const double cx = alloc.width > 0 ? alloc.width / 2.0 : 400.0;
+                        const double cy = alloc.height > 0 ? alloc.height / 2.0 : 300.0;
+                        ws->zoomAt(0.8333, cx, cy);
+                    }
+                } else if (pane) {
+                    pane->zoomOut();
+                }
+                return TRUE;
+            }
+
+            if (ctrl && !shift && !alt &&
+                (event->keyval == GDK_KEY_0 || event->keyval == GDK_KEY_KP_0)) {
+                if (ctx->lastActivePane && *ctx->lastActivePane == ActivePane::Workspace) {
+                    if (ws) {
+                        ws->resetView();
+                    }
+                } else if (pane) {
+                    pane->resetZoom();
+                }
+                return TRUE;
+            }
+
+            // Quick single-key tool switching and keypad zoom when no modifier is held
             if (!ctrl && !alt && !shift) {
                 GtkWidget* focusWidget = gtk_window_get_focus(GTK_WINDOW(windowWidget));
                 if (focusWidget && GTK_IS_ENTRY(focusWidget)) {
                     return FALSE;
+                }
+
+                if (event->keyval == GDK_KEY_plus || event->keyval == GDK_KEY_equal ||
+                    event->keyval == GDK_KEY_KP_Add) {
+                    if (ctx->lastActivePane && *ctx->lastActivePane == ActivePane::Workspace) {
+                        if (ws) {
+                            GtkAllocation alloc;
+                            gtk_widget_get_allocation(ws->widget(), &alloc);
+                            const double cx = alloc.width > 0 ? alloc.width / 2.0 : 400.0;
+                            const double cy = alloc.height > 0 ? alloc.height / 2.0 : 300.0;
+                            ws->zoomAt(1.2, cx, cy);
+                        }
+                    } else if (pane) {
+                        pane->zoomIn();
+                    }
+                    return TRUE;
+                }
+                if (event->keyval == GDK_KEY_minus || event->keyval == GDK_KEY_KP_Subtract) {
+                    if (ctx->lastActivePane && *ctx->lastActivePane == ActivePane::Workspace) {
+                        if (ws) {
+                            GtkAllocation alloc;
+                            gtk_widget_get_allocation(ws->widget(), &alloc);
+                            const double cx = alloc.width > 0 ? alloc.width / 2.0 : 400.0;
+                            const double cy = alloc.height > 0 ? alloc.height / 2.0 : 300.0;
+                            ws->zoomAt(0.8333, cx, cy);
+                        }
+                    } else if (pane) {
+                        pane->zoomOut();
+                    }
+                    return TRUE;
                 }
 
                 if (event->keyval == GDK_KEY_space) {
