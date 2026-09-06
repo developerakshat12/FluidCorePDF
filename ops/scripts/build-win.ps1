@@ -18,6 +18,9 @@
 .PARAMETER Benchmark
     If set, executes the 50-PDF scalability and memory benchmark (TASK-5.6).
 
+.PARAMETER Package
+    If set, generates standalone portable zip and native Inno Setup installer.
+
 .PARAMETER Document
     Optional path to a PDF document to open when running.
 
@@ -29,6 +32,7 @@ param (
     [switch]$Test,
     [switch]$Run,
     [switch]$Benchmark,
+    [switch]$Package,
     [string]$Document = "",
     [switch]$Clean
 )
@@ -84,6 +88,13 @@ if ($Benchmark) {
     }
     Write-Host "[FluidCore] Running 50-PDF Scalability & Memory Benchmark..." -ForegroundColor Cyan
     & $BenchPath
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+
+if ($Package) {
+    Write-Host "[FluidCore] Packaging Windows distributions (Portable Zip & Inno Setup Installer)..." -ForegroundColor Magenta
+    $PkgScript = Join-Path $ScriptDir "package-windows.ps1"
+    & powershell -ExecutionPolicy Bypass -File $PkgScript
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
