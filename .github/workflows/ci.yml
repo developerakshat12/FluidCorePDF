@@ -96,18 +96,20 @@ jobs:
           bash ops/scripts/package-appimage.sh --build-dir build
       - name: Smoke test Linux packages
         run: |
-          dpkg-deb -I build/dist/fluidcore_1.0.0_amd64.deb
-          dpkg-deb -c build/dist/fluidcore_1.0.0_amd64.deb
-          test -f build/dist/FluidCore-1.0.0-x86_64.AppImage
-          test -x build/dist/FluidCore-1.0.0-x86_64.AppImage
+          DEB_PKG=$(ls build/dist/fluidcore_*_amd64.deb | head -n 1)
+          APPIMAGE_PKG=$(ls build/dist/FluidCore-*-x86_64.AppImage | head -n 1)
+          dpkg-deb -I "${DEB_PKG}"
+          dpkg-deb -c "${DEB_PKG}"
+          test -f "${APPIMAGE_PKG}"
+          test -x "${APPIMAGE_PKG}"
           test -x build/dist/AppDir/AppRun
       - name: Upload Linux distribution artifacts
         uses: actions/upload-artifact@v4
         with:
           name: fluidcore-linux-x64
           path: |
-            build/dist/fluidcore_1.0.0_amd64.deb
-            build/dist/FluidCore-1.0.0-x86_64.AppImage
+            build/dist/fluidcore_*_amd64.deb
+            build/dist/FluidCore-*-x86_64.AppImage
           if-no-files-found: error
 
 
