@@ -38,6 +38,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="1.0.1" date="2026-09-06">
+      <description>
+        <p>FluidCore v1.0.1 bug fixes release featuring focal zoom stabilization, normalized spatial coordinate annotation capture on excerpt crops, and card anchor return navigation.</p>
+      </description>
+    </release>
     <release version="1.0.0" date="2026-09-05">
       <description>
         <p>FluidCore v1.0.0 official release featuring full active-reading synthesis loop, accordion squeeze, infinite 2D canvas, relational ink connectors, Windows and Linux native packaging, SQLite WAL persistence, and 50-PDF scalability.</p>

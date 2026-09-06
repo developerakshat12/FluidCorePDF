@@ -13,7 +13,7 @@ param (
     [string]$OutputDir = "build-win\dist\fluidcore-windows-x64",
     [string]$ZipFile = "build-win\dist\fluidcore-windows-x64.zip",
     [switch]$BuildInstaller = $true,
-    [string]$AppVersion = "1.0.0"
+    [string]$AppVersion = "1.0.1"
 )
 
 $ErrorActionPreference = "Stop"

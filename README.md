@@ -1,7 +1,7 @@
 # FluidCore Platform
 
 [![CI](https://github.com/developerakshat12/FluidCorePDF/actions/workflows/ci.yml/badge.svg)](https://github.com/developerakshat12/FluidCorePDF/actions/workflows/ci.yml)
-[![Release: v1.0.0](https://img.shields.io/badge/Release-v1.0.0-brightgreen.svg)](https://github.com/developerakshat12/FluidCorePDF/releases)
+[![Release: v1.0.1](https://img.shields.io/badge/Release-v1.0.1-brightgreen.svg)](https://github.com/developerakshat12/FluidCorePDF/releases)
 [![License: GPL-2.0-or-later](https://img.shields.io/badge/License-GPL%202.0%2B-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2011%20Native%20%7C%20Linux-brightgreen.svg)]()
 [![Offline First](https://img.shields.io/badge/Network-Air--Gapped%20%2F%20Zero%20Telemetry-success.svg)]()
@@ -13,9 +13,9 @@ An **open-source, offline-first fluid document synthesis platform** designed for
 
 ---
 
-## 🚀 Official Release (v1.0.0)
+## 🚀 Official Release (v1.0.1)
 
-FluidCore **v1.0.0** is now officially released! Available for both **Windows 11 (Native)** and **Linux (Ubuntu, Debian, Fedora, Arch)** with verified zero-network air-gapped compliance, SQLite WAL atomic persistence, and sustained 50-document scalability.
+FluidCore **v1.0.1** is now officially released! Available for both **Windows 11 (Native)** and **Linux (Ubuntu, Debian, Fedora, Arch)** with verified zero-network air-gapped compliance, SQLite WAL atomic persistence, and sustained 50-document scalability.
 
 ### Downloads
 
@@ -23,8 +23,8 @@ FluidCore **v1.0.0** is now officially released! Available for both **Windows 11
 | :--- | :--- | :--- | :--- |
 | **Windows** | **Native Installer** | `FluidCore-Setup-x64.exe` | **Recommended for Windows.** Inno Setup 64-bit installer with Start Menu integration, desktop shortcut, uninstaller, and `.ltproj` project bundle file associations. |
 | **Windows** | **Portable Zip** | `fluidcore-windows-x64.zip` | Standalone portable archive containing all required UCRT64 runtime DLLs, GLib schemas, GDK-Pixbuf loaders, and Adwaita icons. Run anywhere without admin privileges or external dependencies. |
-| **Linux** | **AppImage Bundle** | `FluidCore-1.0.0-x86_64.AppImage` | **Recommended for Linux.** Standalone portable executable with bundled dependencies, desktop integration, and Wayland/X11 support. Make executable (`chmod +x`) and run anywhere. |
-| **Linux** | **Debian Package** | `fluidcore_1.0.0_amd64.deb` | Native Debian/Ubuntu package (`apt install ./fluidcore_1.0.0_amd64.deb`) with system dependency management, FreeDesktop application menu entry, and MIME type associations. |
+| **Linux** | **AppImage Bundle** | `FluidCore-1.0.1-x86_64.AppImage` | **Recommended for Linux.** Standalone portable executable with bundled dependencies, desktop integration, and Wayland/X11 support. Make executable (`chmod +x`) and run anywhere. |
+| **Linux** | **Debian Package** | `fluidcore_1.0.1_amd64.deb` | Native Debian/Ubuntu package (`apt install ./fluidcore_1.0.1_amd64.deb`) with system dependency management, FreeDesktop application menu entry, and MIME type associations. |
 | **Linux** | **Flatpak Manifest** | `ops/flatpak/org.fluidcore.platform.yml` | Sandboxed distribution manifest for Flathub with zero-network isolation (`--unshare=network`) and host filesystem portal access. |
 
 ---

@@ -17,7 +17,7 @@ cd "${PROJECT_ROOT}"
 
 BUILD_DIR="${PROJECT_ROOT}/build-linux"
 OUTPUT_DIR=""
-VERSION="1.0.0"
+VERSION="1.0.1"
 ARCH="amd64"
 
 while [[ $# -gt 0 ]]; do

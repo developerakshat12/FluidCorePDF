@@ -2,12 +2,12 @@ project:
   name: fluidcore-platform
   codename: Fluid Document Synthesis Platform
   description: Open-source, offline-first fluid document synthesis platform. Fluid PDF reader + infinite 2D synthesis workspace.
-  version: 1.0.0
-  status: v1.0.0 released (Windows native installer/portable zip & Linux AppImage/deb/Flatpak packages complete; 36/36 test suites passing)
+  version: 1.0.1
+  status: v1.0.1 bug fixes release (focal zoom stabilization, annotation crop capture, card anchor navigation; 37/37 test suites passing)
   license: GPL-2.0-or-later
   engine_relicense_candidate: LGPL-2.1-or-later
   created: 2026-08-26
-  updated: 2026-09-05
+  updated: 2026-09-06
 
 stack:
   language: C++20
