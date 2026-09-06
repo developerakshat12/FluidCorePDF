@@ -12,6 +12,7 @@
 #include "workspace/WorkspaceView.h"
 
 #include <chrono>
+#include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -1988,6 +1989,16 @@ void onActivate(GtkApplication* app, gpointer userData) {
 
 int main(int argc, char** argv) {
 #ifdef _WIN32
+    // If launched from an existing terminal, attach to it so stdout/stderr work.
+    // When launched from Explorer, Desktop, or Start Menu, AttachConsole fails silently
+    // and no console window is created.
+    if (AttachConsole(ATTACH_PARENT_PROCESS)) {
+        FILE* fp = nullptr;
+        freopen_s(&fp, "CONOUT$", "w", stdout);
+        freopen_s(&fp, "CONOUT$", "w", stderr);
+        std::ios::sync_with_stdio(true);
+    }
+
     HRESULT hrCom = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
 #endif
 

@@ -38,6 +38,13 @@ endif()
 
 add_executable(fluidcore_app ${FLUIDCORE_APP_SOURCES})
 
+if(WIN32)
+    set_target_properties(fluidcore_app PROPERTIES WIN32_EXECUTABLE TRUE)
+    if(MSVC)
+        target_link_options(fluidcore_app PRIVATE "/ENTRY:mainCRTStartup")
+    endif()
+endif()
+
 target_include_directories(fluidcore_app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(fluidcore_app PRIVATE fluidcore PkgConfig::GTK3 PkgConfig::POPPLER_GLIB
                                             PkgConfig::CAIRO)
