@@ -1107,6 +1107,18 @@ const std::string& DocumentPane::tool() const {
     return m_inkOverlay ? m_inkOverlay->tool() : s_empty;
 }
 
+void DocumentPane::setColor(std::uint32_t color) {
+    if (m_inkOverlay) {
+        m_inkOverlay->setColor(color);
+    }
+}
+
+void DocumentPane::setStrokeWidth(double width) {
+    if (m_inkOverlay) {
+        m_inkOverlay->setStrokeWidth(width);
+    }
+}
+
 bool DocumentPane::saveAnnotations() {
     if (m_pdfPath.empty()) {
         return true; // No active PDF document; saving annotations is a no-op success

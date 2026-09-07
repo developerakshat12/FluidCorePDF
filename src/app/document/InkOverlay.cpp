@@ -217,13 +217,7 @@ void InkOverlay::queueDrawArea(int x, int y, int width, int height) {
 
 void InkOverlay::setTool(const std::string& tool) {
     m_currentTool = tool;
-    if (tool == "highlighter") {
-        m_currentColor = 0xFFFF00; // Yellow highlighter
-        m_currentWidth = 14.0;
-    } else if (tool == "pen") {
-        m_currentColor = 0x000000; // Black ink pen
-        m_currentWidth = 2.0;
-    } else if (tool == "eraser") {
+    if (tool == "eraser") {
         m_currentWidth = 20.0;
     }
     updateCursor();

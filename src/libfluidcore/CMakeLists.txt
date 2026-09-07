@@ -28,7 +28,13 @@ add_library(fluidcore STATIC
 
 find_package(ZLIB REQUIRED)
 find_package(SQLite3 REQUIRED)
-target_link_libraries(fluidcore PRIVATE ZLIB::ZLIB SQLite::SQLite3)
+if(TARGET SQLite::SQLite3)
+    target_link_libraries(fluidcore PRIVATE ZLIB::ZLIB SQLite::SQLite3)
+elseif(TARGET SQLite3::SQLite3)
+    target_link_libraries(fluidcore PRIVATE ZLIB::ZLIB SQLite3::SQLite3)
+else()
+    target_link_libraries(fluidcore PRIVATE ZLIB::ZLIB ${SQLite3_LIBRARIES})
+endif()
 
 target_include_directories(fluidcore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_features(fluidcore PUBLIC cxx_std_20)

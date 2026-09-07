@@ -32,10 +32,15 @@ class TopToolbarWidget {
   private:
     void setupStyles();
     void createWidgets();
+    void createInkingControls();
     void onToolStateChanged(Tool tool);
+    void updateInkingUI();
+    void rebuildColorPopover();
+    void rebuildWeightPopover();
 
     ToolManager& m_toolManager;
     bool m_updatingToolUI = false;
+    bool m_updatingWeightScale = false;
 
     GtkWidget* m_rootContainer = nullptr;
     GtkWidget* m_pillBox = nullptr;
@@ -53,6 +58,22 @@ class TopToolbarWidget {
     GtkWidget* m_cropIcon = nullptr;
     GtkWidget* m_connectorBtn = nullptr;
     GtkWidget* m_connectorIcon = nullptr;
+
+    // Inking property buttons & popovers
+    GtkWidget* m_inkingSep = nullptr;
+    GtkWidget* m_colorBtn = nullptr;
+    GtkWidget* m_colorSwatch = nullptr;
+    GtkWidget* m_colorPopover = nullptr;
+    GtkWidget* m_colorGridBox = nullptr;
+    GtkWidget* m_colorHexEntry = nullptr;
+
+    GtkWidget* m_weightBtn = nullptr;
+    GtkWidget* m_weightDot = nullptr;
+    GtkWidget* m_weightLabel = nullptr;
+    GtkWidget* m_weightPopover = nullptr;
+    GtkWidget* m_weightPreviewArea = nullptr;
+    GtkWidget* m_weightScale = nullptr;
+    GtkWidget* m_weightPresetsBox = nullptr;
 
     // History action buttons & icon widgets
     GtkWidget* m_undoBtn = nullptr;

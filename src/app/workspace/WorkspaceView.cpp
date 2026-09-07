@@ -727,13 +727,7 @@ void WorkspaceView::setTool(const std::string& tool) {
     if (m_state.inking.currentTool != tool) {
         cancelCurrentInteraction();
         m_state.inking.currentTool = tool;
-        if (tool == "highlighter") {
-            m_state.inking.currentColor = 0xFFFF00;
-            m_state.inking.currentWidth = 14.0;
-        } else if (tool == "pen") {
-            m_state.inking.currentColor = 0x000000;
-            m_state.inking.currentWidth = 2.0;
-        } else if (tool == "eraser") {
+        if (tool == "eraser") {
             m_state.inking.currentWidth = 24.0;
         }
         if (tool != "eraser") {

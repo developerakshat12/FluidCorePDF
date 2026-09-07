@@ -1076,46 +1076,117 @@ void WorkspaceRenderer::draw(cairo_t* cr, const WorkspaceState& state, FluidCore
                 cairo_restore(cr);
             }
 
-            cairo_set_source_rgba(
-                cr, ((stroke.color >> 16) & 0xFF) / 255.0, ((stroke.color >> 8) & 0xFF) / 255.0,
-                (stroke.color & 0xFF) / 255.0, stroke.tool == "highlighter" ? 0.45 : 1.0);
+            const bool isHighlighter = (stroke.tool == "highlighter");
+            const double r = ((stroke.color >> 16) & 0xFF) / 255.0;
+            const double g = ((stroke.color >> 8) & 0xFF) / 255.0;
+            const double b = (stroke.color & 0xFF) / 255.0;
+
+            cairo_save(cr);
             cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
             cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
 
-            if (stroke.points.size() == 1) {
-                const double w0 = (stroke.pressures.empty() || stroke.pressures.size() < 1)
-                                      ? baseW
-                                      : baseW * (0.25 + 0.75 * stroke.pressures[0]);
-                cairo_new_path(cr);
-                cairo_arc(cr, (pt0.x - originX) * zoom, (pt0.y - originY) * zoom,
-                          std::max(1.0, w0 / 2.0), 0, 2 * M_PI);
-                cairo_fill(cr);
-            } else if (stroke.pressures.empty() ||
-                       stroke.pressures.size() != stroke.points.size()) {
-                // Constant base_width mode
+            if (isHighlighter) {
+                // Isolated offscreen group composited with uniform 0.45 alpha
+                cairo_push_group(cr);
+                cairo_set_source_rgb(cr, r, g, b);
                 cairo_set_line_width(cr, std::max(0.5, baseW));
-                cairo_new_path(cr);
-                cairo_move_to(cr, (pt0.x - originX) * zoom, (pt0.y - originY) * zoom);
-                for (size_t i = 1; i < stroke.points.size(); ++i) {
-                    const auto& pt = stroke.points[i];
-                    cairo_line_to(cr, (pt.x - originX) * zoom, (pt.y - originY) * zoom);
-                }
-                cairo_stroke(cr);
-            } else {
-                // Variable pressure mode: w_i = base_width * (0.25 + 0.75 * p_i)
-                for (size_t i = 1; i < stroke.points.size(); ++i) {
-                    const auto& pPrev = stroke.points[i - 1];
-                    const auto& pCurr = stroke.points[i];
-                    const double segPressure =
-                        (stroke.pressures[i - 1] + stroke.pressures[i]) / 2.0;
-                    const double segWidth = baseW * (0.25 + 0.75 * segPressure);
-                    cairo_set_line_width(cr, std::max(0.5, segWidth));
+
+                const std::size_t n = stroke.points.size();
+                if (n == 1) {
                     cairo_new_path(cr);
-                    cairo_move_to(cr, (pPrev.x - originX) * zoom, (pPrev.y - originY) * zoom);
-                    cairo_line_to(cr, (pCurr.x - originX) * zoom, (pCurr.y - originY) * zoom);
+                    cairo_arc(cr, (pt0.x - originX) * zoom, (pt0.y - originY) * zoom,
+                              std::max(1.0, baseW / 2.0), 0, 2 * M_PI);
+                    cairo_fill(cr);
+                } else if (n == 2) {
+                    cairo_new_path(cr);
+                    cairo_move_to(cr, (stroke.points[0].x - originX) * zoom,
+                                  (stroke.points[0].y - originY) * zoom);
+                    cairo_line_to(cr, (stroke.points[1].x - originX) * zoom,
+                                  (stroke.points[1].y - originY) * zoom);
+                    cairo_stroke(cr);
+                } else {
+                    cairo_new_path(cr);
+                    cairo_move_to(cr, (stroke.points[0].x - originX) * zoom,
+                                  (stroke.points[0].y - originY) * zoom);
+                    for (std::size_t i = 0; i < n - 1; ++i) {
+                        StrokeStabilizer::Point2D p0 =
+                            (i == 0)
+                                ? StrokeStabilizer::Point2D{2.0 * (stroke.points[0].x - originX) *
+                                                                    zoom -
+                                                                (stroke.points[1].x - originX) *
+                                                                    zoom,
+                                                            2.0 * (stroke.points[0].y - originY) *
+                                                                    zoom -
+                                                                (stroke.points[1].y - originY) *
+                                                                    zoom}
+                                : StrokeStabilizer::Point2D{
+                                      (stroke.points[i - 1].x - originX) * zoom,
+                                      (stroke.points[i - 1].y - originY) * zoom};
+                        StrokeStabilizer::Point2D p1 = {(stroke.points[i].x - originX) * zoom,
+                                                        (stroke.points[i].y - originY) * zoom};
+                        StrokeStabilizer::Point2D p2 = {(stroke.points[i + 1].x - originX) * zoom,
+                                                        (stroke.points[i + 1].y - originY) * zoom};
+                        StrokeStabilizer::Point2D p3 =
+                            (i + 2 < n)
+                                ? StrokeStabilizer::Point2D{(stroke.points[i + 2].x - originX) *
+                                                                zoom,
+                                                            (stroke.points[i + 2].y - originY) *
+                                                                zoom}
+                                : StrokeStabilizer::Point2D{
+                                      2.0 * (stroke.points[n - 1].x - originX) * zoom -
+                                          (stroke.points[n - 2].x - originX) * zoom,
+                                      2.0 * (stroke.points[n - 1].y - originY) * zoom -
+                                          (stroke.points[n - 2].y - originY) * zoom};
+                        const auto seg = StrokeStabilizer::centripetalCatmullRomToBezier(
+                            p0, p1, p2, p3, 1.0, 1.0);
+                        cairo_curve_to(cr, seg.p1.x, seg.p1.y, seg.p2.x, seg.p2.y, seg.p3.x,
+                                       seg.p3.y);
+                    }
                     cairo_stroke(cr);
                 }
+
+                cairo_pop_group_to_source(cr);
+                cairo_paint_with_alpha(cr, 0.45);
+            } else {
+                // Pen rendering preserved with variable pressure dynamics
+                cairo_set_source_rgba(cr, r, g, b, 1.0);
+
+                if (stroke.points.size() == 1) {
+                    const double w0 = (stroke.pressures.empty() || stroke.pressures.size() < 1)
+                                          ? baseW
+                                          : baseW * (0.25 + 0.75 * stroke.pressures[0]);
+                    cairo_new_path(cr);
+                    cairo_arc(cr, (pt0.x - originX) * zoom, (pt0.y - originY) * zoom,
+                              std::max(1.0, w0 / 2.0), 0, 2 * M_PI);
+                    cairo_fill(cr);
+                } else if (stroke.pressures.empty() ||
+                           stroke.pressures.size() != stroke.points.size()) {
+                    // Constant base_width mode
+                    cairo_set_line_width(cr, std::max(0.5, baseW));
+                    cairo_new_path(cr);
+                    cairo_move_to(cr, (pt0.x - originX) * zoom, (pt0.y - originY) * zoom);
+                    for (size_t i = 1; i < stroke.points.size(); ++i) {
+                        const auto& pt = stroke.points[i];
+                        cairo_line_to(cr, (pt.x - originX) * zoom, (pt.y - originY) * zoom);
+                    }
+                    cairo_stroke(cr);
+                } else {
+                    // Variable pressure mode: w_i = base_width * (0.25 + 0.75 * p_i)
+                    for (size_t i = 1; i < stroke.points.size(); ++i) {
+                        const auto& pPrev = stroke.points[i - 1];
+                        const auto& pCurr = stroke.points[i];
+                        const double segPressure =
+                            (stroke.pressures[i - 1] + stroke.pressures[i]) / 2.0;
+                        const double segWidth = baseW * (0.25 + 0.75 * segPressure);
+                        cairo_set_line_width(cr, std::max(0.5, segWidth));
+                        cairo_new_path(cr);
+                        cairo_move_to(cr, (pPrev.x - originX) * zoom, (pPrev.y - originY) * zoom);
+                        cairo_line_to(cr, (pCurr.x - originX) * zoom, (pCurr.y - originY) * zoom);
+                        cairo_stroke(cr);
+                    }
+                }
             }
+            cairo_restore(cr);
         } else {
             const FluidCore::Rectangle b = node->bounds();
             const double sx = (b.x - originX) * zoom;
@@ -1126,38 +1197,103 @@ void WorkspaceRenderer::draw(cairo_t* cr, const WorkspaceState& state, FluidCore
         }
     }
 
-    // Render active wet ink with pressure dynamics
+    // Render active wet ink
     if (state.inking.isDrawing &&
         (state.inking.currentTool == "pen" || state.inking.currentTool == "highlighter")) {
-        cairo_set_source_rgba(cr, ((state.inking.currentColor >> 16) & 0xFF) / 255.0,
-                              ((state.inking.currentColor >> 8) & 0xFF) / 255.0,
-                              (state.inking.currentColor & 0xFF) / 255.0,
-                              state.inking.currentTool == "highlighter" ? 0.45 : 1.0);
-        cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
-        cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
-
+        const bool isHighlighter = (state.inking.currentTool == "highlighter");
+        const double r = ((state.inking.currentColor >> 16) & 0xFF) / 255.0;
+        const double g = ((state.inking.currentColor >> 8) & 0xFF) / 255.0;
+        const double b = (state.inking.currentColor & 0xFF) / 255.0;
         const auto& samples = state.inking.stabilizer.rawSamples();
         const double baseW = state.inking.currentWidth * zoom;
 
-        if (samples.size() == 1) {
-            const double w0 = baseW * (0.25 + 0.75 * samples[0].pressure);
-            cairo_new_path(cr);
-            cairo_arc(cr, (samples[0].point.x - originX) * zoom,
-                      (samples[0].point.y - originY) * zoom, std::max(1.0, w0 / 2.0), 0, 2 * M_PI);
-            cairo_fill(cr);
-        } else if (samples.size() > 1) {
-            for (size_t i = 1; i < samples.size(); ++i) {
-                const double segPressure = (samples[i - 1].pressure + samples[i].pressure) / 2.0;
-                const double segWidth = baseW * (0.25 + 0.75 * segPressure);
-                cairo_set_line_width(cr, std::max(0.5, segWidth));
+        cairo_save(cr);
+        cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+        cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
+
+        if (isHighlighter) {
+            cairo_push_group(cr);
+            cairo_set_source_rgb(cr, r, g, b);
+            cairo_set_line_width(cr, std::max(0.5, baseW));
+
+            const std::size_t n = samples.size();
+            if (n == 1) {
                 cairo_new_path(cr);
-                cairo_move_to(cr, (samples[i - 1].point.x - originX) * zoom,
-                              (samples[i - 1].point.y - originY) * zoom);
-                cairo_line_to(cr, (samples[i].point.x - originX) * zoom,
-                              (samples[i].point.y - originY) * zoom);
+                cairo_arc(cr, (samples[0].point.x - originX) * zoom,
+                          (samples[0].point.y - originY) * zoom, std::max(1.0, baseW / 2.0), 0,
+                          2 * M_PI);
+                cairo_fill(cr);
+            } else if (n == 2) {
+                cairo_new_path(cr);
+                cairo_move_to(cr, (samples[0].point.x - originX) * zoom,
+                              (samples[0].point.y - originY) * zoom);
+                cairo_line_to(cr, (samples[1].point.x - originX) * zoom,
+                              (samples[1].point.y - originY) * zoom);
+                cairo_stroke(cr);
+            } else if (n > 2) {
+                cairo_new_path(cr);
+                cairo_move_to(cr, (samples[0].point.x - originX) * zoom,
+                              (samples[0].point.y - originY) * zoom);
+                for (std::size_t i = 0; i < n - 1; ++i) {
+                    StrokeStabilizer::Point2D p0 =
+                        (i == 0)
+                            ? StrokeStabilizer::Point2D{2.0 * (samples[0].point.x - originX) *
+                                                                zoom -
+                                                            (samples[1].point.x - originX) * zoom,
+                                                        2.0 * (samples[0].point.y - originY) *
+                                                                zoom -
+                                                            (samples[1].point.y - originY) * zoom}
+                            : StrokeStabilizer::Point2D{(samples[i - 1].point.x - originX) * zoom,
+                                                        (samples[i - 1].point.y - originY) * zoom};
+                    StrokeStabilizer::Point2D p1 = {(samples[i].point.x - originX) * zoom,
+                                                    (samples[i].point.y - originY) * zoom};
+                    StrokeStabilizer::Point2D p2 = {(samples[i + 1].point.x - originX) * zoom,
+                                                    (samples[i + 1].point.y - originY) * zoom};
+                    StrokeStabilizer::Point2D p3 =
+                        (i + 2 < n)
+                            ? StrokeStabilizer::Point2D{(samples[i + 2].point.x - originX) * zoom,
+                                                        (samples[i + 2].point.y - originY) * zoom}
+                            : StrokeStabilizer::Point2D{
+                                  2.0 * (samples[n - 1].point.x - originX) * zoom -
+                                      (samples[n - 2].point.x - originX) * zoom,
+                                  2.0 * (samples[n - 1].point.y - originY) * zoom -
+                                      (samples[n - 2].point.y - originY) * zoom};
+                    const auto seg =
+                        StrokeStabilizer::centripetalCatmullRomToBezier(p0, p1, p2, p3, 1.0, 1.0);
+                    cairo_curve_to(cr, seg.p1.x, seg.p1.y, seg.p2.x, seg.p2.y, seg.p3.x, seg.p3.y);
+                }
                 cairo_stroke(cr);
             }
+
+            cairo_pop_group_to_source(cr);
+            cairo_paint_with_alpha(cr, 0.45);
+        } else {
+            // Pen wet ink rendering preserved with variable pressure dynamics
+            cairo_set_source_rgba(cr, r, g, b, 1.0);
+
+            if (samples.size() == 1) {
+                const double w0 = baseW * (0.25 + 0.75 * samples[0].pressure);
+                cairo_new_path(cr);
+                cairo_arc(cr, (samples[0].point.x - originX) * zoom,
+                          (samples[0].point.y - originY) * zoom, std::max(1.0, w0 / 2.0), 0,
+                          2 * M_PI);
+                cairo_fill(cr);
+            } else if (samples.size() > 1) {
+                for (size_t i = 1; i < samples.size(); ++i) {
+                    const double segPressure =
+                        (samples[i - 1].pressure + samples[i].pressure) / 2.0;
+                    const double segWidth = baseW * (0.25 + 0.75 * segPressure);
+                    cairo_set_line_width(cr, std::max(0.5, segWidth));
+                    cairo_new_path(cr);
+                    cairo_move_to(cr, (samples[i - 1].point.x - originX) * zoom,
+                                  (samples[i - 1].point.y - originY) * zoom);
+                    cairo_line_to(cr, (samples[i].point.x - originX) * zoom,
+                                  (samples[i].point.y - originY) * zoom);
+                    cairo_stroke(cr);
+                }
+            }
         }
+        cairo_restore(cr);
     }
 
     drawMagneticSnapGuides(cr, state);

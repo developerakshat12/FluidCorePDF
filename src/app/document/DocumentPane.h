@@ -69,6 +69,8 @@ class DocumentPane {
 
     void setTool(const std::string& tool);
     const std::string& tool() const;
+    void setColor(std::uint32_t color);
+    void setStrokeWidth(double width);
 
     bool hasTextSelection() const;
     void clearTextSelection();

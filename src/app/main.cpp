@@ -1119,7 +1119,7 @@ void onActivate(GtkApplication* app, gpointer userData) {
         G_OBJECT(app), "top-toolbar", topToolbar,
         +[](gpointer data) { delete static_cast<FluidCoreApp::TopToolbarWidget*>(data); });
 
-    toolManager->addChangeListener([documentPane, workspace](FluidCoreApp::Tool tool) {
+    toolManager->addChangeListener([documentPane, workspace, toolManager](FluidCoreApp::Tool tool) {
         const char* toolStr = FluidCoreApp::ToolManager::toolToString(tool);
         if (documentPane) {
             documentPane->setTool(toolStr);
@@ -1127,7 +1127,40 @@ void onActivate(GtkApplication* app, gpointer userData) {
         if (workspace) {
             workspace->setTool(toolStr);
         }
+        if (FluidCoreApp::ToolManager::isInkingTool(tool)) {
+            const auto props = toolManager->propertiesForTool(tool);
+            if (documentPane) {
+                documentPane->setColor(props.color);
+                documentPane->setStrokeWidth(props.width);
+            }
+            if (workspace) {
+                workspace->setColor(props.color);
+                workspace->setStrokeWidth(props.width);
+            }
+        }
     });
+
+    toolManager->addPropertyChangeListener(
+        [documentPane, workspace](FluidCoreApp::Tool, const FluidCoreApp::InkProperties& props) {
+            if (documentPane) {
+                documentPane->setColor(props.color);
+                documentPane->setStrokeWidth(props.width);
+            }
+            if (workspace) {
+                workspace->setColor(props.color);
+                workspace->setStrokeWidth(props.width);
+            }
+        });
+
+    const auto initialProps = toolManager->propertiesForTool(toolManager->activeTool());
+    if (documentPane) {
+        documentPane->setColor(initialProps.color);
+        documentPane->setStrokeWidth(initialProps.width);
+    }
+    if (workspace) {
+        workspace->setColor(initialProps.color);
+        workspace->setStrokeWidth(initialProps.width);
+    }
 
     // Multi-document resolution and high-DPI crop tile cache
     auto* pdfDocService = new FluidCoreApp::PdfDocumentService();
@@ -1631,7 +1664,7 @@ void onActivate(GtkApplication* app, gpointer userData) {
                      G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
                          auto* ctx = static_cast<AppViewContext*>(data);
                          if (ctx && ctx->toolManager) {
-                             ctx->toolManager->setActiveTool(FluidCoreApp::Tool::Eraser);
+                             ctx->toolManager->toggleEraser();
                          }
                      }),
                      viewCtx);
@@ -1913,7 +1946,8 @@ void onActivate(GtkApplication* app, gpointer userData) {
                         tm->setActiveTool(FluidCoreApp::Tool::Select);
                     return TRUE;
                 }
-                if (event->keyval == GDK_KEY_p || event->keyval == GDK_KEY_P) {
+                if (event->keyval == GDK_KEY_p || event->keyval == GDK_KEY_P ||
+                    event->keyval == GDK_KEY_b || event->keyval == GDK_KEY_B) {
                     if (tm)
                         tm->setActiveTool(FluidCoreApp::Tool::Pen);
                     return TRUE;
@@ -1925,7 +1959,7 @@ void onActivate(GtkApplication* app, gpointer userData) {
                 }
                 if (event->keyval == GDK_KEY_e || event->keyval == GDK_KEY_E) {
                     if (tm)
-                        tm->setActiveTool(FluidCoreApp::Tool::Eraser);
+                        tm->toggleEraser();
                     return TRUE;
                 }
                 if (event->keyval == GDK_KEY_c || event->keyval == GDK_KEY_C) {
@@ -1936,6 +1970,24 @@ void onActivate(GtkApplication* app, gpointer userData) {
                 if (event->keyval == GDK_KEY_l || event->keyval == GDK_KEY_L) {
                     if (tm)
                         tm->setActiveTool(FluidCoreApp::Tool::Connector);
+                    return TRUE;
+                }
+                if (event->keyval == GDK_KEY_bracketleft) {
+                    if (tm) {
+                        double delta = (tm->activeTool() == FluidCoreApp::Tool::Highlighter)
+                                           ? -FluidCoreApp::InkingLimits::HighlighterStepWidth
+                                           : -FluidCoreApp::InkingLimits::PenStepWidth;
+                        tm->stepActiveWidth(delta);
+                    }
+                    return TRUE;
+                }
+                if (event->keyval == GDK_KEY_bracketright) {
+                    if (tm) {
+                        double delta = (tm->activeTool() == FluidCoreApp::Tool::Highlighter)
+                                           ? FluidCoreApp::InkingLimits::HighlighterStepWidth
+                                           : FluidCoreApp::InkingLimits::PenStepWidth;
+                        tm->stepActiveWidth(delta);
+                    }
                     return TRUE;
                 }
             }
