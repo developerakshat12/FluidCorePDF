@@ -2,7 +2,9 @@
 
 #include <cstddef>
 #include <list>
+#include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <cairo.h>
@@ -124,6 +126,31 @@ class PageTileCache {
     std::size_t maxPages() const { return m_maxPages; }
     void setMaxPages(std::size_t maxPages) { m_maxPages = maxPages; }
 
+    static void setNullSinkMode(bool enable) { s_nullSinkMode = enable; }
+    static bool isNullSinkMode() { return s_nullSinkMode; }
+
+    struct TileSurfaceInfo {
+        std::size_t pageIndex = 0;
+        int width = 0;
+        int height = 0;
+        std::size_t bytes = 0;
+        bool pinned = false;
+    };
+
+    struct PageTileCacheStats {
+        std::size_t entryCount = 0;
+        std::size_t currentBytes = 0;
+        std::size_t maxBytes = 0;
+        std::size_t maxPages = 0;
+        std::vector<std::size_t> residentPages;
+        std::vector<std::size_t> pinnedPages;
+        std::vector<TileSurfaceInfo> surfaces;
+    };
+
+    PageTileCacheStats getStats() const;
+    void dumpStats(const std::string& tag) const;
+    const std::unordered_set<std::size_t>& everRenderedPages() const { return m_everRenderedPages; }
+
   private:
     struct CacheNode {
         std::size_t pageIndex = 0;
@@ -140,6 +167,8 @@ class PageTileCache {
 
     std::list<CacheNode> m_lruList;
     std::unordered_map<std::size_t, std::list<CacheNode>::iterator> m_lookup;
+    std::unordered_set<std::size_t> m_everRenderedPages;
+    inline static bool s_nullSinkMode = false;
 };
 
 } // namespace FluidCoreApp

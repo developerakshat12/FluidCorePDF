@@ -215,14 +215,34 @@ void SearchBarWidget::onScopeComboChanged(GtkComboBox* combo, gpointer userData)
     }
 }
 
+namespace {
+constexpr guint kSearchDebounceMs = 450;
+constexpr std::size_t kMinAutoSearchLength = 3;
+}
+
 void SearchBarWidget::onEntryChanged(GtkSearchEntry*, gpointer userData) {
     auto* self = static_cast<SearchBarWidget*>(userData);
     if (self->m_debounceTimerId != 0) {
         g_source_remove(self->m_debounceTimerId);
+        self->m_debounceTimerId = 0;
+    }
+
+    const std::string query = self->currentQuery();
+    // If the query was cleared, immediately clear search highlights
+    if (query.empty()) {
+        if (self->m_onQueryChanged) {
+            self->m_onQueryChanged("", self->isSqueezeEnabled());
+        }
+        return;
+    }
+
+    // Require at least 3 characters before auto-triggering background search
+    if (query.length() < kMinAutoSearchLength) {
+        return;
     }
 
     self->m_debounceTimerId = g_timeout_add(
-        150,
+        kSearchDebounceMs,
         +[](gpointer data) -> gboolean {
             auto* s = static_cast<SearchBarWidget*>(data);
             if (s->m_onQueryChanged) {
@@ -239,6 +259,14 @@ gboolean SearchBarWidget::onEntryKeyPress(GtkWidget*, GdkEventKey* event, gpoint
     const bool shift = (event->state & GDK_SHIFT_MASK) != 0;
 
     if (event->keyval == GDK_KEY_Return || event->keyval == GDK_KEY_KP_Enter) {
+        // Cancel pending debounce timer and flush search immediately on Enter (works for any length)
+        if (self->m_debounceTimerId != 0) {
+            g_source_remove(self->m_debounceTimerId);
+            self->m_debounceTimerId = 0;
+        }
+        if (self->m_onQueryChanged) {
+            self->m_onQueryChanged(self->currentQuery(), self->isSqueezeEnabled());
+        }
         if (self->m_onNavigate) {
             self->m_onNavigate(shift ? -1 : 1);
         }

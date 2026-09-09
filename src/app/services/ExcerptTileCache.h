@@ -66,12 +66,12 @@ struct CropCacheKeyHash {
 };
 
 // Byte-bounded LRU visual diagram crop tile cache for ExcerptCardNodes.
-// Enforces 128 MB default memory limit, clamps max tile dimensions to 1536px,
+// Enforces 64 MB default memory limit, clamps max tile dimensions to 1536px,
 // and supports both synchronous rasterization and asynchronous worker pool rendering.
 class ExcerptTileCache {
   public:
-    static constexpr std::size_t kDefaultMaxBytes = 128 * 1024 * 1024; // 128 MB
-    static constexpr int kMaxTileDimension = 1536;                     // 1536 px clamp
+    static constexpr std::size_t kDefaultMaxBytes = 64 * 1024 * 1024; // 64 MB
+    static constexpr int kMaxTileDimension = 1536;                    // 1536 px clamp
     static constexpr int kMinTileDimension = 16;                       // 16 px minimum
 
     using RenderReadyCallback =
@@ -127,6 +127,27 @@ class ExcerptTileCache {
     void setMaxBytes(std::size_t maxBytes) { m_maxBytes = maxBytes; }
 
     std::size_t size() const { return m_lruList.size(); }
+
+    struct ExcerptCropInfo {
+        std::string docId;
+        std::size_t pageNo = 0;
+        LodTier tier = LodTier::Standard;
+        int width = 0;
+        int height = 0;
+        std::size_t bytes = 0;
+    };
+
+    struct ExcerptTileCacheStats {
+        std::size_t entryCount = 0;
+        std::size_t currentBytes = 0;
+        std::size_t maxBytes = 0;
+        std::size_t activeRequests = 0;
+        std::unordered_map<int, std::size_t> tierCounts;
+        std::vector<ExcerptCropInfo> residentCrops;
+    };
+
+    ExcerptTileCacheStats getStats() const;
+    void dumpStats(const std::string& tag) const;
 
   private:
     struct CacheNode {

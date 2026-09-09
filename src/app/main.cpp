@@ -6,10 +6,15 @@
 #include "services/ExcerptTileCache.h"
 #include "services/PdfDocumentService.h"
 #include "services/ToolManager.h"
+#include "services/MemoryTelemetry.h"
 #include "window/AppHeaderBar.h"
 #include "workspace/ExcerptCardNode.h"
 #include "workspace/TopToolbarWidget.h"
 #include "workspace/WorkspaceView.h"
+
+#ifdef FLUIDCORE_HAS_MIMALLOC
+#include <mimalloc.h>
+#endif
 
 #include <chrono>
 #include <cstdio>
@@ -193,6 +198,11 @@ struct AppContext {
     FluidCoreEngine* engine = nullptr;
     const std::string* pdfPath = nullptr;
     const std::string* projectPath = nullptr;
+    bool runScenarioA = false;
+    bool runScenarioB = false;
+    bool runScenarioRepeatedFind = false;
+    bool runScenarioReopenAudit = false;
+    int repeatedFindIterations = 20;
 };
 
 struct AppViewContext {
@@ -208,6 +218,12 @@ struct AppViewContext {
     std::function<void()> updateUndoRedoUI;
     bool isProjectDirty = false;
     std::function<void()> pendingActionProceed = nullptr;
+    bool runScenarioA = false;
+    bool runScenarioB = false;
+    bool runScenarioRepeatedFind = false;
+    bool runScenarioReopenAudit = false;
+    GtkApplication* app = nullptr;
+    int repeatedFindIterations = 20;
 };
 
 bool validateLtprojBundle(const std::string& path, std::string& errorMsg) {
@@ -1075,6 +1091,627 @@ void performExport(AppViewContext* ctx) {
     FluidCoreApp::ExportDialog::show(ctx->window, ctx->pane, ctx->workspace, ctx->engine);
 }
 
+void scheduleScenarioA(AppViewContext* ctx) {
+    FluidCoreApp::MemoryTelemetry::log("[Automated Protocol] Launching Scenario A: Search Scan without Navigation, followed by Search with Navigation, then Search Twice...");
+
+    // Step 1: Post-Load Baseline (1500ms)
+    g_timeout_add(1500, +[](gpointer data) -> gboolean {
+        auto* vCtx = static_cast<AppViewContext*>(data);
+        FluidCoreApp::MemoryTelemetry::log("\n==================== [CHECKPOINT 1: POST-LOAD BASELINE] ====================");
+        FluidCoreApp::MemoryTelemetry::log("Process Private: " + FluidCoreApp::MemoryTelemetry::formatMB(FluidCoreApp::MemoryTelemetry::getProcessPrivateBytes()) +
+                                           " | WS: " + FluidCoreApp::MemoryTelemetry::formatMB(FluidCoreApp::MemoryTelemetry::getProcessWorkingSet()));
+        vCtx->pane->pageTileCache().dumpStats("Checkpoint 1: Post-Load Baseline");
+        vCtx->excerptTileCache->dumpStats("Checkpoint 1: Post-Load Baseline");
+        FluidCoreApp::PopplerLifetimeTracker::dump("Checkpoint 1: Post-Load Baseline");
+        FluidCoreApp::MemoryTelemetry::runHeapMin("Checkpoint 1: Post-Load Baseline");
+
+        // Step 2: Navigate to Middle Page (Page 446) (next in 1000ms)
+        g_timeout_add(1000, +[](gpointer d2) -> gboolean {
+            auto* v2 = static_cast<AppViewContext*>(d2);
+            FluidCoreApp::MemoryTelemetry::log("[Automated Protocol] Navigating to middle page (Page 446)...");
+            v2->pane->scrollToPage(446);
+
+            // Step 3: Checkpoint 2 (Middle Page Navigation) (1500ms later)
+            g_timeout_add(1500, +[](gpointer d3) -> gboolean {
+                auto* v3 = static_cast<AppViewContext*>(d3);
+                FluidCoreApp::MemoryTelemetry::log("\n==================== [CHECKPOINT 2: MIDDLE PAGE NAVIGATION] ====================");
+                FluidCoreApp::MemoryTelemetry::log("Process Private: " + FluidCoreApp::MemoryTelemetry::formatMB(FluidCoreApp::MemoryTelemetry::getProcessPrivateBytes()) +
+                                                   " | WS: " + FluidCoreApp::MemoryTelemetry::formatMB(FluidCoreApp::MemoryTelemetry::getProcessWorkingSet()));
+                v3->pane->pageTileCache().dumpStats("Checkpoint 2: Middle Page");
+                v3->excerptTileCache->dumpStats("Checkpoint 2: Middle Page");
+                FluidCoreApp::PopplerLifetimeTracker::dump("Checkpoint 2: Middle Page");
+
+                // Step 4: Search for "volatility" WITHOUT navigation (next in 1000ms)
+                g_timeout_add(1000, +[](gpointer d4) -> gboolean {
+                    auto* v4 = static_cast<AppViewContext*>(d4);
+                    FluidCoreApp::MemoryTelemetry::log("[Automated Protocol] Starting search for 'volatility' (NO NAVIGATION)...");
+                    v4->pane->performSearch("volatility", false);
+
+                    // Step 5: Wait for search to finish across 892 pages (10 seconds)
+                    g_timeout_add(10000, +[](gpointer d5) -> gboolean {
+                        auto* v5 = static_cast<AppViewContext*>(d5);
+                        FluidCoreApp::MemoryTelemetry::log("\n==================== [CHECKPOINT 3: SEARCH COMPLETED (NO NAVIGATION)] ====================");
+                        FluidCoreApp::MemoryTelemetry::log("Search hits found: " + std::to_string(v5->pane->searchHits().size()) +
+                                                           " | Private: " + FluidCoreApp::MemoryTelemetry::formatMB(FluidCoreApp::MemoryTelemetry::getProcessPrivateBytes()) +
+                                                           " | WS: " + FluidCoreApp::MemoryTelemetry::formatMB(FluidCoreApp::MemoryTelemetry::getProcessWorkingSet()));
+                        v5->pane->pageTileCache().dumpStats("Checkpoint 3 (Search Complete, No Nav)");
+                        v5->excerptTileCache->dumpStats("Checkpoint 3 (Search Complete, No Nav)");
+                        FluidCoreApp::PopplerLifetimeTracker::dump("Checkpoint 3 (Search Complete, No Nav)");
+                        FluidCoreApp::MemoryTelemetry::runHeapMin("Checkpoint 3: Search Completed (No Nav)");
+
+                        // Step 6: Close Find (Escape) (next in 1000ms)
+                        g_timeout_add(1000, +[](gpointer d6) -> gboolean {
+                            auto* v6 = static_cast<AppViewContext*>(d6);
+                            FluidCoreApp::MemoryTelemetry::log("[Automated Protocol] Closing Find bar (closeSearch)...");
+                            v6->pane->closeSearch();
+
+                            // Step 7: Checkpoint 4 (After Closing Find) (1500ms later)
+                            g_timeout_add(1500, +[](gpointer d7) -> gboolean {
+                                auto* v7 = static_cast<AppViewContext*>(d7);
+                                FluidCoreApp::MemoryTelemetry::log("\n==================== [CHECKPOINT 4: AFTER CLOSING FIND BAR] ====================");
+                                FluidCoreApp::MemoryTelemetry::log("Process Private: " + FluidCoreApp::MemoryTelemetry::formatMB(FluidCoreApp::MemoryTelemetry::getProcessPrivateBytes()) +
+                                                                   " | WS: " + FluidCoreApp::MemoryTelemetry::formatMB(FluidCoreApp::MemoryTelemetry::getProcessWorkingSet()));
+                                v7->pane->pageTileCache().dumpStats("Checkpoint 4 (After Close)");
+                                v7->excerptTileCache->dumpStats("Checkpoint 4 (After Close)");
+                                FluidCoreApp::PopplerLifetimeTracker::dump("Checkpoint 4 (After Close)");
+
+                                // Step 8: (Experiment 2) Search WITH Navigation (next in 1000ms)
+                                g_timeout_add(1000, +[](gpointer d8) -> gboolean {
+                                    auto* v8 = static_cast<AppViewContext*>(d8);
+                                    FluidCoreApp::MemoryTelemetry::log("\n[Automated Protocol] Starting Experiment 2: Search WITH Navigation (jumping 15 distributed hits at 250ms cadence)...");
+                                    v8->pane->performSearch("volatility", false);
+
+                                    // Wait for search then navigate
+                                    g_timeout_add(8000, +[](gpointer d9) -> gboolean {
+                                        auto* v9 = static_cast<AppViewContext*>(d9);
+                                        const auto& hits = v9->pane->searchHits();
+                                        std::vector<std::size_t> targetHitIndices;
+                                        if (!hits.empty()) {
+                                            const std::size_t totalHits = hits.size();
+                                            const int numSteps = 15;
+                                            for (int s = 0; s < numSteps; ++s) {
+                                                std::size_t idx = (totalHits > 1) ? (static_cast<std::size_t>(s) * (totalHits - 1)) / (numSteps - 1) : 0;
+                                                targetHitIndices.push_back(idx);
+                                            }
+                                        }
+
+                                        struct NavContext {
+                                            AppViewContext* ctx;
+                                            std::vector<std::size_t> indices;
+                                            std::size_t current = 0;
+                                        };
+
+                                        auto* navCtx = new NavContext{v9, std::move(targetHitIndices), 0};
+
+                                        g_timeout_add(250, +[](gpointer data) -> gboolean {
+                                            auto* nc = static_cast<NavContext*>(data);
+                                            if (nc->current < nc->indices.size()) {
+                                                const std::size_t hitIdx = nc->indices[nc->current];
+                                                nc->ctx->pane->scrollToSearchHit(hitIdx);
+                                                if (nc->ctx->pane->widget()) {
+                                                    gtk_widget_queue_draw(nc->ctx->pane->widget());
+                                                }
+                                                nc->current++;
+                                                if (nc->current == 5) {
+                                                    FluidCoreApp::MemoryTelemetry::runHeapMin("Navigation Step 5 (After 5 Navigations)");
+                                                } else if (nc->current == 10) {
+                                                    FluidCoreApp::MemoryTelemetry::runHeapMin("Navigation Step 10 (After 10 Navigations)");
+                                                }
+                                                return G_SOURCE_CONTINUE;
+                                            }
+
+                                            // Finished all 15 navigation steps
+                                            auto* v10 = nc->ctx;
+                                            delete nc;
+
+                                            // Checkpoint 5 (Search With Nav) (1000ms after last navigation step)
+                                            g_timeout_add(1000, +[](gpointer d10) -> gboolean {
+                                                auto* vContext = static_cast<AppViewContext*>(d10);
+                                                FluidCoreApp::MemoryTelemetry::log("\n==================== [CHECKPOINT 5: SEARCH WITH NAVIGATION (15 DISTRIBUTED HITS)] ====================");
+                                                FluidCoreApp::MemoryTelemetry::log("Process Private: " + FluidCoreApp::MemoryTelemetry::formatMB(FluidCoreApp::MemoryTelemetry::getProcessPrivateBytes()) +
+                                                                                   " | WS: " + FluidCoreApp::MemoryTelemetry::formatMB(FluidCoreApp::MemoryTelemetry::getProcessWorkingSet()));
+                                                vContext->pane->pageTileCache().dumpStats("Checkpoint 5 (With Nav)");
+                                                vContext->excerptTileCache->dumpStats("Checkpoint 5 (With Nav)");
+                                                FluidCoreApp::PopplerLifetimeTracker::dump("Checkpoint 5 (With Nav)");
+                                                FluidCoreApp::MemoryTelemetry::runHeapMin("Checkpoint 5: After 15 Navigations");
+
+                                                // Close Find
+                                                vContext->pane->closeSearch();
+
+                                                // Checkpoint 6 (After Closing Post-Nav) (1500ms later)
+                                                g_timeout_add(1500, +[](gpointer d11) -> gboolean {
+                                                    auto* v11 = static_cast<AppViewContext*>(d11);
+                                                    FluidCoreApp::MemoryTelemetry::log("\n==================== [CHECKPOINT 6: AFTER CLOSING FIND (POST-NAV)] ====================");
+                                                    FluidCoreApp::MemoryTelemetry::log("Process Private: " + FluidCoreApp::MemoryTelemetry::formatMB(FluidCoreApp::MemoryTelemetry::getProcessPrivateBytes()) +
+                                                                                       " | WS: " + FluidCoreApp::MemoryTelemetry::formatMB(FluidCoreApp::MemoryTelemetry::getProcessWorkingSet()));
+                                                    v11->pane->pageTileCache().dumpStats("Checkpoint 6");
+                                                    v11->excerptTileCache->dumpStats("Checkpoint 6");
+                                                    FluidCoreApp::PopplerLifetimeTracker::dump("Checkpoint 6");
+
+                                                    // Step 12: (Experiment 3) Search Twice Accumulation ("futures")
+                                                    g_timeout_add(1000, +[](gpointer d12) -> gboolean {
+                                                        auto* v12 = static_cast<AppViewContext*>(d12);
+                                                        FluidCoreApp::MemoryTelemetry::log("\n[Automated Protocol] Starting Experiment 3: Search Twice (Query: 'futures')...");
+                                                        v12->pane->performSearch("futures", false);
+
+                                                        // Wait 10s for search #2
+                                                        g_timeout_add(10000, +[](gpointer d13) -> gboolean {
+                                                            auto* v13 = static_cast<AppViewContext*>(d13);
+                                                            FluidCoreApp::MemoryTelemetry::log("\n==================== [CHECKPOINT 7: SEARCH #2 COMPLETED (FUTURES)] ====================");
+                                                            FluidCoreApp::MemoryTelemetry::log("Search hits found: " + std::to_string(v13->pane->searchHits().size()) +
+                                                                                               " | Private: " + FluidCoreApp::MemoryTelemetry::formatMB(FluidCoreApp::MemoryTelemetry::getProcessPrivateBytes()) +
+                                                                                               " | WS: " + FluidCoreApp::MemoryTelemetry::formatMB(FluidCoreApp::MemoryTelemetry::getProcessWorkingSet()));
+                                                            v13->pane->pageTileCache().dumpStats("Checkpoint 7");
+                                                            v13->excerptTileCache->dumpStats("Checkpoint 7");
+                                                            FluidCoreApp::PopplerLifetimeTracker::dump("Checkpoint 7");
+
+                                                            // Close Find #2
+                                                            v13->pane->closeSearch();
+
+                                                            // Checkpoint 8 (After Close #2)
+                                                            g_timeout_add(1500, +[](gpointer d14) -> gboolean {
+                                                                auto* v14 = static_cast<AppViewContext*>(d14);
+                                                                FluidCoreApp::MemoryTelemetry::log("\n==================== [CHECKPOINT 8: AFTER CLOSING FIND #2] ====================");
+                                                                FluidCoreApp::MemoryTelemetry::log("Process Private: " + FluidCoreApp::MemoryTelemetry::formatMB(FluidCoreApp::MemoryTelemetry::getProcessPrivateBytes()) +
+                                                                                                   " | WS: " + FluidCoreApp::MemoryTelemetry::formatMB(FluidCoreApp::MemoryTelemetry::getProcessWorkingSet()));
+                                                                v14->pane->pageTileCache().dumpStats("Checkpoint 8");
+                                                                v14->excerptTileCache->dumpStats("Checkpoint 8");
+                                                                FluidCoreApp::PopplerLifetimeTracker::dump("Checkpoint 8");
+                                                                FluidCoreApp::MemoryTelemetry::runHeapMin("Checkpoint 8: Before Document Close");
+
+                                                                FluidCoreApp::MemoryTelemetry::log("\n[Automated Protocol] === SCENARIO A EXECUTION COMPLETE ===\n");
+                                                                if (v14->pane) {
+                                                                    v14->pane->closeDocument();
+                                                                }
+                                                                FluidCoreApp::MemoryTelemetry::runHeapMin("Teardown: After Document Close");
+                                                                if (v14->app) {
+                                                                    g_application_quit(G_APPLICATION(v14->app));
+                                                                }
+                                                                return G_SOURCE_REMOVE;
+                                                            }, v13);
+                                                            return G_SOURCE_REMOVE;
+                                                        }, v12);
+                                                        return G_SOURCE_REMOVE;
+                                                    }, v11);
+                                                    return G_SOURCE_REMOVE;
+                                                }, vContext);
+                                                return G_SOURCE_REMOVE;
+                                            }, v10);
+                                            return G_SOURCE_REMOVE;
+                                        }, navCtx);
+                                        return G_SOURCE_REMOVE;
+                                    }, v8);
+                                    return G_SOURCE_REMOVE;
+                                }, v7);
+                                return G_SOURCE_REMOVE;
+                            }, v6);
+                            return G_SOURCE_REMOVE;
+                        }, v5);
+                        return G_SOURCE_REMOVE;
+                    }, v4);
+                    return G_SOURCE_REMOVE;
+                }, v3);
+                return G_SOURCE_REMOVE;
+            }, v2);
+            return G_SOURCE_REMOVE;
+        }, vCtx);
+        return G_SOURCE_REMOVE;
+    }, ctx);
+}
+
+void scheduleScenarioB(AppViewContext* ctx) {
+    FluidCoreApp::MemoryTelemetry::log("[Automated Protocol] Launching Scenario B: Direct Navigation ONLY (NO SEARCH)...");
+
+    // Step 1: Post-Load Baseline (1500ms)
+    g_timeout_add(1500, +[](gpointer data) -> gboolean {
+        auto* vCtx = static_cast<AppViewContext*>(data);
+        FluidCoreApp::MemoryTelemetry::log("\n==================== [SCENARIO B - CHECKPOINT 1: POST-LOAD BASELINE] ====================");
+        FluidCoreApp::MemoryTelemetry::log("Process Private: " + FluidCoreApp::MemoryTelemetry::formatMB(FluidCoreApp::MemoryTelemetry::getProcessPrivateBytes()) +
+                                           " | WS: " + FluidCoreApp::MemoryTelemetry::formatMB(FluidCoreApp::MemoryTelemetry::getProcessWorkingSet()));
+        vCtx->pane->pageTileCache().dumpStats("Scenario B Baseline");
+        vCtx->excerptTileCache->dumpStats("Scenario B Baseline");
+        FluidCoreApp::PopplerLifetimeTracker::dump("Scenario B Baseline");
+
+        // Step 2: Navigate to EXACT SAME Middle Page (Page 446) (next in 1000ms)
+        g_timeout_add(1000, +[](gpointer d2) -> gboolean {
+            auto* v2 = static_cast<AppViewContext*>(d2);
+            FluidCoreApp::MemoryTelemetry::log("[Automated Protocol] Navigating directly to Page 446 (NO SEARCH)...");
+            v2->pane->scrollToPage(446);
+
+            // Step 3: Checkpoint 2 (Middle Page Navigation Only) (2500ms later)
+            g_timeout_add(2500, +[](gpointer d3) -> gboolean {
+                auto* v3 = static_cast<AppViewContext*>(d3);
+                FluidCoreApp::MemoryTelemetry::log("\n==================== [SCENARIO B - CHECKPOINT 2: MIDDLE PAGE NAVIGATION ONLY] ====================");
+                FluidCoreApp::MemoryTelemetry::log("Process Private: " + FluidCoreApp::MemoryTelemetry::formatMB(FluidCoreApp::MemoryTelemetry::getProcessPrivateBytes()) +
+                                                   " | WS: " + FluidCoreApp::MemoryTelemetry::formatMB(FluidCoreApp::MemoryTelemetry::getProcessWorkingSet()));
+                v3->pane->pageTileCache().dumpStats("Scenario B Nav Only");
+                v3->excerptTileCache->dumpStats("Scenario B Nav Only");
+                FluidCoreApp::PopplerLifetimeTracker::dump("Scenario B Nav Only");
+
+                FluidCoreApp::MemoryTelemetry::log("\n[Automated Protocol] === SCENARIO B EXECUTION COMPLETE ===\n");
+                if (v3->app) {
+                    g_application_quit(G_APPLICATION(v3->app));
+                }
+                return G_SOURCE_REMOVE;
+            }, v2);
+            return G_SOURCE_REMOVE;
+        }, vCtx);
+        return G_SOURCE_REMOVE;
+    }, ctx);
+}
+
+void scheduleScenarioRepeatedFind(AppViewContext* ctx, int totalIterations = 20) {
+    FluidCoreApp::MemoryTelemetry::log("[Automated Protocol] Launching Repeated Find Scenario (" +
+                                       std::to_string(totalIterations) + "x consecutive searches for 'futures', NO NAVIGATION)...");
+
+    struct FindTestRecord {
+        int iteration = 0;
+        std::size_t beforePriv = 0;
+        std::size_t afterPriv = 0;
+        long long deltaPriv = 0;
+        std::size_t beforeLiveAlloc = 0;
+        std::size_t afterLiveAlloc = 0;
+        long long deltaLiveAlloc = 0;
+        std::size_t beforeHeapCommit = 0;
+        std::size_t afterHeapCommit = 0;
+        std::size_t beforeMiCommit = 0;
+        std::size_t afterMiCommit = 0;
+        std::size_t livePages = 0;
+        std::size_t totalCreated = 0;
+        std::size_t totalDestroyed = 0;
+        std::size_t ptcBytes = 0;
+        std::size_t etcBytes = 0;
+        std::size_t hitCount = 0;
+    };
+
+    struct TestState {
+        AppViewContext* ctx = nullptr;
+        int currentIteration = 1;
+        int totalIterations = 20;
+        const std::string query = "futures";
+        std::vector<FindTestRecord> records;
+        FluidCoreApp::MemoryTelemetry::ProcessHeapMetrics initialBaselineMetrics;
+    };
+
+    auto* state = new TestState{ctx, 1, totalIterations, "futures", {}, {}};
+
+    // Step 1: Allow UI to settle (1500ms), then record baseline
+    g_timeout_add(1500, +[](gpointer data) -> gboolean {
+        auto* st = static_cast<TestState*>(data);
+        st->initialBaselineMetrics = FluidCoreApp::MemoryTelemetry::getHeapMetrics();
+
+        FluidCoreApp::MemoryTelemetry::log("\n==================== [REPEATED FIND TEST: INITIAL BASELINE] ====================");
+        FluidCoreApp::MemoryTelemetry::log("Initial Private: " + FluidCoreApp::MemoryTelemetry::formatMB(st->initialBaselineMetrics.privateBytes) +
+                                           " | Initial WS: " + FluidCoreApp::MemoryTelemetry::formatMB(st->initialBaselineMetrics.workingSet) +
+                                           " | Initial LiveAlloc: " + FluidCoreApp::MemoryTelemetry::formatMB(st->initialBaselineMetrics.heapAllocated) +
+                                           " | Initial HeapCommit: " + FluidCoreApp::MemoryTelemetry::formatMB(st->initialBaselineMetrics.heapCommitted) +
+                                           " | Initial MiCommit: " + FluidCoreApp::MemoryTelemetry::formatMB(st->initialBaselineMetrics.mimallocCommitted));
+        st->ctx->pane->pageTileCache().dumpStats("Initial Baseline");
+        st->ctx->excerptTileCache->dumpStats("Initial Baseline");
+        FluidCoreApp::PopplerLifetimeTracker::dump("Initial Baseline");
+
+        struct Runner {
+            static void step(TestState* s) {
+                if (s->currentIteration > s->totalIterations) {
+                    // All iterations complete!
+                    FluidCoreApp::MemoryTelemetry::log("\n==================== [REPEATED FIND TEST: FINAL REPORT (" + std::to_string(s->totalIterations) + " PASSES)] ====================");
+                    FluidCoreApp::MemoryTelemetry::log("Query: \"" + s->query + "\" across " +
+                                                       std::to_string(s->ctx->pane->pages().size()) + " pages (NO NAVIGATION)\n");
+
+                    FluidCoreApp::MemoryTelemetry::log("| Find # | Before Priv | After Priv | Delta Priv | Before LiveAlloc | After LiveAlloc | Delta LiveAlloc | HeapCommit | MiCommit | Hits |");
+                    FluidCoreApp::MemoryTelemetry::log("|:------:|:-----------:|:----------:|:----------:|:----------------:|:---------------:|:---------------:|:----------:|:--------:|:----:|");
+
+                    for (const auto& r : s->records) {
+                        std::string signP = r.deltaPriv >= 0 ? "+" : "-";
+                        std::size_t absDP = r.deltaPriv >= 0 ? r.deltaPriv : -r.deltaPriv;
+                        std::string signL = r.deltaLiveAlloc >= 0 ? "+" : "-";
+                        std::size_t absDL = r.deltaLiveAlloc >= 0 ? r.deltaLiveAlloc : -r.deltaLiveAlloc;
+
+                        FluidCoreApp::MemoryTelemetry::log("| Find " + std::to_string(r.iteration) +
+                                                           " | " + FluidCoreApp::MemoryTelemetry::formatMB(r.beforePriv) +
+                                                           " | " + FluidCoreApp::MemoryTelemetry::formatMB(r.afterPriv) +
+                                                           " | " + signP + FluidCoreApp::MemoryTelemetry::formatMB(absDP) +
+                                                           " | " + FluidCoreApp::MemoryTelemetry::formatMB(r.beforeLiveAlloc) +
+                                                           " | " + FluidCoreApp::MemoryTelemetry::formatMB(r.afterLiveAlloc) +
+                                                           " | " + signL + FluidCoreApp::MemoryTelemetry::formatMB(absDL) +
+                                                           " | " + FluidCoreApp::MemoryTelemetry::formatMB(r.afterHeapCommit) +
+                                                           " | " + FluidCoreApp::MemoryTelemetry::formatMB(r.afterMiCommit) +
+                                                           " | " + std::to_string(r.hitCount) + " |");
+                    }
+
+                    FluidCoreApp::MemoryTelemetry::log("\n[Automated Protocol] Closing document and terminating...");
+                    if (s->ctx->pane) {
+                        s->ctx->pane->closeDocument();
+                    }
+                    const auto finalMetrics = FluidCoreApp::MemoryTelemetry::getHeapMetrics();
+                    FluidCoreApp::MemoryTelemetry::log("[Teardown] Document closed. Final Private Bytes: " +
+                                                       FluidCoreApp::MemoryTelemetry::formatMB(finalMetrics.privateBytes) +
+                                                       " | Final LiveAlloc: " + FluidCoreApp::MemoryTelemetry::formatMB(finalMetrics.heapAllocated) +
+                                                       " (Initial Baseline Priv: " +
+                                                       FluidCoreApp::MemoryTelemetry::formatMB(s->initialBaselineMetrics.privateBytes) +
+                                                       " | Initial Baseline LiveAlloc: " +
+                                                       FluidCoreApp::MemoryTelemetry::formatMB(s->initialBaselineMetrics.heapAllocated) + ")");
+                    GtkApplication* app = s->ctx->app;
+                    delete s;
+                    if (app) {
+                        g_application_quit(G_APPLICATION(app));
+                    }
+                    return;
+                }
+
+                const int iter = s->currentIteration;
+                const auto beforeM = FluidCoreApp::MemoryTelemetry::getHeapMetrics();
+
+                FluidCoreApp::MemoryTelemetry::log("\n------------------------------------------------------------");
+                FluidCoreApp::MemoryTelemetry::log("[Repeated Find] >>> STARTING FIND #" + std::to_string(iter) + " (Query: \"" + s->query + "\", autoNavigate: false) <<<");
+                FluidCoreApp::MemoryTelemetry::log("[Repeated Find] Before: Priv: " + FluidCoreApp::MemoryTelemetry::formatMB(beforeM.privateBytes) +
+                                                   " | LiveAlloc: " + FluidCoreApp::MemoryTelemetry::formatMB(beforeM.heapAllocated) +
+                                                   " | HeapCommit: " + FluidCoreApp::MemoryTelemetry::formatMB(beforeM.heapCommitted));
+
+                s->ctx->pane->performSearch(
+                    s->query,
+                    /*enableSqueeze=*/false,
+                    /*autoNavigate=*/false,
+                    [s, iter, beforeM]() {
+                        const auto afterM = FluidCoreApp::MemoryTelemetry::getHeapMetrics();
+                        const long long deltaP = static_cast<long long>(afterM.privateBytes) - static_cast<long long>(beforeM.privateBytes);
+                        const long long deltaL = static_cast<long long>(afterM.heapAllocated) - static_cast<long long>(beforeM.heapAllocated);
+
+                        FindTestRecord rec;
+                        rec.iteration = iter;
+                        rec.beforePriv = beforeM.privateBytes;
+                        rec.afterPriv = afterM.privateBytes;
+                        rec.deltaPriv = deltaP;
+                        rec.beforeLiveAlloc = beforeM.heapAllocated;
+                        rec.afterLiveAlloc = afterM.heapAllocated;
+                        rec.deltaLiveAlloc = deltaL;
+                        rec.beforeHeapCommit = beforeM.heapCommitted;
+                        rec.afterHeapCommit = afterM.heapCommitted;
+                        rec.beforeMiCommit = beforeM.mimallocCommitted;
+                        rec.afterMiCommit = afterM.mimallocCommitted;
+                        rec.livePages = FluidCoreApp::PopplerLifetimeTracker::getLivePages();
+                        rec.totalCreated = FluidCoreApp::PopplerLifetimeTracker::getTotalCreated();
+                        rec.totalDestroyed = FluidCoreApp::PopplerLifetimeTracker::getTotalDestroyed();
+                        rec.ptcBytes = s->ctx->pane->pageTileCache().currentBytes();
+                        rec.etcBytes = s->ctx->excerptTileCache ? s->ctx->excerptTileCache->currentBytes() : 0;
+                        rec.hitCount = s->ctx->pane->searchHits().size();
+
+                        s->records.push_back(rec);
+
+                        std::string signP = deltaP >= 0 ? "+" : "-";
+                        std::size_t absDP = deltaP >= 0 ? deltaP : -deltaP;
+                        std::string signL = deltaL >= 0 ? "+" : "-";
+                        std::size_t absDL = deltaL >= 0 ? deltaL : -deltaL;
+
+                        FluidCoreApp::MemoryTelemetry::log("[Repeated Find] <<< COMPLETED FIND #" + std::to_string(iter) + " >>>");
+                        FluidCoreApp::MemoryTelemetry::log("    Private:   " + FluidCoreApp::MemoryTelemetry::formatMB(beforeM.privateBytes) +
+                                                           " -> " + FluidCoreApp::MemoryTelemetry::formatMB(afterM.privateBytes) +
+                                                           " (Delta: " + signP + FluidCoreApp::MemoryTelemetry::formatMB(absDP) + ")");
+                        FluidCoreApp::MemoryTelemetry::log("    LiveAlloc: " + FluidCoreApp::MemoryTelemetry::formatMB(beforeM.heapAllocated) +
+                                                           " -> " + FluidCoreApp::MemoryTelemetry::formatMB(afterM.heapAllocated) +
+                                                           " (Delta: " + signL + FluidCoreApp::MemoryTelemetry::formatMB(absDL) + ")");
+                        FluidCoreApp::MemoryTelemetry::log("    HeapCommit:" + FluidCoreApp::MemoryTelemetry::formatMB(afterM.heapCommitted) +
+                                                           " | MiCommit: " + FluidCoreApp::MemoryTelemetry::formatMB(afterM.mimallocCommitted));
+                        FluidCoreApp::MemoryTelemetry::log("    Hits: " + std::to_string(rec.hitCount) +
+                                                           " | Poppler Live: " + std::to_string(rec.livePages));
+
+                        // Now close search
+                        FluidCoreApp::MemoryTelemetry::log("[Repeated Find] Invoking closeSearch()...");
+                        s->ctx->pane->closeSearch();
+
+                        const auto postCloseM = FluidCoreApp::MemoryTelemetry::getHeapMetrics();
+                        FluidCoreApp::MemoryTelemetry::log("[Repeated Find] Post-closeSearch Priv: " +
+                                                           FluidCoreApp::MemoryTelemetry::formatMB(postCloseM.privateBytes) +
+                                                           " | LiveAlloc: " + FluidCoreApp::MemoryTelemetry::formatMB(postCloseM.heapAllocated));
+
+                        // Advance iteration
+                        s->currentIteration++;
+
+                        // Wait 300ms before starting next search
+                        g_timeout_add(300, +[](gpointer d) -> gboolean {
+                            auto* statePtr = static_cast<TestState*>(d);
+                            Runner::step(statePtr);
+                            return G_SOURCE_REMOVE;
+                        }, s);
+                    }
+                );
+            }
+        };
+
+        Runner::step(st);
+        return G_SOURCE_REMOVE;
+    }, state);
+}
+
+void scheduleScenarioReopenAudit(AppViewContext* ctx) {
+    FluidCoreApp::MemoryTelemetry::log("\n==================== [REOPEN & FIND_TEXT AUDIT PROTOCOL] ====================");
+
+    struct AuditState {
+        AppViewContext* ctx = nullptr;
+        std::string pdfPath;
+        std::size_t initialBaselinePriv = 0;
+        std::size_t postClose1Priv = 0;
+        std::size_t postReopenBaselinePriv = 0;
+        std::size_t search1EndPriv = 0;
+        std::size_t search2EndPriv = 0;
+    };
+
+    std::string currentPath = ctx->pane ? ctx->pane->pdfPath() : "";
+    auto* state = new AuditState{ctx, currentPath, 0, 0, 0, 0, 0};
+
+    // Step 1: Allow UI to settle (1500ms), record initial baseline
+    g_timeout_add(1500, +[](gpointer data) -> gboolean {
+        auto* s = static_cast<AuditState*>(data);
+        s->initialBaselinePriv = FluidCoreApp::MemoryTelemetry::getProcessPrivateBytes();
+        FluidCoreApp::MemoryTelemetry::log("[Audit Step 1] Initial Baseline Private: " +
+                                           FluidCoreApp::MemoryTelemetry::formatMB(s->initialBaselinePriv));
+
+        // Part A: Direct single-page findText loop on Page 6 (same PopplerPage* kept alive)
+        PopplerDocument* doc = s->ctx->pane ? s->ctx->pane->document() : nullptr;
+        if (doc) {
+            PopplerPage* page6 = nullptr;
+            {
+                std::lock_guard<std::mutex> lock(FluidCoreApp::PdfDocumentService::globalPopplerMutex());
+                page6 = poppler_document_get_page(doc, 6);
+            }
+            if (page6) {
+                const std::size_t beforeFindLoop = FluidCoreApp::MemoryTelemetry::getProcessPrivateBytes();
+                for (int iter = 1; iter <= 50; ++iter) {
+                    GList* matches = nullptr;
+                    {
+                        std::lock_guard<std::mutex> lock(FluidCoreApp::PdfDocumentService::globalPopplerMutex());
+                        matches = poppler_page_find_text_with_options(page6, "futures", POPPLER_FIND_DEFAULT);
+                    }
+                    for (GList* l = matches; l != nullptr; l = l->next) {
+                        poppler_rectangle_free(static_cast<PopplerRectangle*>(l->data));
+                    }
+                    if (matches) g_list_free(matches);
+
+                    if (iter == 1 || iter == 10 || iter == 50) {
+                        const std::size_t cur = FluidCoreApp::MemoryTelemetry::getProcessPrivateBytes();
+                        long long d = static_cast<long long>(cur) - static_cast<long long>(beforeFindLoop);
+                        FluidCoreApp::MemoryTelemetry::log("    [Single Page FindText (Page 6)] Iter " +
+                                                           std::to_string(iter) + "/50: " +
+                                                           FluidCoreApp::MemoryTelemetry::formatMB(cur) +
+                                                           " (Delta from start: " + (d >= 0 ? "+" : "-") +
+                                                           FluidCoreApp::MemoryTelemetry::formatMB(std::abs(d)) + ")");
+                    }
+                }
+                {
+                    std::lock_guard<std::mutex> lock(FluidCoreApp::PdfDocumentService::globalPopplerMutex());
+                    g_object_unref(page6);
+                }
+                const std::size_t afterPage6Unref = FluidCoreApp::MemoryTelemetry::getProcessPrivateBytes();
+                FluidCoreApp::MemoryTelemetry::log("    [Single Page FindText] Page 6 unref'd. Private: " +
+                                                   FluidCoreApp::MemoryTelemetry::formatMB(afterPage6Unref));
+            }
+
+            // Part B: Ephemeral Page Get + FindText + Unref loop (50 iterations on Page 6)
+            const std::size_t beforeEphemeralLoop = FluidCoreApp::MemoryTelemetry::getProcessPrivateBytes();
+            for (int iter = 1; iter <= 50; ++iter) {
+                PopplerPage* ephem = nullptr;
+                {
+                    std::lock_guard<std::mutex> lock(FluidCoreApp::PdfDocumentService::globalPopplerMutex());
+                    ephem = poppler_document_get_page(doc, 6);
+                }
+                if (ephem) {
+                    GList* matches = nullptr;
+                    {
+                        std::lock_guard<std::mutex> lock(FluidCoreApp::PdfDocumentService::globalPopplerMutex());
+                        matches = poppler_page_find_text_with_options(ephem, "futures", POPPLER_FIND_DEFAULT);
+                    }
+                    for (GList* l = matches; l != nullptr; l = l->next) {
+                        poppler_rectangle_free(static_cast<PopplerRectangle*>(l->data));
+                    }
+                    if (matches) g_list_free(matches);
+                    {
+                        std::lock_guard<std::mutex> lock(FluidCoreApp::PdfDocumentService::globalPopplerMutex());
+                        g_object_unref(ephem);
+                    }
+                }
+                if (iter == 1 || iter == 10 || iter == 50) {
+                    const std::size_t cur = FluidCoreApp::MemoryTelemetry::getProcessPrivateBytes();
+                    long long d = static_cast<long long>(cur) - static_cast<long long>(beforeEphemeralLoop);
+                    FluidCoreApp::MemoryTelemetry::log("    [Ephemeral Get+Find+Unref (Page 6)] Iter " +
+                                                       std::to_string(iter) + "/50: " +
+                                                       FluidCoreApp::MemoryTelemetry::formatMB(cur) +
+                                                       " (Delta from start: " + (d >= 0 ? "+" : "-") +
+                                                       FluidCoreApp::MemoryTelemetry::formatMB(std::abs(d)) + ")");
+                }
+            }
+        }
+
+        // Part C: Run Full 892-Page Search 1
+        FluidCoreApp::MemoryTelemetry::log("\n[Audit Step 2] Launching Full Document Search 1 (Query: 'futures', 892 pages)...");
+        const std::size_t beforeSearch1 = FluidCoreApp::MemoryTelemetry::getProcessPrivateBytes();
+        s->ctx->pane->performSearch("futures", false, false, [s, beforeSearch1]() {
+            s->search1EndPriv = FluidCoreApp::MemoryTelemetry::getProcessPrivateBytes();
+            FluidCoreApp::MemoryTelemetry::log("[Audit Step 2] Search 1 Completed. Private: " +
+                                               FluidCoreApp::MemoryTelemetry::formatMB(beforeSearch1) +
+                                               " -> " + FluidCoreApp::MemoryTelemetry::formatMB(s->search1EndPriv) +
+                                               " (Hits: " + std::to_string(s->ctx->pane->searchHits().size()) + ")");
+
+            s->ctx->pane->closeSearch();
+
+            // Part D: Close the document!
+            FluidCoreApp::MemoryTelemetry::log("\n[Audit Step 3] Closing document (closeDocument)...");
+            s->ctx->pane->closeDocument();
+            s->postClose1Priv = FluidCoreApp::MemoryTelemetry::getProcessPrivateBytes();
+            FluidCoreApp::MemoryTelemetry::log("[Audit Step 3] Post-Close 1 Private Bytes: " +
+                                               FluidCoreApp::MemoryTelemetry::formatMB(s->postClose1Priv) +
+                                               " (Initial Baseline: " +
+                                               FluidCoreApp::MemoryTelemetry::formatMB(s->initialBaselinePriv) + ")");
+            FluidCoreApp::MemoryTelemetry::runHeapMin("Post-Close 1 HeapMin");
+
+            // Part E: Reopen the document! (Wait 1500ms then reload)
+            g_timeout_add(1500, +[](gpointer d2) -> gboolean {
+                auto* s2 = static_cast<AuditState*>(d2);
+                FluidCoreApp::MemoryTelemetry::log("\n[Audit Step 4] Reopening document: " + s2->pdfPath + " ...");
+                s2->ctx->pane->loadDocument(s2->pdfPath);
+
+                // Wait 1500ms for load to settle
+                g_timeout_add(1500, +[](gpointer d3) -> gboolean {
+                    auto* s3 = static_cast<AuditState*>(d3);
+                    s3->postReopenBaselinePriv = FluidCoreApp::MemoryTelemetry::getProcessPrivateBytes();
+                    FluidCoreApp::MemoryTelemetry::log("\n==================== [AUDIT STEP 5: POST-REOPEN BASELINE] ====================");
+                    FluidCoreApp::MemoryTelemetry::log("Initial Baseline (Run 1): " + FluidCoreApp::MemoryTelemetry::formatMB(s3->initialBaselinePriv));
+                    FluidCoreApp::MemoryTelemetry::log("Post-Close 1:            " + FluidCoreApp::MemoryTelemetry::formatMB(s3->postClose1Priv));
+                    FluidCoreApp::MemoryTelemetry::log("Post-Reopen Baseline:    " + FluidCoreApp::MemoryTelemetry::formatMB(s3->postReopenBaselinePriv));
+
+                    long long reopenDelta = static_cast<long long>(s3->postReopenBaselinePriv) - static_cast<long long>(s3->postClose1Priv);
+                    FluidCoreApp::MemoryTelemetry::log(std::string("Reopen Delta (vs Post-Close): ") +
+                                                       (reopenDelta >= 0 ? "+" : "-") +
+                                                       FluidCoreApp::MemoryTelemetry::formatMB(std::abs(reopenDelta)));
+
+                    // Part F: Run Full Document Search 2 on reopened document
+                    FluidCoreApp::MemoryTelemetry::log("\n[Audit Step 6] Launching Full Document Search 2 on Reopened Document...");
+                    const std::size_t beforeSearch2 = FluidCoreApp::MemoryTelemetry::getProcessPrivateBytes();
+                    s3->ctx->pane->performSearch("futures", false, false, [s3, beforeSearch2]() {
+                        s3->search2EndPriv = FluidCoreApp::MemoryTelemetry::getProcessPrivateBytes();
+                        FluidCoreApp::MemoryTelemetry::log("[Audit Step 6] Search 2 Completed. Private: " +
+                                                           FluidCoreApp::MemoryTelemetry::formatMB(beforeSearch2) +
+                                                           " -> " + FluidCoreApp::MemoryTelemetry::formatMB(s3->search2EndPriv) +
+                                                           " (Hits: " + std::to_string(s3->ctx->pane->searchHits().size()) + ")");
+
+                        s3->ctx->pane->closeSearch();
+
+                        // Part G: Final Teardown and Summary Report
+                        FluidCoreApp::MemoryTelemetry::log("\n==================== [REOPEN & FIND_TEXT AUDIT: FINAL REPORT] ====================");
+                        FluidCoreApp::MemoryTelemetry::log("| Metric | Run 1 (Fresh Open) | Run 2 (Reopened) | Delta (Run 2 vs Run 1) |");
+                        FluidCoreApp::MemoryTelemetry::log("|:---|:---:|:---:|:---:|");
+                        long long baseDelta = static_cast<long long>(s3->postReopenBaselinePriv) - static_cast<long long>(s3->initialBaselinePriv);
+                        long long searchGrowthDelta = static_cast<long long>(s3->search2EndPriv) - static_cast<long long>(s3->search1EndPriv);
+                        FluidCoreApp::MemoryTelemetry::log("| Baseline (Post-Load) | " +
+                                                           FluidCoreApp::MemoryTelemetry::formatMB(s3->initialBaselinePriv) + " | " +
+                                                           FluidCoreApp::MemoryTelemetry::formatMB(s3->postReopenBaselinePriv) + " | " +
+                                                           (baseDelta >= 0 ? "+" : "-") + FluidCoreApp::MemoryTelemetry::formatMB(std::abs(baseDelta)) + " |");
+                        FluidCoreApp::MemoryTelemetry::log("| Post-Search Private  | " +
+                                                           FluidCoreApp::MemoryTelemetry::formatMB(s3->search1EndPriv) + " | " +
+                                                           FluidCoreApp::MemoryTelemetry::formatMB(s3->search2EndPriv) + " | " +
+                                                           (searchGrowthDelta >= 0 ? "+" : "-") + FluidCoreApp::MemoryTelemetry::formatMB(std::abs(searchGrowthDelta)) + " |");
+
+                        s3->ctx->pane->closeDocument();
+                        const std::size_t finalPriv = FluidCoreApp::MemoryTelemetry::getProcessPrivateBytes();
+                        FluidCoreApp::MemoryTelemetry::log("| Post-Close Final     | " +
+                                                           FluidCoreApp::MemoryTelemetry::formatMB(s3->postClose1Priv) + " | " +
+                                                           FluidCoreApp::MemoryTelemetry::formatMB(finalPriv) + " | - |");
+                        FluidCoreApp::MemoryTelemetry::runHeapMin("Final Teardown HeapMin");
+
+                        GtkApplication* app = s3->ctx->app;
+                        delete s3;
+                        if (app) {
+                            g_application_quit(G_APPLICATION(app));
+                        }
+                    });
+                    return G_SOURCE_REMOVE;
+                }, s2);
+                return G_SOURCE_REMOVE;
+            }, s);
+        });
+        return G_SOURCE_REMOVE;
+    }, state);
+}
+
 void onActivate(GtkApplication* app, gpointer userData) {
     auto* context = static_cast<AppContext*>(userData);
 
@@ -1326,7 +1963,10 @@ void onActivate(GtkApplication* app, gpointer userData) {
     auto* viewCtx =
         new AppViewContext{documentPane,   workspace,        toolManager, context->engine,
                            pdfDocService,  excerptTileCache, headerBar,   GTK_WINDOW(window),
-                           lastActivePane, nullptr,          false,       nullptr};
+                           lastActivePane, nullptr,          false,       nullptr,
+                           context->runScenarioA, context->runScenarioB,
+                           context->runScenarioRepeatedFind, context->runScenarioReopenAudit, app,
+                           context->repeatedFindIterations};
 
     auto updateUndoRedoUI = [topToolbar, workspace, documentPane, lastActivePane, headerBar,
                              viewCtx]() {
@@ -2035,11 +2675,59 @@ void onActivate(GtkApplication* app, gpointer userData) {
 
     std::cout << "[FluidCore] Window ready and presented (" << documentPane->pages().size()
               << " pages loaded)." << std::endl;
+
+    if (g_getenv("FLUIDCORE_HEARTBEAT") != nullptr) {
+        g_timeout_add_seconds(
+            4,
+            +[](gpointer data) -> gboolean {
+                auto* vCtx = static_cast<AppViewContext*>(data);
+                if (!vCtx) return G_SOURCE_CONTINUE;
+
+                const auto m = FluidCoreApp::MemoryTelemetry::getHeapMetrics();
+
+                std::string msg = "[Heartbeat] Priv: " + FluidCoreApp::MemoryTelemetry::formatMB(m.privateBytes) +
+                                  " | WS: " + FluidCoreApp::MemoryTelemetry::formatMB(m.workingSet) +
+                                  " | LiveAlloc: " + FluidCoreApp::MemoryTelemetry::formatMB(m.heapAllocated) +
+                                  " | HeapCommit: " + FluidCoreApp::MemoryTelemetry::formatMB(m.heapCommitted) +
+                                  " | Slack: " + FluidCoreApp::MemoryTelemetry::formatMB(m.heapSlack) +
+                                  " | Poppler Live: " + std::to_string(FluidCoreApp::PopplerLifetimeTracker::getLivePages());
+
+                if (vCtx->pane) {
+                    auto ptStats = vCtx->pane->pageTileCache().getStats();
+                    msg += " | PageTileCache: " + FluidCoreApp::MemoryTelemetry::formatMB(ptStats.currentBytes) +
+                           " (" + std::to_string(ptStats.entryCount) + " pgs)";
+                }
+                if (vCtx->excerptTileCache) {
+                    auto etcStats = vCtx->excerptTileCache->getStats();
+                    msg += " | ExcerptTileCache: " + FluidCoreApp::MemoryTelemetry::formatMB(etcStats.currentBytes) +
+                           " (" + std::to_string(etcStats.entryCount) + " crops, " +
+                           std::to_string(etcStats.activeRequests) + " reqs)";
+                }
+                FluidCoreApp::MemoryTelemetry::log(msg);
+                return G_SOURCE_CONTINUE;
+            },
+            viewCtx);
+    }
+
+    if (viewCtx->runScenarioReopenAudit) {
+        scheduleScenarioReopenAudit(viewCtx);
+    } else if (viewCtx->runScenarioRepeatedFind) {
+        scheduleScenarioRepeatedFind(viewCtx, viewCtx->repeatedFindIterations);
+    } else if (viewCtx->runScenarioA) {
+        scheduleScenarioA(viewCtx);
+    } else if (viewCtx->runScenarioB) {
+        scheduleScenarioB(viewCtx);
+    }
 }
 
 } // namespace
 
 int main(int argc, char** argv) {
+#ifdef FLUIDCORE_HAS_MIMALLOC
+    mi_option_set(mi_option_purge_delay, 0);
+    mi_option_set(mi_option_purge_decommits, 1);
+#endif
+
 #ifdef _WIN32
     // If launched from an existing terminal, attach to it so stdout/stderr work.
     // When launched from Explorer, Desktop, or Start Menu, AttachConsole fails silently
@@ -2119,7 +2807,68 @@ int main(int argc, char** argv) {
         static_cast<GLogLevelFlags>(G_LOG_LEVEL_MASK | G_LOG_FLAG_FATAL | G_LOG_FLAG_RECURSION),
         filterLogFunc, nullptr);
 
-    const std::string rawArg = argc > 1 ? argv[1] : "";
+    bool runScenarioA = false;
+    bool runScenarioB = false;
+    bool runScenarioRepeatedFind = false;
+    bool runScenarioReopenAudit = false;
+    int repeatedFindIterations = 20;
+    std::string rawArg;
+
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i] ? argv[i] : "";
+        if (arg == "--run-scenario-a") {
+            runScenarioA = true;
+        } else if (arg == "--run-scenario-b") {
+            runScenarioB = true;
+        } else if (arg == "--run-scenario-repeated-find" || arg == "--run-scenario-find20") {
+            runScenarioRepeatedFind = true;
+            repeatedFindIterations = 20;
+        } else if (arg == "--run-scenario-find5") {
+            runScenarioRepeatedFind = true;
+            repeatedFindIterations = 5;
+        } else if (arg.rfind("--find-iters=", 0) == 0) {
+            repeatedFindIterations = std::stoi(arg.substr(13));
+        } else if (arg == "--run-scenario-reopen" || arg == "--run-scenario-reopen-audit") {
+            runScenarioReopenAudit = true;
+        } else if (arg == "--null-sink") {
+            FluidCoreApp::PageTileCache::setNullSinkMode(true);
+        } else if (rawArg.empty() && arg.rfind("--", 0) != 0) {
+            rawArg = arg;
+        }
+    }
+
+    if (const char* envIt = g_getenv("FLUIDCORE_FIND_ITERATIONS")) {
+        int v = std::atoi(envIt);
+        if (v > 0) repeatedFindIterations = v;
+    }
+
+    if (const char* envNull = g_getenv("FLUIDCORE_NULL_SINK")) {
+        if (std::string(envNull) == "1" || std::string(envNull) == "true") {
+            FluidCoreApp::PageTileCache::setNullSinkMode(true);
+        }
+    }
+
+    // Log complete runtime configuration banner
+    const char* envTel = g_getenv("FLUIDCORE_LOG_TELEMETRY");
+    const char* envHb = g_getenv("FLUIDCORE_HEARTBEAT");
+    const char* envEphem = g_getenv("FLUIDCORE_EPHEMERAL_SEARCH");
+    const char* envBench = g_getenv("FLUIDCORE_SEARCH_BENCHMARK");
+    const char* envVerb = g_getenv("FLUIDCORE_VERBOSE_TELEMETRY");
+
+    std::string banner = "[Startup] === FLUIDCORE RUNTIME CONFIGURATION ===\n";
+    banner += "    FLUIDCORE_LOG_TELEMETRY:      " + std::string(envTel ? envTel : "0") + (envTel && std::string(envTel) != "0" ? " (ACTIVE - writing to fluidcore_telemetry.log)\n" : " (Disabled)\n");
+    banner += "    FLUIDCORE_HEARTBEAT:          " + std::string(envHb ? envHb : "0") + (envHb && std::string(envHb) != "0" ? " (ACTIVE - 4s interval)\n" : " (Disabled)\n");
+    banner += "    FLUIDCORE_EPHEMERAL_SEARCH:   " + std::string(envEphem ? envEphem : "0") + (envEphem && std::string(envEphem) != "0" ? " (ACTIVE - throwaway search document per query)\n" : " (Disabled - persistent m_document search)\n");
+    banner += "    FLUIDCORE_SEARCH_BENCHMARK:   " + std::string(envBench ? envBench : "0") + (envBench && std::string(envBench) != "0" ? " (ACTIVE - stage memory queries)\n" : " (Disabled)\n");
+    banner += "    FLUIDCORE_VERBOSE_TELEMETRY:  " + std::string(envVerb ? envVerb : "0") + (envVerb && std::string(envVerb) != "0" ? " (ACTIVE - batch logs)\n" : " (Disabled)\n");
+    banner += "    FLUIDCORE_NULL_SINK:          " + std::string(FluidCoreApp::PageTileCache::isNullSinkMode() ? "1 (ACTIVE - no Cairo tiles cached)\n" : "0 (Disabled - Cairo surfaces cached in LRU)\n");
+#ifdef FLUIDCORE_HAS_MIMALLOC
+    banner += "    MIMALLOC_ALLOCATOR:           1 (ACTIVE - PurgeDelay=0, Decommit=1, Heap Slack Optimized)";
+#else
+    banner += "    MIMALLOC_ALLOCATOR:           0 (Disabled - Standard CRT Heap)";
+#endif
+    FluidCoreApp::MemoryTelemetry::log(banner);
+
     const std::string inputPath = normalizePath(rawArg);
 
     std::string pdfPath;
@@ -2153,7 +2902,8 @@ int main(int argc, char** argv) {
         seedDemoContent(engine, pdfPath);
     }
 
-    AppContext context{&engine, &pdfPath, &projectPath};
+    AppContext context{&engine, &pdfPath, &projectPath, runScenarioA, runScenarioB,
+                       runScenarioRepeatedFind, runScenarioReopenAudit, repeatedFindIterations};
 
     std::cout << "[FluidCore] Starting application with "
               << (!projectPath.empty() ? ("project: " + projectPath)

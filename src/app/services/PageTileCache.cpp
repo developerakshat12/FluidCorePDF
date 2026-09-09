@@ -1,5 +1,6 @@
 #include "PageTileCache.h"
 #include "services/PdfDocumentService.h"
+#include "services/MemoryTelemetry.h"
 
 #include <algorithm>
 #include <cmath>
@@ -17,7 +18,8 @@ PageTileCache::~PageTileCache() {
 PageTileCache::PageTileCache(PageTileCache&& other) noexcept
     : m_maxBytes(other.m_maxBytes), m_maxPages(other.m_maxPages),
       m_currentBytes(other.m_currentBytes), m_lruList(std::move(other.m_lruList)),
-      m_lookup(std::move(other.m_lookup)) {
+      m_lookup(std::move(other.m_lookup)),
+      m_everRenderedPages(std::move(other.m_everRenderedPages)) {
     other.m_currentBytes = 0;
 }
 
@@ -29,6 +31,7 @@ PageTileCache& PageTileCache::operator=(PageTileCache&& other) noexcept {
         m_currentBytes = other.m_currentBytes;
         m_lruList = std::move(other.m_lruList);
         m_lookup = std::move(other.m_lookup);
+        m_everRenderedPages = std::move(other.m_everRenderedPages);
         other.m_currentBytes = 0;
     }
     return *this;
@@ -97,6 +100,13 @@ CairoSurfaceHandle PageTileCache::renderPage(std::size_t pageIndex, PopplerPage*
         return CairoSurfaceHandle{};
     }
 
+    const bool isFirstTime = (m_everRenderedPages.find(pageIndex) == m_everRenderedPages.end());
+    if (isFirstTime) {
+        m_everRenderedPages.insert(pageIndex);
+    }
+
+    const std::size_t beforeAllocPriv = MemoryTelemetry::getProcessPrivateBytes();
+
     const int width = std::max(1, static_cast<int>(std::round(targetWidth)));
     const int height = std::max(1, static_cast<int>(std::round(targetHeight)));
 
@@ -122,14 +132,66 @@ CairoSurfaceHandle PageTileCache::renderPage(std::size_t pageIndex, PopplerPage*
     const double scaleY = static_cast<double>(height) / pageHeight;
     cairo_scale(cr, scaleX, scaleY);
 
+    const std::size_t beforeRenderPriv = MemoryTelemetry::getProcessPrivateBytes();
+
     {
         std::lock_guard<std::mutex> popplerLock(PdfDocumentService::globalPopplerMutex());
         poppler_page_render(page, cr);
     }
     cairo_destroy(cr);
 
+    const std::size_t afterRenderPriv = MemoryTelemetry::getProcessPrivateBytes();
+
+    auto formatDelta = [](std::size_t after, std::size_t before) -> std::string {
+        long long d = static_cast<long long>(after) - static_cast<long long>(before);
+        std::string sign = d >= 0 ? "+" : "-";
+        std::size_t absD = d >= 0 ? d : -d;
+        return sign + MemoryTelemetry::formatMB(absD);
+    };
+
+    if (s_nullSinkMode) {
+        // Test 4.1 Null-Sink: Destroy the rendered Cairo surface immediately
+        cairo_surface_destroy(rawSurface);
+        rawSurface = nullptr;
+
+        const std::size_t afterDestroyPriv = MemoryTelemetry::getProcessPrivateBytes();
+
+        // Insert a 1x1 placeholder (4 bytes) so PageTileCache registers the page as visited
+        // without keeping megabytes of pixel data, preventing repeated rendering on passive redraws.
+        cairo_surface_t* dummySurface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1, 1);
+        CairoSurfaceHandle dummyHandle(dummySurface, /*takeOwnership=*/true);
+        insert(pageIndex, dummyHandle);
+
+        const std::size_t afterInsertPriv = MemoryTelemetry::getProcessPrivateBytes();
+
+        const std::string tag = isFirstTime ? "[Page Render First-Time (NULL-SINK)]" : "[Page Render Re-Render (NULL-SINK)]";
+        MemoryTelemetry::log(tag + " Page " + std::to_string(pageIndex) +
+                             " (" + std::to_string(width) + "x" + std::to_string(height) + ")" +
+                             " | Poppler Render Delta: " + formatDelta(afterRenderPriv, beforeRenderPriv) +
+                             " | Surface Destroy Delta: " + formatDelta(afterDestroyPriv, afterRenderPriv) +
+                             " | Total Page Delta: " + formatDelta(afterInsertPriv, beforeAllocPriv) +
+                             " | Current Private: " + MemoryTelemetry::formatMB(afterInsertPriv) +
+                             " | Cache: " + std::to_string(m_lruList.size()) + "/" + std::to_string(m_maxPages) +
+                             " (" + MemoryTelemetry::formatMB(m_currentBytes) + ")");
+
+        return dummyHandle;
+    }
+
     CairoSurfaceHandle handle(rawSurface, /*takeOwnership=*/true);
     insert(pageIndex, handle);
+
+    const std::size_t afterInsertPriv = MemoryTelemetry::getProcessPrivateBytes();
+
+    const std::string tag = isFirstTime ? "[Page Render First-Time]" : "[Page Render Re-Render]";
+    MemoryTelemetry::log(tag + " Page " + std::to_string(pageIndex) +
+                         " (" + std::to_string(width) + "x" + std::to_string(height) + ")" +
+                         " | Poppler Render Delta: " + formatDelta(afterRenderPriv, beforeRenderPriv) +
+                         " | Cache Insert Delta: " + formatDelta(afterInsertPriv, afterRenderPriv) +
+                         " | Total Page Delta: " + formatDelta(afterInsertPriv, beforeAllocPriv) +
+                         " | Current Private: " + MemoryTelemetry::formatMB(afterInsertPriv) +
+                         " | Cache: " + std::to_string(m_lruList.size()) + "/" + std::to_string(m_maxPages) +
+                         " (" + MemoryTelemetry::formatMB(m_currentBytes) + ")");
+
     return handle;
 }
 
@@ -167,6 +229,53 @@ void PageTileCache::clear() {
     m_lookup.clear();
     m_lruList.clear();
     m_currentBytes = 0;
+    m_everRenderedPages.clear();
+}
+
+PageTileCache::PageTileCacheStats PageTileCache::getStats() const {
+    PageTileCacheStats stats;
+    stats.entryCount = m_lruList.size();
+    stats.currentBytes = m_currentBytes;
+    stats.maxBytes = m_maxBytes;
+    stats.maxPages = m_maxPages;
+
+    for (const auto& node : m_lruList) {
+        stats.residentPages.push_back(node.pageIndex);
+        if (node.pinned) {
+            stats.pinnedPages.push_back(node.pageIndex);
+        }
+        stats.surfaces.push_back(TileSurfaceInfo{
+            node.pageIndex,
+            node.surface.width(),
+            node.surface.height(),
+            node.bytes,
+            node.pinned
+        });
+    }
+    return stats;
+}
+
+void PageTileCache::dumpStats(const std::string& tag) const {
+    auto stats = getStats();
+    std::string residentStr = "[";
+    for (std::size_t i = 0; i < stats.residentPages.size(); ++i) {
+        if (i > 0) residentStr += ", ";
+        residentStr += std::to_string(stats.residentPages[i]);
+    }
+    residentStr += "]";
+
+    std::string pinnedStr = "[";
+    for (std::size_t i = 0; i < stats.pinnedPages.size(); ++i) {
+        if (i > 0) pinnedStr += ", ";
+        pinnedStr += std::to_string(stats.pinnedPages[i]);
+    }
+    pinnedStr += "]";
+
+    MemoryTelemetry::log("[PageTileCache] === " + tag + " === " +
+                         "Entries: " + std::to_string(stats.entryCount) + "/" + std::to_string(stats.maxPages) +
+                         " | Bytes: " + MemoryTelemetry::formatMB(stats.currentBytes) + "/" + MemoryTelemetry::formatMB(stats.maxBytes) +
+                         " | Resident: " + residentStr +
+                         " | Pinned: " + pinnedStr);
 }
 
 } // namespace FluidCoreApp

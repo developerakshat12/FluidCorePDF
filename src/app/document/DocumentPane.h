@@ -146,8 +146,11 @@ class DocumentPane {
     }
     void openSearch(bool enableSqueeze = true, SearchScope scope = SearchScope::Document);
     void closeSearch();
+    void performSearch(const std::string& query, bool enableSqueeze = false,
+                       bool autoNavigate = true, std::function<void()> onComplete = nullptr);
     void navigateSearch(int direction);
     void scrollToSearchHit(std::size_t hitIndex);
+    void scrollToPage(std::size_t pageIndex);
     bool isSearchActive() const;
     const std::vector<SearchHit>& searchHits() const { return m_searchHits; }
     std::size_t activeSearchHitIndex() const { return m_activeSearchHitIndex; }
@@ -186,7 +189,8 @@ class DocumentPane {
     void applyContinuousSqueezeDelta(double delta, double cursorScreenY);
     void stabilizeViewportAroundCursor(double anchorDocY, double cursorScreenY);
 
-    void onSearchQueryChanged(const std::string& query, bool enableSqueeze);
+    void onSearchQueryChanged(const std::string& query, bool enableSqueeze,
+                              bool autoNavigate = true, std::function<void()> onComplete = nullptr);
     void onSearchSqueezeToggled(bool enableSqueeze);
     void applySearchSqueeze();
 

@@ -1,4 +1,5 @@
 #include "services/PdfExportService.h"
+#include "services/CairoStrokeHelper.h"
 #include "services/StrokeStabilizer.h"
 
 #include <algorithm>
@@ -112,6 +113,13 @@ void PdfExportService::renderStroke(cairo_t* cr, const FluidCore::Stroke& stroke
     cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
 
     if (isHighlighter) {
+        // Isolated offscreen group composited with uniform 0.5 alpha.
+        // Bounded to stroke clip box in page coordinates to keep PDF Form XObject tightly bounded.
+        const auto clipBox = computeStrokeClipBounds(stroke, 4.0);
+        cairo_save(cr);
+        cairo_rectangle(cr, clipBox.x, clipBox.y, clipBox.width, clipBox.height);
+        cairo_clip(cr);
+
         cairo_push_group(cr);
         cairo_set_source_rgb(cr, r, g, b);
     } else {
@@ -159,6 +167,7 @@ void PdfExportService::renderStroke(cairo_t* cr, const FluidCore::Stroke& stroke
     if (isHighlighter) {
         cairo_pop_group_to_source(cr);
         cairo_paint_with_alpha(cr, 0.5);
+        cairo_restore(cr);
     }
 
     cairo_restore(cr);

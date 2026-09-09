@@ -1,6 +1,7 @@
 #include "workspace/WorkspaceRenderer.h"
 #include "FluidCoreEngine.h"
 #include "graph/GraphTopology.h"
+#include "services/CairoStrokeHelper.h"
 #include "workspace/CanvasStrokeNode.h"
 #include "workspace/CardLayoutEngine.h"
 #include "workspace/CardStackNode.h"
@@ -1086,7 +1087,18 @@ void WorkspaceRenderer::draw(cairo_t* cr, const WorkspaceState& state, FluidCore
             cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
 
             if (isHighlighter) {
-                // Isolated offscreen group composited with uniform 0.45 alpha
+                // Isolated offscreen group composited with uniform 0.45 alpha.
+                // Bounded to stroke clip box to avoid allocating full-window surface.
+                const auto clipBox = computeStrokeClipBounds(stroke, 4.0);
+                const double sx = (clipBox.x - originX) * zoom;
+                const double sy = (clipBox.y - originY) * zoom;
+                const double sw = clipBox.width * zoom;
+                const double sh = clipBox.height * zoom;
+
+                cairo_save(cr);
+                cairo_rectangle(cr, sx, sy, sw, sh);
+                cairo_clip(cr);
+
                 cairo_push_group(cr);
                 cairo_set_source_rgb(cr, r, g, b);
                 cairo_set_line_width(cr, std::max(0.5, baseW));
@@ -1147,6 +1159,7 @@ void WorkspaceRenderer::draw(cairo_t* cr, const WorkspaceState& state, FluidCore
 
                 cairo_pop_group_to_source(cr);
                 cairo_paint_with_alpha(cr, 0.45);
+                cairo_restore(cr);
             } else {
                 // Pen rendering preserved with variable pressure dynamics
                 cairo_set_source_rgba(cr, r, g, b, 1.0);
@@ -1212,6 +1225,22 @@ void WorkspaceRenderer::draw(cairo_t* cr, const WorkspaceState& state, FluidCore
         cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
 
         if (isHighlighter) {
+            const auto clipBox = computeWetStrokeClipBounds(
+                samples, state.inking.hasWetSegment, state.inking.activeWetTip,
+                state.inking.currentWidth, 4.0);
+            if (!clipBox.valid) {
+                cairo_restore(cr);
+                return;
+            }
+            const double sx = (clipBox.x - originX) * zoom;
+            const double sy = (clipBox.y - originY) * zoom;
+            const double sw = clipBox.width * zoom;
+            const double sh = clipBox.height * zoom;
+
+            cairo_save(cr);
+            cairo_rectangle(cr, sx, sy, sw, sh);
+            cairo_clip(cr);
+
             cairo_push_group(cr);
             cairo_set_source_rgb(cr, r, g, b);
             cairo_set_line_width(cr, std::max(0.5, baseW));
@@ -1267,6 +1296,7 @@ void WorkspaceRenderer::draw(cairo_t* cr, const WorkspaceState& state, FluidCore
 
             cairo_pop_group_to_source(cr);
             cairo_paint_with_alpha(cr, 0.45);
+            cairo_restore(cr);
         } else {
             // Pen wet ink rendering preserved with variable pressure dynamics
             cairo_set_source_rgba(cr, r, g, b, 1.0);
