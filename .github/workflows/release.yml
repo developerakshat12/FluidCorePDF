@@ -19,6 +19,7 @@ jobs:
       - uses: msys2/setup-msys2@v2
         with:
           msystem: UCRT64
+          location: 'C:\msys64'
           update: true
           install: >-
             mingw-w64-ucrt-x86_64-gcc
@@ -48,7 +49,7 @@ jobs:
         run: |
           $Tag = "${{ github.ref_name }}"
           $Version = $Tag.TrimStart('v')
-          powershell -ExecutionPolicy Bypass -File ops/scripts/package-windows.ps1 -BuildInstaller -AppVersion $Version
+          powershell -ExecutionPolicy Bypass -File ops/scripts/package-windows.ps1 -BuildInstaller -AppVersion $Version -MsysRoot 'C:\msys64'
       - name: Compute SHA256 Checksums
         run: |
           Get-FileHash build-win/dist/FluidCore-Setup-x64.exe, build-win/dist/fluidcore-windows-x64.zip -Algorithm SHA256 | Out-File -FilePath build-win/dist/checksums-windows-sha256.txt

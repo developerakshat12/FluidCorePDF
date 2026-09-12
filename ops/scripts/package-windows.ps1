@@ -13,27 +13,41 @@ param (
     [string]$OutputDir = "build-win\dist\fluidcore-windows-x64",
     [string]$ZipFile = "build-win\dist\fluidcore-windows-x64.zip",
     [switch]$BuildInstaller = $true,
-    [string]$AppVersion = "1.1.3"
+    [string]$AppVersion = "1.1.3",
+    [string]$MsysRoot = ""
 )
 
 $ErrorActionPreference = "Stop"
 
-$MsysCandidates = @(
-    $env:MSYS2_ROOT,
-    "C:\msys64",
-    "D:\msys64",
-    "C:\tools\msys64"
-)
-$MsysRoot = $null
-foreach ($Cand in $MsysCandidates) {
-    if ($Cand -and (Test-Path "$Cand\ucrt64\bin")) {
-        $MsysRoot = $Cand
-        break
+if (-not $MsysRoot) {
+    # Check PATH for active gcc or objdump in ucrt64
+    $GccCmd = Get-Command gcc.exe -ErrorAction SilentlyContinue
+    if ($GccCmd -and $GccCmd.Source -match "ucrt64[\\/]bin") {
+        $MsysRoot = Split-Path -Parent (Split-Path -Parent $GccCmd.Source)
     }
 }
+
 if (-not $MsysRoot) {
-    $MsysRoot = "C:\msys64"
+    $MsysCandidates = @(
+        $env:MSYS2_ROOT,
+        "$env:RUNNER_TEMP\msys64",
+        "C:\msys64",
+        "D:\msys64",
+        "C:\tools\msys64"
+    )
+    foreach ($Cand in $MsysCandidates) {
+        if ($Cand -and (Test-Path "$Cand\ucrt64\bin")) {
+            $MsysRoot = $Cand
+            break
+        }
+    }
 }
+
+if (-not $MsysRoot -or -not (Test-Path "$MsysRoot\ucrt64\bin")) {
+    Write-Error "MSYS2 UCRT64 environment not found. Please provide -MsysRoot or ensure MSYS2 UCRT64 is installed."
+}
+
+Write-Host "[FluidCore Packager] Using MSYS2 Root: $MsysRoot" -ForegroundColor Cyan
 $UcrtBin = "$MsysRoot\ucrt64\bin"
 
 $ObjDump = $null
@@ -170,6 +184,13 @@ while ($Queue.Count -gt 0) {
 }
 
 Write-Host "[FluidCore Packager] Bundled $($ProcessedDlls.Count) DLL dependencies." -ForegroundColor Green
+
+if ($ProcessedDlls.Count -lt 20) {
+    Write-Error "Packaging verification failed: Only $($ProcessedDlls.Count) DLLs were bundled! Expected 40+ runtime DLLs. Check MSYS2 UCRT64 path."
+}
+if (-not (Test-Path (Join-Path $FullOutputDir "share\glib-2.0\schemas"))) {
+    Write-Error "Packaging verification failed: GLib schemas missing in $FullOutputDir!"
+}
 
 # Generate standalone launch script
 $BatContent = @"
