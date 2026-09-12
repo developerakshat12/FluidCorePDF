@@ -16,22 +16,6 @@ namespace FluidCoreApp {
 
 namespace {
 
-StrokeStabilizer::Point2D evalCubicBezier(const StrokeStabilizer::Point2D& b0,
-                                          const StrokeStabilizer::Point2D& b1,
-                                          const StrokeStabilizer::Point2D& b2,
-                                          const StrokeStabilizer::Point2D& b3, double t) {
-    const double u = 1.0 - t;
-    const double tt = t * t;
-    const double uu = u * u;
-    const double uuu = uu * u;
-    const double ttt = tt * t;
-
-    StrokeStabilizer::Point2D p;
-    p.x = uuu * b0.x + 3.0 * uu * t * b1.x + 3.0 * u * tt * b2.x + ttt * b3.x;
-    p.y = uuu * b0.y + 3.0 * uu * t * b1.y + 3.0 * u * tt * b2.y + ttt * b3.y;
-    return p;
-}
-
 void renderBezierSegment(cairo_t* cr, const StrokeStabilizer::BezierSegment& seg,
                          double baseWidth) {
     constexpr int kSubdivisions = 3;

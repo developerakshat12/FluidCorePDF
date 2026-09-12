@@ -1,5 +1,5 @@
 #include "DocumentSearchService.h"
-#include "services/MemoryTelemetry.h"
+#include "MemoryTelemetry.h"
 #include "services/PdfDocumentService.h"
 
 #include <algorithm>
@@ -50,14 +50,21 @@ std::vector<SearchHit> DocumentSearchService::searchSync(PopplerDocument* docume
         return results;
     }
 
-    const auto startMetrics = MemoryTelemetry::getHeapMetrics();
-    MemoryTelemetry::log("[Search] === START SEARCH (EPHEMERAL HANDLES) === Query: \"" + query +
-                         "\" | Pages to scan: " + std::to_string(pages.size()) +
-                         " | Priv: " + MemoryTelemetry::formatMB(startMetrics.privateBytes) +
-                         " | LiveAlloc: " + MemoryTelemetry::formatMB(startMetrics.heapAllocated) +
-                         " | HeapCommit: " + MemoryTelemetry::formatMB(startMetrics.heapCommitted) +
-                         " | Slack: " + MemoryTelemetry::formatMB(startMetrics.heapSlack) +
-                         " | WS: " + MemoryTelemetry::formatMB(startMetrics.workingSet));
+    const bool telemetryEnabled = (g_getenv("FLUIDCORE_SEARCH_BENCHMARK") != nullptr) ||
+                                  (g_getenv("FLUIDCORE_LOG_TELEMETRY") != nullptr);
+
+    MemoryTelemetry::ProcessHeapMetrics startMetrics{};
+    if (telemetryEnabled) {
+        startMetrics = MemoryTelemetry::getHeapMetrics();
+        MemoryTelemetry::log(
+            "[Search] === START SEARCH (EPHEMERAL HANDLES) === Query: \"" + query +
+            "\" | Pages to scan: " + std::to_string(pages.size()) +
+            " | Priv: " + MemoryTelemetry::formatMB(startMetrics.privateBytes) +
+            " | LiveAlloc: " + MemoryTelemetry::formatMB(startMetrics.heapAllocated) +
+            " | HeapCommit: " + MemoryTelemetry::formatMB(startMetrics.heapCommitted) +
+            " | Slack: " + MemoryTelemetry::formatMB(startMetrics.heapSlack) +
+            " | WS: " + MemoryTelemetry::formatMB(startMetrics.workingSet));
+    }
 
     const PopplerFindFlags flags =
         caseSensitive ? POPPLER_FIND_CASE_SENSITIVE : POPPLER_FIND_DEFAULT;
@@ -91,7 +98,8 @@ std::vector<SearchHit> DocumentSearchService::searchSync(PopplerDocument* docume
             std::lock_guard<std::mutex> popplerLock(PdfDocumentService::globalPopplerMutex());
             ephemeralPage = poppler_document_get_page(document, static_cast<int>(i));
             if (ephemeralPage) {
-                PopplerLifetimeTracker::onPageCreated(ephemeralPage, i, "DocumentSearchService::searchSync (ephemeral)");
+                PopplerLifetimeTracker::onPageCreated(
+                    ephemeralPage, i, "DocumentSearchService::searchSync (ephemeral)");
             }
         }
 
@@ -138,7 +146,8 @@ std::vector<SearchHit> DocumentSearchService::searchSync(PopplerDocument* docume
         if (ephemeralPage) {
             std::lock_guard<std::mutex> popplerLock(PdfDocumentService::globalPopplerMutex());
             g_object_unref(ephemeralPage);
-            PopplerLifetimeTracker::onPageDestroyed(ephemeralPage, "DocumentSearchService::searchSync (ephemeral)");
+            PopplerLifetimeTracker::onPageDestroyed(
+                ephemeralPage, "DocumentSearchService::searchSync (ephemeral)");
         }
 
         const std::size_t s4 = benchmarkMode ? MemoryTelemetry::getProcessPrivateBytes() : 0;
@@ -157,56 +166,77 @@ std::vector<SearchHit> DocumentSearchService::searchSync(PopplerDocument* docume
 
             if ((i + 1) % 100 == 0 || (i + 1) == pages.size()) {
                 const std::size_t currPriv = s4;
-                long long deltaFromStart = static_cast<long long>(currPriv) - static_cast<long long>(startMetrics.privateBytes);
+                long long deltaFromStart = static_cast<long long>(currPriv) -
+                                           static_cast<long long>(startMetrics.privateBytes);
                 std::string sign = deltaFromStart >= 0 ? "+" : "-";
                 std::size_t absDelta = deltaFromStart >= 0 ? deltaFromStart : -deltaFromStart;
-                MemoryTelemetry::log("[Search Progress] Pages 0-" + std::to_string(i) + "/" +
-                                     std::to_string(pages.size()) + ": " +
-                                     MemoryTelemetry::formatMB(currPriv) + " (" + sign +
-                                     MemoryTelemetry::formatMB(absDelta) + " from start) | Hits so far: " +
-                                     std::to_string(results.size()));
+                MemoryTelemetry::log(
+                    "[Search Progress] Pages 0-" + std::to_string(i) + "/" +
+                    std::to_string(pages.size()) + ": " + MemoryTelemetry::formatMB(currPriv) +
+                    " (" + sign + MemoryTelemetry::formatMB(absDelta) +
+                    " from start) | Hits so far: " + std::to_string(results.size()));
             }
         }
     }
 
-    const auto endMetrics = MemoryTelemetry::getHeapMetrics();
-    const long long deltaPriv = static_cast<long long>(endMetrics.privateBytes) - static_cast<long long>(startMetrics.privateBytes);
-    const long long deltaLive = static_cast<long long>(endMetrics.heapAllocated) - static_cast<long long>(startMetrics.heapAllocated);
-    const long long deltaCommit = static_cast<long long>(endMetrics.heapCommitted) - static_cast<long long>(startMetrics.heapCommitted);
-    const long long deltaSlack = static_cast<long long>(endMetrics.heapSlack) - static_cast<long long>(startMetrics.heapSlack);
+    if (telemetryEnabled) {
+        const auto endMetrics = MemoryTelemetry::getHeapMetrics();
+        const long long deltaPriv = static_cast<long long>(endMetrics.privateBytes) -
+                                    static_cast<long long>(startMetrics.privateBytes);
+        const long long deltaLive = static_cast<long long>(endMetrics.heapAllocated) -
+                                    static_cast<long long>(startMetrics.heapAllocated);
+        const long long deltaCommit = static_cast<long long>(endMetrics.heapCommitted) -
+                                      static_cast<long long>(startMetrics.heapCommitted);
+        const long long deltaSlack = static_cast<long long>(endMetrics.heapSlack) -
+                                     static_cast<long long>(startMetrics.heapSlack);
 
-    if (benchmarkMode) {
-        MemoryTelemetry::log("[Search Internal Breakdown across " + std::to_string(pages.size()) + " pages]\n" +
-                             "    1. poppler_document_get_page:      " + MemoryTelemetry::formatSignedMB(cumDeltaGetPage) + "\n" +
-                             "    2. poppler_page_find_text:        " + MemoryTelemetry::formatSignedMB(cumDeltaFindText) + "\n" +
-                             "    3. match extraction & g_list_free: " + MemoryTelemetry::formatSignedMB(cumDeltaExtractFreeMatches) + "\n" +
-                             "    4. g_object_unref(ephemeralPage):  " + MemoryTelemetry::formatSignedMB(cumDeltaUnrefPage) + "\n" +
-                             "    Net per-page stage sum:           " + MemoryTelemetry::formatSignedMB(cumDeltaGetPage + cumDeltaFindText + cumDeltaExtractFreeMatches + cumDeltaUnrefPage) + "\n" +
-                             "    Total Search Net Delta:           " + MemoryTelemetry::formatSignedMB(deltaPriv));
-    }
+        if (benchmarkMode) {
+            MemoryTelemetry::log(
+                "[Search Internal Breakdown across " + std::to_string(pages.size()) + " pages]\n" +
+                "    1. poppler_document_get_page:      " +
+                MemoryTelemetry::formatSignedMB(cumDeltaGetPage) + "\n" +
+                "    2. poppler_page_find_text:        " +
+                MemoryTelemetry::formatSignedMB(cumDeltaFindText) + "\n" +
+                "    3. match extraction & g_list_free: " +
+                MemoryTelemetry::formatSignedMB(cumDeltaExtractFreeMatches) + "\n" +
+                "    4. g_object_unref(ephemeralPage):  " +
+                MemoryTelemetry::formatSignedMB(cumDeltaUnrefPage) + "\n" +
+                "    Net per-page stage sum:           " +
+                MemoryTelemetry::formatSignedMB(cumDeltaGetPage + cumDeltaFindText +
+                                                cumDeltaExtractFreeMatches + cumDeltaUnrefPage) +
+                "\n" + "    Total Search Net Delta:           " +
+                MemoryTelemetry::formatSignedMB(deltaPriv));
+        }
 
-    MemoryTelemetry::log("[Search] === COMPLETED SEARCH === Query: \"" + query +
-                         "\" | Total Hits: " + std::to_string(results.size()) + "\n" +
-                         "    Priv:       " + MemoryTelemetry::formatMB(startMetrics.privateBytes) + " -> " +
-                         MemoryTelemetry::formatMB(endMetrics.privateBytes) + " (" + MemoryTelemetry::formatSignedMB(deltaPriv) + ")\n" +
-                         "    LiveAlloc:  " + MemoryTelemetry::formatMB(startMetrics.heapAllocated) + " -> " +
-                         MemoryTelemetry::formatMB(endMetrics.heapAllocated) + " (" + MemoryTelemetry::formatSignedMB(deltaLive) + ") [Active C++ objects]\n" +
-                         "    HeapCommit: " + MemoryTelemetry::formatMB(startMetrics.heapCommitted) + " -> " +
-                         MemoryTelemetry::formatMB(endMetrics.heapCommitted) + " (" + MemoryTelemetry::formatSignedMB(deltaCommit) + ")\n" +
-                         "    Slack:      " + MemoryTelemetry::formatMB(startMetrics.heapSlack) + " -> " +
-                         MemoryTelemetry::formatMB(endMetrics.heapSlack) + " (" + MemoryTelemetry::formatSignedMB(deltaSlack) + ") [LFH retention]\n" +
-                         "    WS:         " + MemoryTelemetry::formatMB(startMetrics.workingSet) + " -> " +
-                         MemoryTelemetry::formatMB(endMetrics.workingSet));
+        MemoryTelemetry::log(
+            "[Search] === COMPLETED SEARCH === Query: \"" + query +
+            "\" | Total Hits: " + std::to_string(results.size()) + "\n" +
+            "    Priv:       " + MemoryTelemetry::formatMB(startMetrics.privateBytes) + " -> " +
+            MemoryTelemetry::formatMB(endMetrics.privateBytes) + " (" +
+            MemoryTelemetry::formatSignedMB(deltaPriv) + ")\n" +
+            "    LiveAlloc:  " + MemoryTelemetry::formatMB(startMetrics.heapAllocated) + " -> " +
+            MemoryTelemetry::formatMB(endMetrics.heapAllocated) + " (" +
+            MemoryTelemetry::formatSignedMB(deltaLive) + ") [Active C++ objects]\n" +
+            "    HeapCommit: " + MemoryTelemetry::formatMB(startMetrics.heapCommitted) + " -> " +
+            MemoryTelemetry::formatMB(endMetrics.heapCommitted) + " (" +
+            MemoryTelemetry::formatSignedMB(deltaCommit) + ")\n" +
+            "    Slack:      " + MemoryTelemetry::formatMB(startMetrics.heapSlack) + " -> " +
+            MemoryTelemetry::formatMB(endMetrics.heapSlack) + " (" +
+            MemoryTelemetry::formatSignedMB(deltaSlack) + ") [LFH retention]\n" +
+            "    WS:         " + MemoryTelemetry::formatMB(startMetrics.workingSet) + " -> " +
+            MemoryTelemetry::formatMB(endMetrics.workingSet));
 
-    // Regression Guard: ephemeral page search must not cause unbounded Poppler page cache retention.
-    if (deltaPriv > 100 * 1024 * 1024) {
-        MemoryTelemetry::log("[REGRESSION WARNING] Search memory growth (" +
-                             MemoryTelemetry::formatSignedMB(deltaPriv) +
-                             ") exceeded the 100 MB ephemeral threshold!");
-    } else {
-        MemoryTelemetry::log("[Search Regression Guard PASS] Search memory delta (" +
-                             MemoryTelemetry::formatSignedMB(deltaPriv) +
-                             ") is well within the 100 MB limit.");
+        // Regression Guard: ephemeral page search must not cause unbounded Poppler page cache
+        // retention.
+        if (deltaPriv > 100 * 1024 * 1024) {
+            MemoryTelemetry::log("[REGRESSION WARNING] Search memory growth (" +
+                                 MemoryTelemetry::formatSignedMB(deltaPriv) +
+                                 ") exceeded the 100 MB ephemeral threshold!");
+        } else {
+            MemoryTelemetry::log("[Search Regression Guard PASS] Search memory delta (" +
+                                 MemoryTelemetry::formatSignedMB(deltaPriv) +
+                                 ") is well within the 100 MB limit.");
+        }
     }
 
     // Guarantee document-order ascending sort
@@ -214,8 +244,7 @@ std::vector<SearchHit> DocumentSearchService::searchSync(PopplerDocument* docume
     return results;
 }
 
-void DocumentSearchService::searchAsync(PopplerDocument* document,
-                                        const std::string& pdfPath,
+void DocumentSearchService::searchAsync(PopplerDocument* document, const std::string& pdfPath,
                                         const std::vector<SearchPageLayout>& pages,
                                         const std::string& query,
                                         std::function<void(std::vector<SearchHit>)> onComplete,
@@ -236,8 +265,8 @@ void DocumentSearchService::searchAsync(PopplerDocument* document,
 
     {
         std::lock_guard<std::mutex> lock(m_searchMutex);
-        m_pendingRequest =
-            SearchRequest{searchId, document, pdfPath, pages, query, std::move(onComplete), caseSensitive};
+        m_pendingRequest = SearchRequest{
+            searchId, document, pdfPath, pages, query, std::move(onComplete), caseSensitive};
     }
     m_searchCv.notify_one();
 }
@@ -294,22 +323,31 @@ void DocumentSearchService::workerLoop() {
 
             if (ephemeralDoc) {
                 targetDoc = ephemeralDoc;
-                MemoryTelemetry::log("[Search Mode: EPHEMERAL DOCUMENT] (FLUIDCORE_EPHEMERAL_SEARCH=" +
-                                     std::string(ephemEnv ? ephemEnv : "default") +
-                                     ") Opened throwaway PopplerDocument on worker thread.");
+                MemoryTelemetry::log(
+                    "[Search Mode: EPHEMERAL DOCUMENT] (FLUIDCORE_EPHEMERAL_SEARCH=" +
+                    std::string(ephemEnv ? ephemEnv : "default") +
+                    ") Opened throwaway PopplerDocument on worker thread.");
             } else {
-                MemoryTelemetry::log("[Search Mode: EPHEMERAL DOCUMENT] Fallback to persistent doc: could not open ephemeral doc (" +
+                MemoryTelemetry::log("[Search Mode: EPHEMERAL DOCUMENT] Fallback to persistent "
+                                     "doc: could not open ephemeral doc (" +
                                      (err ? std::string(err->message) : "unknown error") + ")");
-                if (err) g_error_free(err);
+                if (err)
+                    g_error_free(err);
             }
         } else {
-            MemoryTelemetry::log("[Search Mode: PERSISTENT DOCUMENT] Running search against GUI m_document.");
+            MemoryTelemetry::log(
+                "[Search Mode: PERSISTENT DOCUMENT] Running search against GUI m_document.");
         }
 
         auto hits = searchSync(targetDoc, req.pages, req.query, req.caseSensitive);
 
         if (ephemeralDoc) {
-            const auto mBefore = MemoryTelemetry::getHeapMetrics();
+            const bool telemetryAsync = (g_getenv("FLUIDCORE_SEARCH_BENCHMARK") != nullptr) ||
+                                        (g_getenv("FLUIDCORE_LOG_TELEMETRY") != nullptr);
+            MemoryTelemetry::ProcessHeapMetrics mBefore{};
+            if (telemetryAsync) {
+                mBefore = MemoryTelemetry::getHeapMetrics();
+            }
             {
                 std::lock_guard<std::mutex> lock(PdfDocumentService::globalPopplerMutex());
                 g_object_unref(ephemeralDoc);
@@ -320,21 +358,39 @@ void DocumentSearchService::workerLoop() {
 #ifdef _WIN32
             _heapmin();
 #endif
-            const auto mAfter = MemoryTelemetry::getHeapMetrics();
-            const long long deltaLive = static_cast<long long>(mAfter.heapAllocated) - static_cast<long long>(mBefore.heapAllocated);
-            const long long deltaCommit = static_cast<long long>(mAfter.heapCommitted) - static_cast<long long>(mBefore.heapCommitted);
-            const long long deltaSlack = static_cast<long long>(mAfter.heapSlack) - static_cast<long long>(mBefore.heapSlack);
-            const long long deltaPriv = static_cast<long long>(mAfter.privateBytes) - static_cast<long long>(mBefore.privateBytes);
+            if (telemetryAsync) {
+                const auto mAfter = MemoryTelemetry::getHeapMetrics();
+                const long long deltaLive = static_cast<long long>(mAfter.heapAllocated) -
+                                            static_cast<long long>(mBefore.heapAllocated);
+                const long long deltaCommit = static_cast<long long>(mAfter.heapCommitted) -
+                                              static_cast<long long>(mBefore.heapCommitted);
+                const long long deltaSlack = static_cast<long long>(mAfter.heapSlack) -
+                                             static_cast<long long>(mBefore.heapSlack);
+                const long long deltaPriv = static_cast<long long>(mAfter.privateBytes) -
+                                            static_cast<long long>(mBefore.privateBytes);
 
-            MemoryTelemetry::log("[Search Mode: EPHEMERAL DOCUMENT] Destroyed throwaway PopplerDocument & Purged Heap:\n"
-                                 "    LiveAlloc:  " + MemoryTelemetry::formatMB(mBefore.heapAllocated) + " -> " +
-                                 MemoryTelemetry::formatMB(mAfter.heapAllocated) + " (" + MemoryTelemetry::formatSignedMB(deltaLive) + ") [Document C++ objects freed]\n"
-                                 "    HeapCommit: " + MemoryTelemetry::formatMB(mBefore.heapCommitted) + " -> " +
-                                 MemoryTelemetry::formatMB(mAfter.heapCommitted) + " (" + MemoryTelemetry::formatSignedMB(deltaCommit) + ")\n"
-                                 "    Slack:      " + MemoryTelemetry::formatMB(mBefore.heapSlack) + " -> " +
-                                 MemoryTelemetry::formatMB(mAfter.heapSlack) + " (" + MemoryTelemetry::formatSignedMB(deltaSlack) + ") [LFH retention]\n"
-                                 "    Priv:       " + MemoryTelemetry::formatMB(mBefore.privateBytes) + " -> " +
-                                 MemoryTelemetry::formatMB(mAfter.privateBytes) + " (" + MemoryTelemetry::formatSignedMB(deltaPriv) + ")");
+                MemoryTelemetry::log("[Search Mode: EPHEMERAL DOCUMENT] Destroyed throwaway "
+                                     "PopplerDocument & Purged Heap:\n"
+                                     "    LiveAlloc:  " +
+                                     MemoryTelemetry::formatMB(mBefore.heapAllocated) + " -> " +
+                                     MemoryTelemetry::formatMB(mAfter.heapAllocated) + " (" +
+                                     MemoryTelemetry::formatSignedMB(deltaLive) +
+                                     ") [Document C++ objects freed]\n"
+                                     "    HeapCommit: " +
+                                     MemoryTelemetry::formatMB(mBefore.heapCommitted) + " -> " +
+                                     MemoryTelemetry::formatMB(mAfter.heapCommitted) + " (" +
+                                     MemoryTelemetry::formatSignedMB(deltaCommit) +
+                                     ")\n"
+                                     "    Slack:      " +
+                                     MemoryTelemetry::formatMB(mBefore.heapSlack) + " -> " +
+                                     MemoryTelemetry::formatMB(mAfter.heapSlack) + " (" +
+                                     MemoryTelemetry::formatSignedMB(deltaSlack) +
+                                     ") [LFH retention]\n"
+                                     "    Priv:       " +
+                                     MemoryTelemetry::formatMB(mBefore.privateBytes) + " -> " +
+                                     MemoryTelemetry::formatMB(mAfter.privateBytes) + " (" +
+                                     MemoryTelemetry::formatSignedMB(deltaPriv) + ")");
+            }
         }
 
         if (!m_cancelRequested && req.searchId == m_currentSearchId && req.onComplete &&

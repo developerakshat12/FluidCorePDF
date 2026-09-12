@@ -3,6 +3,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstddef>
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -132,6 +133,27 @@ public:
         return sign + formatMB(absD);
     }
 
+    static std::string getTelemetryLogPath() {
+        const char* customPath = std::getenv("FLUIDCORE_LOG_PATH");
+        if (customPath && customPath[0] != '\0') {
+            return customPath;
+        }
+        std::error_code ec;
+        if (std::filesystem::is_directory("debug/logs", ec)) {
+            return "debug/logs/fluidcore_telemetry.log";
+        }
+        if (std::filesystem::is_directory("../debug/logs", ec)) {
+            return "../debug/logs/fluidcore_telemetry.log";
+        }
+        if (std::filesystem::is_directory("debug", ec)) {
+            return "debug/fluidcore_telemetry.log";
+        }
+        if (std::filesystem::is_directory("../debug", ec)) {
+            return "../debug/fluidcore_telemetry.log";
+        }
+        return "fluidcore_telemetry.log";
+    }
+
     static void log(const std::string& message) {
         static std::mutex s_logMutex;
         std::lock_guard<std::mutex> lock(s_logMutex);
@@ -148,7 +170,25 @@ public:
         std::strftime(timeStr, sizeof(timeStr), "%H:%M:%S", &tmBuf);
 
         std::string formatted = std::string("[") + timeStr + "] " + message;
-        std::cout << formatted << std::endl;
+
+        static const bool s_consoleEnabled = []() {
+            const char* envLog = std::getenv("FLUIDCORE_LOG_TELEMETRY");
+            const char* envTel = std::getenv("FLUIDCORE_TELEMETRY");
+            const char* envVerb = std::getenv("FLUIDCORE_VERBOSE_TELEMETRY");
+            const char* envBench = std::getenv("FLUIDCORE_SEARCH_BENCHMARK");
+#ifndef NDEBUG
+            return true;
+#else
+            return (envLog && std::string(envLog) != "0") ||
+                   (envTel && std::string(envTel) != "0") ||
+                   (envVerb && std::string(envVerb) != "0") ||
+                   (envBench && std::string(envBench) != "0");
+#endif
+        }();
+
+        if (s_consoleEnabled) {
+            std::cout << formatted << std::endl;
+        }
 
         // Append to dedicated telemetry log file when FLUIDCORE_LOG_TELEMETRY or FLUIDCORE_TELEMETRY is enabled
         static const bool s_fileLogEnabled = []() {
@@ -159,7 +199,9 @@ public:
         }();
 
         if (s_fileLogEnabled) {
-            static std::ofstream s_fileLog("D:/FluidCorePDF/fluidcore_telemetry.log", std::ios::app);
+            static std::ofstream s_fileLog = []() {
+                return std::ofstream(getTelemetryLogPath(), std::ios::app);
+            }();
             if (s_fileLog.is_open()) {
                 s_fileLog << formatted << std::endl;
                 s_fileLog.flush();

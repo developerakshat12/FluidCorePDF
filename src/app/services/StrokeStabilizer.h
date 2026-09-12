@@ -90,8 +90,9 @@ class StrokeStabilizer {
     double m_drag = 0.45;
 
     // Adaptive deadzone config
-    double m_deadzoneRadiusBase = 0.75; // pixels
+    double m_deadzoneRadiusBase = 0.40; // pixels
     double m_velocityThreshold = 1.5;   // pixels/ms
+    Point2D m_prevDirection{0.0, 0.0};
 };
 
 } // namespace FluidCoreApp

@@ -20,8 +20,24 @@ struct StrokeClipBounds {
     bool valid = false;
 };
 
+// Evaluates a cubic Bézier curve at parameter t in [0, 1].
+inline StrokeStabilizer::Point2D evalCubicBezier(const StrokeStabilizer::Point2D& b0,
+                                                 const StrokeStabilizer::Point2D& b1,
+                                                 const StrokeStabilizer::Point2D& b2,
+                                                 const StrokeStabilizer::Point2D& b3, double t) {
+    const double u = 1.0 - t;
+    const double tt = t * t;
+    const double uu = u * u;
+    const double uuu = uu * u;
+    const double ttt = tt * t;
+
+    return {uuu * b0.x + 3.0 * uu * t * b1.x + 3.0 * u * tt * b2.x + ttt * b3.x,
+            uuu * b0.y + 3.0 * uu * t * b1.y + 3.0 * u * tt * b2.y + ttt * b3.y};
+}
+
 // Computes the safety padding: (strokeWidth * 0.5) + antialiasMargin.
-// Default antialiasMargin = 4.0 ensures Bézier smoothing, round caps, and edge AA are fully enclosed.
+// Default antialiasMargin = 4.0 ensures Bézier smoothing, round caps, and edge AA are fully
+// enclosed.
 inline double calculateStrokePadding(double strokeWidth, double antialiasMargin = 4.0) {
     return (std::max(0.5, strokeWidth) * 0.5) + antialiasMargin;
 }
@@ -30,13 +46,7 @@ inline double calculateStrokePadding(double strokeWidth, double antialiasMargin 
 inline StrokeClipBounds expandBounds(double minX, double minY, double maxX, double maxY,
                                      double strokeWidth, double antialiasMargin = 4.0) {
     const double pad = calculateStrokePadding(strokeWidth, antialiasMargin);
-    return {
-        minX - pad,
-        minY - pad,
-        (maxX - minX) + 2.0 * pad,
-        (maxY - minY) + 2.0 * pad,
-        true
-    };
+    return {minX - pad, minY - pad, (maxX - minX) + 2.0 * pad, (maxY - minY) + 2.0 * pad, true};
 }
 
 // Computes bounding box for a completed Stroke in its local coordinate system.
@@ -51,21 +61,23 @@ inline StrokeClipBounds computeStrokeClipBounds(const FluidCore::Stroke& stroke,
     double maxY = std::numeric_limits<double>::lowest();
 
     for (const auto& pt : stroke.points) {
-        if (pt.x < minX) minX = pt.x;
-        if (pt.x > maxX) maxX = pt.x;
-        if (pt.y < minY) minY = pt.y;
-        if (pt.y > maxY) maxY = pt.y;
+        if (pt.x < minX)
+            minX = pt.x;
+        if (pt.x > maxX)
+            maxX = pt.x;
+        if (pt.y < minY)
+            minY = pt.y;
+        if (pt.y > maxY)
+            maxY = pt.y;
     }
     return expandBounds(minX, minY, maxX, maxY, stroke.width, antialiasMargin);
 }
 
 // Computes bounding box for an active wet stroke (samples + optional wet tip point).
-inline StrokeClipBounds computeWetStrokeClipBounds(
-    const std::vector<StrokeStabilizer::StabilizedSample>& samples,
-    bool hasWetTip,
-    const StrokeStabilizer::Point2D& wetTip,
-    double strokeWidth,
-    double antialiasMargin = 4.0) {
+inline StrokeClipBounds
+computeWetStrokeClipBounds(const std::vector<StrokeStabilizer::StabilizedSample>& samples,
+                           bool hasWetTip, const StrokeStabilizer::Point2D& wetTip,
+                           double strokeWidth, double antialiasMargin = 4.0) {
 
     if (samples.empty() && !hasWetTip) {
         return {0.0, 0.0, 0.0, 0.0, false};
@@ -78,17 +90,25 @@ inline StrokeClipBounds computeWetStrokeClipBounds(
 
     for (const auto& s : samples) {
         hasAnyPoint = true;
-        if (s.point.x < minX) minX = s.point.x;
-        if (s.point.x > maxX) maxX = s.point.x;
-        if (s.point.y < minY) minY = s.point.y;
-        if (s.point.y > maxY) maxY = s.point.y;
+        if (s.point.x < minX)
+            minX = s.point.x;
+        if (s.point.x > maxX)
+            maxX = s.point.x;
+        if (s.point.y < minY)
+            minY = s.point.y;
+        if (s.point.y > maxY)
+            maxY = s.point.y;
     }
     if (hasWetTip) {
         hasAnyPoint = true;
-        if (wetTip.x < minX) minX = wetTip.x;
-        if (wetTip.x > maxX) maxX = wetTip.x;
-        if (wetTip.y < minY) minY = wetTip.y;
-        if (wetTip.y > maxY) maxY = wetTip.y;
+        if (wetTip.x < minX)
+            minX = wetTip.x;
+        if (wetTip.x > maxX)
+            maxX = wetTip.x;
+        if (wetTip.y < minY)
+            minY = wetTip.y;
+        if (wetTip.y > maxY)
+            maxY = wetTip.y;
     }
 
     if (!hasAnyPoint) {

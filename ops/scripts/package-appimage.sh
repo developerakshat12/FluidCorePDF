@@ -17,7 +17,7 @@ cd "${PROJECT_ROOT}"
 
 BUILD_DIR="${PROJECT_ROOT}/build-linux"
 OUTPUT_DIR=""
-VERSION="1.0.2"
+VERSION="1.1.3"
 APPDIR_ONLY=false
 
 while [[ $# -gt 0 ]]; do

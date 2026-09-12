@@ -32,6 +32,44 @@ std::size_t MoveNodeCommand::estimatedSizeBytes() const {
     return sizeof(*this) + m_nodeId.capacity();
 }
 
+// --- ResizeNodeCommand ---
+
+ResizeNodeCommand::ResizeNodeCommand(WorkspaceModel& model, std::string nodeId, Rectangle oldBounds,
+                                     Rectangle newBounds)
+    : m_model(model), m_nodeId(std::move(nodeId)), m_oldBounds(oldBounds), m_newBounds(newBounds) {}
+
+bool ResizeNodeCommand::execute() {
+    auto* node = m_model.findRecursive(m_nodeId);
+    if (!node)
+        return false;
+    if (auto* excerpt = dynamic_cast<ExcerptCardNode*>(node)) {
+        excerpt->setBounds(m_newBounds);
+        m_model.updateBounds(m_nodeId);
+        return true;
+    }
+    return false;
+}
+
+bool ResizeNodeCommand::undo() {
+    auto* node = m_model.findRecursive(m_nodeId);
+    if (!node)
+        return false;
+    if (auto* excerpt = dynamic_cast<ExcerptCardNode*>(node)) {
+        excerpt->setBounds(m_oldBounds);
+        m_model.updateBounds(m_nodeId);
+        return true;
+    }
+    return false;
+}
+
+bool ResizeNodeCommand::redo() {
+    return execute();
+}
+
+std::size_t ResizeNodeCommand::estimatedSizeBytes() const {
+    return sizeof(*this) + m_nodeId.capacity();
+}
+
 // --- InsertNodeCommand ---
 
 InsertNodeCommand::InsertNodeCommand(WorkspaceModel& model, std::unique_ptr<WorkspaceNode> node)

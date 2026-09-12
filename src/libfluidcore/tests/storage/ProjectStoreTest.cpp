@@ -459,6 +459,100 @@ void testUnrecognizedNodeTypeSafety() {
     std::cout << "  Passed!\n";
 }
 
+void testLastViewedPagePersistenceAndMigration() {
+    std::cout << "[ProjectStoreTest] testLastViewedPagePersistenceAndMigration...\n";
+    const std::string testDir = "build/test_last_viewed_page.ltproj";
+    std::error_code ec;
+    std::filesystem::remove_all(testDir, ec);
+
+    // 1. Test normal persistence with lastViewedPage
+    {
+        ProjectStore store("proj-page-test");
+        std::string err;
+        assert(store.openProject(testDir, &err));
+
+        DocumentRecord doc{
+            "doc-page-1", "Manual.pdf", "documents/Manual.pdf", "hash123", 100, 50000, 1000, 42};
+        assert(store.registerDocument(doc, &err));
+
+        auto fetched = store.getDocument("doc-page-1");
+        assert(fetched.has_value());
+        assert(fetched->lastViewedPage == 42);
+
+        // Update to another page
+        doc.lastViewedPage = 85;
+        assert(store.registerDocument(doc, &err));
+
+        auto fetchedUpdated = store.getDocument("doc-page-1");
+        assert(fetchedUpdated.has_value());
+        assert(fetchedUpdated->lastViewedPage == 85);
+
+        store.closeProject();
+    }
+
+    std::filesystem::remove_all(testDir, ec);
+
+    // 2. Test legacy migration: database created without last_viewed_page column
+    {
+        std::filesystem::create_directories(testDir);
+        sqlite3* db = nullptr;
+        assert(sqlite3_open((testDir + "/project.db").c_str(), &db) == SQLITE_OK);
+
+        // Create legacy schema without last_viewed_page
+        const char* legacyDDL =
+            "CREATE TABLE project_metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);"
+            "INSERT INTO project_metadata (key, value) VALUES ('project_id', 'legacy-proj'), "
+            "('schema_version', '1');"
+            "CREATE TABLE documents ("
+            "    doc_id TEXT PRIMARY KEY,"
+            "    filename TEXT NOT NULL,"
+            "    relative_path TEXT NOT NULL,"
+            "    sha256 TEXT NOT NULL,"
+            "    page_count INTEGER NOT NULL,"
+            "    file_size_bytes INTEGER NOT NULL,"
+            "    imported_at INTEGER NOT NULL,"
+            "    custom_metadata TEXT"
+            ");"
+            "INSERT INTO documents VALUES ('legacy-doc', 'Old.pdf', 'documents/Old.pdf', 'h00', "
+            "50, 10000, 1000, NULL);";
+
+        char* sqlErr = nullptr;
+        assert(sqlite3_exec(db, legacyDDL, nullptr, nullptr, &sqlErr) == SQLITE_OK);
+        sqlite3_close(db);
+
+        // Open legacy project with ProjectStore (triggering migration)
+        ProjectStore store;
+        std::string err;
+        assert(store.openProject(testDir, &err));
+
+        // Verify legacy document was loaded with default lastViewedPage = 0
+        auto doc = store.getDocument("legacy-doc");
+        assert(doc.has_value());
+        assert(doc->lastViewedPage == 0);
+
+        // Update document with non-zero page
+        doc->lastViewedPage = 19;
+        assert(store.registerDocument(*doc, &err));
+
+        auto docAfter = store.getDocument("legacy-doc");
+        assert(docAfter.has_value());
+        assert(docAfter->lastViewedPage == 19);
+
+        store.closeProject();
+
+        // Reopen project again to verify idempotency (no duplicate column error)
+        ProjectStore storeReopen;
+        assert(storeReopen.openProject(testDir, &err));
+        auto docReopen = storeReopen.getDocument("legacy-doc");
+        assert(docReopen.has_value());
+        assert(docReopen->lastViewedPage == 19);
+        storeReopen.closeProject();
+    }
+
+    std::filesystem::remove_all(testDir, ec);
+    std::cout << "  Passed!\n";
+}
+
 } // namespace
 
 int main() {
@@ -468,6 +562,7 @@ int main() {
     testNodeAndGraphRehydration();
     testIncrementalSavesAndPruning();
     testUnrecognizedNodeTypeSafety();
+    testLastViewedPagePersistenceAndMigration();
     std::cout << "All ProjectStoreTest cases passed successfully!\n" << std::flush;
     return 0;
 }

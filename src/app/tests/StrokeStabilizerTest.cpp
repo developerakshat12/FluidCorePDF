@@ -183,8 +183,10 @@ void testStrokeBoundsHelper() {
     expect(b.valid, "Stroke bounds must be valid");
     expect(std::abs(b.x - 91.0) < 1e-4, "b.x must be minX - pad (100 - 9 = 91)");
     expect(std::abs(b.y - 91.0) < 1e-4, "b.y must be minY - pad (100 - 9 = 91)");
-    expect(std::abs(b.width - 118.0) < 1e-4, "b.width must be (maxX - minX) + 2*pad (100 + 18 = 118)");
-    expect(std::abs(b.height - 68.0) < 1e-4, "b.height must be (maxY - minY) + 2*pad (50 + 18 = 68)");
+    expect(std::abs(b.width - 118.0) < 1e-4,
+           "b.width must be (maxX - minX) + 2*pad (100 + 18 = 118)");
+    expect(std::abs(b.height - 68.0) < 1e-4,
+           "b.height must be (maxY - minY) + 2*pad (50 + 18 = 68)");
 
     // 3. Active wet stroke with samples and wet tip
     std::vector<StrokeStabilizer::StabilizedSample> samples;
@@ -198,8 +200,10 @@ void testStrokeBoundsHelper() {
     // minY = 50, maxY = 70 -> y = 46, height = 28
     expect(wetBounds.valid, "Wet bounds must be valid");
     expect(std::abs(wetBounds.x - 46.0) < 1e-4, "wetBounds.x must encompass minX");
-    expect(std::abs((wetBounds.x + wetBounds.width) - 154.0) < 1e-4, "wetBounds must encompass wetTip.x");
-    expect(std::abs((wetBounds.y + wetBounds.height) - 74.0) < 1e-4, "wetBounds must encompass wetTip.y");
+    expect(std::abs((wetBounds.x + wetBounds.width) - 154.0) < 1e-4,
+           "wetBounds must encompass wetTip.x");
+    expect(std::abs((wetBounds.y + wetBounds.height) - 74.0) < 1e-4,
+           "wetBounds must encompass wetTip.y");
 
     std::cout << "[PASS] testStrokeBoundsHelper (padding & wetTip inclusion verified)\n";
 }
@@ -215,7 +219,8 @@ void testCairoPushGroupBoundedExtents() {
     cairo_surface_t* unclippedGroup = cairo_get_group_target(cr);
     int unclippedW = cairo_image_surface_get_width(unclippedGroup);
     int unclippedH = cairo_image_surface_get_height(unclippedGroup);
-    expect(unclippedW == 1920 && unclippedH == 1080, "Unclipped group surface matches full window size (8.3 MB)");
+    expect(unclippedW == 1920 && unclippedH == 1080,
+           "Unclipped group surface matches full window size (8.3 MB)");
     cairo_pop_group(cr);
 
     // Case B: Bounded clip to 300x100 rectangle creates strictly 300x100 group surface (~120 KB)
@@ -227,7 +232,8 @@ void testCairoPushGroupBoundedExtents() {
     cairo_surface_t* clippedGroup = cairo_get_group_target(cr);
     int clippedW = cairo_image_surface_get_width(clippedGroup);
     int clippedH = cairo_image_surface_get_height(clippedGroup);
-    expect(clippedW == 300 && clippedH == 100, "Bounded group surface is strictly constrained to 300x100 (120 KB)");
+    expect(clippedW == 300 && clippedH == 100,
+           "Bounded group surface is strictly constrained to 300x100 (120 KB)");
 
     // Draw something into the group
     cairo_set_source_rgb(cr, 1.0, 1.0, 0.0);
@@ -246,18 +252,21 @@ void testCairoPushGroupBoundedExtents() {
     // Verify clip was restored on cr: extents should again cover the full window
     double x1, y1, x2, y2;
     cairo_clip_extents(cr, &x1, &y1, &x2, &y2);
-    expect(x1 <= 0.0 && y1 <= 0.0 && x2 >= 1920.0 && y2 >= 1080.0, "Context clip restored cleanly to full window");
+    expect(x1 <= 0.0 && y1 <= 0.0 && x2 >= 1920.0 && y2 >= 1080.0,
+           "Context clip restored cleanly to full window");
 
     // Case C: Scaled context (zoom = 2.0x)
     cairo_save(cr);
     cairo_scale(cr, 2.0, 2.0);
-    cairo_rectangle(cr, 50.0, 50.0, 100.0, 50.0); // 100x50 in user coords -> 200x100 in device coords
+    cairo_rectangle(cr, 50.0, 50.0, 100.0,
+                    50.0); // 100x50 in user coords -> 200x100 in device coords
     cairo_clip(cr);
     cairo_push_group(cr);
     cairo_surface_t* scaledGroup = cairo_get_group_target(cr);
     int scaledW = cairo_image_surface_get_width(scaledGroup);
     int scaledH = cairo_image_surface_get_height(scaledGroup);
-    expect(scaledW == 200 && scaledH == 100, "Scaled group surface matches device-space clip extents (200x100)");
+    expect(scaledW == 200 && scaledH == 100,
+           "Scaled group surface matches device-space clip extents (200x100)");
     cairo_pop_group(cr);
     cairo_restore(cr);
 
@@ -269,8 +278,10 @@ void testCairoPushGroupBoundedExtents() {
     cairo_surface_t* edgeGroup = cairo_get_group_target(cr);
     int edgeW = cairo_image_surface_get_width(edgeGroup);
     int edgeH = cairo_image_surface_get_height(edgeGroup);
-    // Cairo automatically clamps group surface allocation to the valid intersection with the target device extents!
-    expect(edgeW <= 200 && edgeH == 80, "Edge-crossing stroke clamps group to visible window without clipping error");
+    // Cairo automatically clamps group surface allocation to the valid intersection with the target
+    // device extents!
+    expect(edgeW <= 200 && edgeH == 80,
+           "Edge-crossing stroke clamps group to visible window without clipping error");
     cairo_set_source_rgb(cr, 1.0, 0.5, 0.0);
     cairo_set_line_width(cr, 12.0);
     cairo_move_to(cr, -40.0, 140.0);
@@ -292,7 +303,8 @@ void testCairoPushGroupBoundedExtents() {
     expect(std::abs(thickB.x - (300.0 - 19.0)) < 1e-4, "Thick stroke padded minX");
     expect(std::abs(thickB.y - (300.0 - 19.0)) < 1e-4, "Thick stroke padded minY");
     expect(std::abs(thickB.width - (300.0 + 38.0)) < 1e-4, "Thick stroke width covers round caps");
-    expect(std::abs(thickB.height - (100.0 + 38.0)) < 1e-4, "Thick stroke height covers round caps");
+    expect(std::abs(thickB.height - (100.0 + 38.0)) < 1e-4,
+           "Thick stroke height covers round caps");
     cairo_rectangle(cr, thickB.x, thickB.y, thickB.width, thickB.height);
     cairo_clip(cr);
     cairo_push_group(cr);
@@ -314,12 +326,14 @@ void testCairoPushGroupBoundedExtents() {
     cairo_paint(cr);
     cairo_pop_group_to_source(cr);
     cairo_paint_with_alpha(cr, 0.45);
-    expect(cairo_status(cr) == CAIRO_STATUS_SUCCESS, "Completely offscreen stroke produces no error");
+    expect(cairo_status(cr) == CAIRO_STATUS_SUCCESS,
+           "Completely offscreen stroke produces no error");
     cairo_restore(cr);
 
     cairo_destroy(cr);
     cairo_surface_destroy(windowSurface);
-    std::cout << "[PASS] testCairoPushGroupBoundedExtents (verified device-space group allocation & edge cases)\n";
+    std::cout << "[PASS] testCairoPushGroupBoundedExtents (verified device-space group allocation "
+                 "& edge cases)\n";
 }
 
 int main() {

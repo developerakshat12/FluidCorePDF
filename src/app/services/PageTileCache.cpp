@@ -1,6 +1,6 @@
 #include "PageTileCache.h"
+#include "MemoryTelemetry.h"
 #include "services/PdfDocumentService.h"
-#include "services/MemoryTelemetry.h"
 
 #include <algorithm>
 #include <cmath>
@@ -157,22 +157,25 @@ CairoSurfaceHandle PageTileCache::renderPage(std::size_t pageIndex, PopplerPage*
         const std::size_t afterDestroyPriv = MemoryTelemetry::getProcessPrivateBytes();
 
         // Insert a 1x1 placeholder (4 bytes) so PageTileCache registers the page as visited
-        // without keeping megabytes of pixel data, preventing repeated rendering on passive redraws.
+        // without keeping megabytes of pixel data, preventing repeated rendering on passive
+        // redraws.
         cairo_surface_t* dummySurface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1, 1);
         CairoSurfaceHandle dummyHandle(dummySurface, /*takeOwnership=*/true);
         insert(pageIndex, dummyHandle);
 
         const std::size_t afterInsertPriv = MemoryTelemetry::getProcessPrivateBytes();
 
-        const std::string tag = isFirstTime ? "[Page Render First-Time (NULL-SINK)]" : "[Page Render Re-Render (NULL-SINK)]";
-        MemoryTelemetry::log(tag + " Page " + std::to_string(pageIndex) +
-                             " (" + std::to_string(width) + "x" + std::to_string(height) + ")" +
-                             " | Poppler Render Delta: " + formatDelta(afterRenderPriv, beforeRenderPriv) +
-                             " | Surface Destroy Delta: " + formatDelta(afterDestroyPriv, afterRenderPriv) +
-                             " | Total Page Delta: " + formatDelta(afterInsertPriv, beforeAllocPriv) +
-                             " | Current Private: " + MemoryTelemetry::formatMB(afterInsertPriv) +
-                             " | Cache: " + std::to_string(m_lruList.size()) + "/" + std::to_string(m_maxPages) +
-                             " (" + MemoryTelemetry::formatMB(m_currentBytes) + ")");
+        const std::string tag = isFirstTime ? "[Page Render First-Time (NULL-SINK)]"
+                                            : "[Page Render Re-Render (NULL-SINK)]";
+        MemoryTelemetry::log(
+            tag + " Page " + std::to_string(pageIndex) + " (" + std::to_string(width) + "x" +
+            std::to_string(height) + ")" +
+            " | Poppler Render Delta: " + formatDelta(afterRenderPriv, beforeRenderPriv) +
+            " | Surface Destroy Delta: " + formatDelta(afterDestroyPriv, afterRenderPriv) +
+            " | Total Page Delta: " + formatDelta(afterInsertPriv, beforeAllocPriv) +
+            " | Current Private: " + MemoryTelemetry::formatMB(afterInsertPriv) +
+            " | Cache: " + std::to_string(m_lruList.size()) + "/" + std::to_string(m_maxPages) +
+            " (" + MemoryTelemetry::formatMB(m_currentBytes) + ")");
 
         return dummyHandle;
     }
@@ -183,14 +186,15 @@ CairoSurfaceHandle PageTileCache::renderPage(std::size_t pageIndex, PopplerPage*
     const std::size_t afterInsertPriv = MemoryTelemetry::getProcessPrivateBytes();
 
     const std::string tag = isFirstTime ? "[Page Render First-Time]" : "[Page Render Re-Render]";
-    MemoryTelemetry::log(tag + " Page " + std::to_string(pageIndex) +
-                         " (" + std::to_string(width) + "x" + std::to_string(height) + ")" +
-                         " | Poppler Render Delta: " + formatDelta(afterRenderPriv, beforeRenderPriv) +
-                         " | Cache Insert Delta: " + formatDelta(afterInsertPriv, afterRenderPriv) +
-                         " | Total Page Delta: " + formatDelta(afterInsertPriv, beforeAllocPriv) +
-                         " | Current Private: " + MemoryTelemetry::formatMB(afterInsertPriv) +
-                         " | Cache: " + std::to_string(m_lruList.size()) + "/" + std::to_string(m_maxPages) +
-                         " (" + MemoryTelemetry::formatMB(m_currentBytes) + ")");
+    MemoryTelemetry::log(
+        tag + " Page " + std::to_string(pageIndex) + " (" + std::to_string(width) + "x" +
+        std::to_string(height) + ")" +
+        " | Poppler Render Delta: " + formatDelta(afterRenderPriv, beforeRenderPriv) +
+        " | Cache Insert Delta: " + formatDelta(afterInsertPriv, afterRenderPriv) +
+        " | Total Page Delta: " + formatDelta(afterInsertPriv, beforeAllocPriv) +
+        " | Current Private: " + MemoryTelemetry::formatMB(afterInsertPriv) +
+        " | Cache: " + std::to_string(m_lruList.size()) + "/" + std::to_string(m_maxPages) + " (" +
+        MemoryTelemetry::formatMB(m_currentBytes) + ")");
 
     return handle;
 }
@@ -244,13 +248,8 @@ PageTileCache::PageTileCacheStats PageTileCache::getStats() const {
         if (node.pinned) {
             stats.pinnedPages.push_back(node.pageIndex);
         }
-        stats.surfaces.push_back(TileSurfaceInfo{
-            node.pageIndex,
-            node.surface.width(),
-            node.surface.height(),
-            node.bytes,
-            node.pinned
-        });
+        stats.surfaces.push_back(TileSurfaceInfo{node.pageIndex, node.surface.width(),
+                                                 node.surface.height(), node.bytes, node.pinned});
     }
     return stats;
 }
@@ -259,22 +258,24 @@ void PageTileCache::dumpStats(const std::string& tag) const {
     auto stats = getStats();
     std::string residentStr = "[";
     for (std::size_t i = 0; i < stats.residentPages.size(); ++i) {
-        if (i > 0) residentStr += ", ";
+        if (i > 0)
+            residentStr += ", ";
         residentStr += std::to_string(stats.residentPages[i]);
     }
     residentStr += "]";
 
     std::string pinnedStr = "[";
     for (std::size_t i = 0; i < stats.pinnedPages.size(); ++i) {
-        if (i > 0) pinnedStr += ", ";
+        if (i > 0)
+            pinnedStr += ", ";
         pinnedStr += std::to_string(stats.pinnedPages[i]);
     }
     pinnedStr += "]";
 
-    MemoryTelemetry::log("[PageTileCache] === " + tag + " === " +
-                         "Entries: " + std::to_string(stats.entryCount) + "/" + std::to_string(stats.maxPages) +
-                         " | Bytes: " + MemoryTelemetry::formatMB(stats.currentBytes) + "/" + MemoryTelemetry::formatMB(stats.maxBytes) +
-                         " | Resident: " + residentStr +
+    MemoryTelemetry::log("[PageTileCache] === " + tag + " === " + "Entries: " +
+                         std::to_string(stats.entryCount) + "/" + std::to_string(stats.maxPages) +
+                         " | Bytes: " + MemoryTelemetry::formatMB(stats.currentBytes) + "/" +
+                         MemoryTelemetry::formatMB(stats.maxBytes) + " | Resident: " + residentStr +
                          " | Pinned: " + pinnedStr);
 }
 

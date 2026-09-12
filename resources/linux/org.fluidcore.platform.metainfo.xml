@@ -38,6 +38,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="1.1.3" date="2026-09-12">
+      <description>
+        <p>FluidCore v1.1.3 feature and stability release. Adds interactive excerpt card resizing with locked aspect ratio for visual crops and undo/redo support, Catmull-Rom Bézier spline smoothing for canvas pen inking, highlighter layer stacking beneath pen strokes, persistent PDF reading position across project saves, and comprehensive memory leak and worker lifecycle fixes.</p>
+      </description>
+    </release>
     <release version="1.0.2" date="2026-09-07">
       <description>
         <p>FluidCore v1.0.2 maintenance and UI release featuring custom weights and colors for pen and highlighter with interactive popovers and keyboard shortcuts, and offscreen group compositing for silky-smooth translucent highlighter rendering.</p>

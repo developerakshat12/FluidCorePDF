@@ -11,7 +11,7 @@
 #include <cstring>
 #include <set>
 #include <poppler.h>
-#include "services/MemoryTelemetry.h"
+#include "MemoryTelemetry.h"
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN

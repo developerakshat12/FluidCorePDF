@@ -306,7 +306,8 @@ bool ProjectStore::initSchema(std::string* error) {
             file_sha256 TEXT NOT NULL,
             page_count INTEGER NOT NULL,
             file_size_bytes INTEGER NOT NULL,
-            created_at INTEGER NOT NULL
+            created_at INTEGER NOT NULL,
+            last_viewed_page INTEGER NOT NULL DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS workspace_nodes (
@@ -418,6 +419,25 @@ bool ProjectStore::initSchema(std::string* error) {
     // Additive schema migration: ensure pressures_blob exists on pre-existing databases
     sqlite3_exec(m_db, "ALTER TABLE ink_strokes ADD COLUMN pressures_blob BLOB DEFAULT NULL;",
                  nullptr, nullptr, nullptr);
+
+    // Additive schema migration: ensure last_viewed_page exists on pre-existing documents table
+    bool hasLastViewedCol = false;
+    SqliteStatement pragmaDocs(m_db, "PRAGMA table_info(documents);");
+    if (pragmaDocs.isValid()) {
+        while (pragmaDocs.step()) {
+            const char* colName =
+                reinterpret_cast<const char*>(sqlite3_column_text(pragmaDocs.get(), 1));
+            if (colName && std::string(colName) == "last_viewed_page") {
+                hasLastViewedCol = true;
+                break;
+            }
+        }
+    }
+    if (!hasLastViewedCol) {
+        sqlite3_exec(
+            m_db, "ALTER TABLE documents ADD COLUMN last_viewed_page INTEGER NOT NULL DEFAULT 0;",
+            nullptr, nullptr, nullptr);
+    }
 
     return true;
 }
@@ -590,14 +610,15 @@ bool ProjectStore::registerDocument(const DocumentRecord& doc, std::string* erro
 
     SqliteStatement stmt(m_db,
                          "INSERT INTO documents (doc_id, project_id, filename, file_path_relative, "
-                         "file_sha256, page_count, file_size_bytes, created_at) "
-                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+                         "file_sha256, page_count, file_size_bytes, created_at, last_viewed_page) "
+                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
                          "ON CONFLICT(doc_id) DO UPDATE SET "
                          "filename = excluded.filename, "
                          "file_path_relative = excluded.file_path_relative, "
                          "file_sha256 = excluded.file_sha256, "
                          "page_count = excluded.page_count, "
-                         "file_size_bytes = excluded.file_size_bytes;");
+                         "file_size_bytes = excluded.file_size_bytes, "
+                         "last_viewed_page = excluded.last_viewed_page;");
 
     if (!stmt.isValid()) {
         if (error)
@@ -616,6 +637,7 @@ bool ProjectStore::registerDocument(const DocumentRecord& doc, std::string* erro
     sqlite3_bind_int64(
         stmt.get(), 8,
         static_cast<sqlite3_int64>(doc.createdAt ? doc.createdAt : currentTimestampMs()));
+    sqlite3_bind_int64(stmt.get(), 9, static_cast<sqlite3_int64>(doc.lastViewedPage));
 
     int rc = stmt.execute();
     if (rc != SQLITE_DONE) {
@@ -664,9 +686,9 @@ std::vector<DocumentRecord> ProjectStore::listDocuments() const {
     if (!m_db)
         return list;
 
-    SqliteStatement stmt(m_db,
-                         "SELECT doc_id, filename, file_path_relative, file_sha256, page_count, "
-                         "file_size_bytes, created_at FROM documents WHERE project_id = ?;");
+    SqliteStatement stmt(
+        m_db, "SELECT doc_id, filename, file_path_relative, file_sha256, page_count, "
+              "file_size_bytes, created_at, last_viewed_page FROM documents WHERE project_id = ?;");
     if (!stmt.isValid())
         return list;
 
@@ -688,6 +710,7 @@ std::vector<DocumentRecord> ProjectStore::listDocuments() const {
         rec.pageCount = static_cast<size_t>(sqlite3_column_int64(stmt.get(), 4));
         rec.fileSizeBytes = static_cast<size_t>(sqlite3_column_int64(stmt.get(), 5));
         rec.createdAt = static_cast<uint64_t>(sqlite3_column_int64(stmt.get(), 6));
+        rec.lastViewedPage = static_cast<size_t>(sqlite3_column_int64(stmt.get(), 7));
         list.push_back(std::move(rec));
     }
     return list;
@@ -697,9 +720,9 @@ std::optional<DocumentRecord> ProjectStore::getDocument(const std::string& docId
     if (!m_db)
         return std::nullopt;
 
-    SqliteStatement stmt(m_db,
-                         "SELECT doc_id, filename, file_path_relative, file_sha256, page_count, "
-                         "file_size_bytes, created_at FROM documents WHERE doc_id = ?;");
+    SqliteStatement stmt(
+        m_db, "SELECT doc_id, filename, file_path_relative, file_sha256, page_count, "
+              "file_size_bytes, created_at, last_viewed_page FROM documents WHERE doc_id = ?;");
     if (!stmt.isValid())
         return std::nullopt;
 
@@ -721,6 +744,7 @@ std::optional<DocumentRecord> ProjectStore::getDocument(const std::string& docId
         rec.pageCount = static_cast<size_t>(sqlite3_column_int64(stmt.get(), 4));
         rec.fileSizeBytes = static_cast<size_t>(sqlite3_column_int64(stmt.get(), 5));
         rec.createdAt = static_cast<uint64_t>(sqlite3_column_int64(stmt.get(), 6));
+        rec.lastViewedPage = static_cast<size_t>(sqlite3_column_int64(stmt.get(), 7));
         return rec;
     }
     return std::nullopt;

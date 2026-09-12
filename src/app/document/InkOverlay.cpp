@@ -57,20 +57,6 @@ void updatePalmProfile(FluidCore::PalmRejectionEngine* engine, GdkDevice* dev) {
 
 constexpr double kPageMargin = 16.0;
 
-StrokeStabilizer::Point2D evalCubicBezier(const StrokeStabilizer::Point2D& b0,
-                                          const StrokeStabilizer::Point2D& b1,
-                                          const StrokeStabilizer::Point2D& b2,
-                                          const StrokeStabilizer::Point2D& b3, double t) {
-    const double u = 1.0 - t;
-    const double tt = t * t;
-    const double uu = u * u;
-    const double uuu = uu * u;
-    const double ttt = tt * t;
-
-    return {uuu * b0.x + 3.0 * uu * t * b1.x + 3.0 * u * tt * b2.x + ttt * b3.x,
-            uuu * b0.y + 3.0 * uu * t * b1.y + 3.0 * u * tt * b2.y + ttt * b3.y};
-}
-
 double distSqPointToSegment(double px, double py, double x1, double y1, double x2, double y2) {
     const double dx = x2 - x1;
     const double dy = y2 - y1;
@@ -1111,51 +1097,69 @@ void InkOverlay::draw(cairo_t* cr) {
             // Render visual diagram crop selection
             renderCropSelection(cr, i);
 
-            // Render strokes
+            // Render strokes in two passes so highlighters always sit beneath pen strokes
             const std::vector<FluidCore::Stroke> pageStrokes = m_annotationStore.strokesForPage(i);
-            for (const FluidCore::Stroke& stroke : pageStrokes) {
-                renderStroke(cr, stroke);
-            }
 
-            // Render active live stroke
-            if (m_isDrawing && m_activePageIndex == i && m_activeStroke.tool != "eraser") {
-                const double r = ((m_activeStroke.color >> 16) & 0xFF) / 255.0;
-                const double g = ((m_activeStroke.color >> 8) & 0xFF) / 255.0;
-                const double b = (m_activeStroke.color & 0xFF) / 255.0;
-                const bool isHighlighter = (m_activeStroke.tool == "highlighter");
-
-                cairo_save(cr);
-                cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
-                cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
-
-                if (isHighlighter) {
-                    const auto clipBox = computeWetStrokeClipBounds(
-                        m_stabilizer.rawSamples(), m_hasWetSegment, m_wetTip,
-                        m_activeStroke.width, 4.0);
-                    if (!clipBox.valid) {
-                        cairo_restore(cr);
-                        continue;
+            auto renderActiveStrokeIfMatch = [&](bool wantHighlighter) {
+                if (m_isDrawing && m_activePageIndex == i && m_activeStroke.tool != "eraser") {
+                    const bool isHighlighter = (m_activeStroke.tool == "highlighter");
+                    if (isHighlighter != wantHighlighter) {
+                        return;
                     }
+
+                    const double r = ((m_activeStroke.color >> 16) & 0xFF) / 255.0;
+                    const double g = ((m_activeStroke.color >> 8) & 0xFF) / 255.0;
+                    const double b = (m_activeStroke.color & 0xFF) / 255.0;
+
                     cairo_save(cr);
-                    cairo_rectangle(cr, clipBox.x, clipBox.y, clipBox.width, clipBox.height);
-                    cairo_clip(cr);
+                    cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+                    cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
 
-                    cairo_push_group(cr);
-                    cairo_set_source_rgb(cr, r, g, b);
-                } else {
-                    cairo_set_source_rgb(cr, r, g, b);
-                }
+                    if (isHighlighter) {
+                        const auto clipBox =
+                            computeWetStrokeClipBounds(m_stabilizer.rawSamples(), m_hasWetSegment,
+                                                       m_wetTip, m_activeStroke.width, 4.0);
+                        if (!clipBox.valid) {
+                            cairo_restore(cr);
+                            return;
+                        }
+                        cairo_save(cr);
+                        cairo_rectangle(cr, clipBox.x, clipBox.y, clipBox.width, clipBox.height);
+                        cairo_clip(cr);
 
-                renderActiveLiveStroke(cr);
+                        cairo_push_group(cr);
+                        cairo_set_source_rgb(cr, r, g, b);
+                    } else {
+                        cairo_set_source_rgb(cr, r, g, b);
+                    }
 
-                if (isHighlighter) {
-                    cairo_pop_group_to_source(cr);
-                    cairo_paint_with_alpha(cr, 0.5);
+                    renderActiveLiveStroke(cr);
+
+                    if (isHighlighter) {
+                        cairo_pop_group_to_source(cr);
+                        cairo_paint_with_alpha(cr, 0.5);
+                        cairo_restore(cr);
+                    }
+
                     cairo_restore(cr);
                 }
+            };
 
-                cairo_restore(cr);
+            // Pass 1: Highlighters
+            for (const FluidCore::Stroke& stroke : pageStrokes) {
+                if (stroke.tool == "highlighter") {
+                    renderStroke(cr, stroke);
+                }
             }
+            renderActiveStrokeIfMatch(true);
+
+            // Pass 2: Pen & other solid strokes
+            for (const FluidCore::Stroke& stroke : pageStrokes) {
+                if (stroke.tool != "highlighter") {
+                    renderStroke(cr, stroke);
+                }
+            }
+            renderActiveStrokeIfMatch(false);
 
             cairo_restore(cr);
         }

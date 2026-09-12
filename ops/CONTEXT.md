@@ -12,7 +12,8 @@ ops/
 ├── benchmarks/           # bench-scalability.md (50-PDF 5000-page cold start & memory budget)
 ├── flatpak/              # org.fluidcore.platform.yml (Flathub-compliant sandboxed manifest)
 ├── installer/            # fluidcore.iss (Inno Setup 64-bit native Windows installer script)
-└── scripts/              # build-linux.sh, build-win.ps1, package-appimage.sh, package-deb.sh, package-windows.ps1, check_budgets.py, check_invariants.py
+├── patches/              # 0001-msys2-glib-mkenums-python-fix.patch, poppler_win32_critical_section.patch, upstream/
+└── scripts/              # build-linux.sh, build-win.ps1, build_patched_poppler.ps1, monitor.ps1, run-probe.ps1, run-scenario-repeated-find.ps1, package-windows.ps1, etc.
 ```
 
 ## Standing gates (from ROADMAP §5 — these are release blockers)

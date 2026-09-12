@@ -51,10 +51,10 @@ class DocumentSearchService {
 
     // Asynchronous search running on a dedicated worker thread with cancellation support.
     // Dispatches results onto the GTK main loop via onComplete callback.
-    // When FLUIDCORE_EPHEMERAL_SEARCH=1 is set, uses pdfPath to open an isolated throwaway document.
+    // When FLUIDCORE_EPHEMERAL_SEARCH=1 is set, uses pdfPath to open an isolated throwaway
+    // document.
     void searchAsync(PopplerDocument* document, const std::string& pdfPath,
-                     const std::vector<SearchPageLayout>& pages,
-                     const std::string& query,
+                     const std::vector<SearchPageLayout>& pages, const std::string& query,
                      std::function<void(std::vector<SearchHit>)> onComplete,
                      bool caseSensitive = false);
 

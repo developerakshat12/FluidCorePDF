@@ -1,5 +1,6 @@
 #include "document/DocumentPane.h"
 #include "FluidCoreAPI.h"
+#include "MemoryTelemetry.h"
 #include "document/InkOverlay.h"
 #include "document/SqueezeRenderHelper.h"
 #include "geometry/StrokeHitTest.h"
@@ -7,11 +8,10 @@
 #include "input/PalmRejectionEngine.h"
 #include "search/AnchorSqueezePlanner.h"
 #include "search/SearchSqueezePlanner.h"
+#include "services/PdfDocumentService.h"
 #include "undo/AnnotationCommands.h"
 #include "undo/SqueezeCommands.h"
 #include "workspace/WorkspaceView.h"
-#include "services/MemoryTelemetry.h"
-#include "services/PdfDocumentService.h"
 
 #include <algorithm>
 #include <cmath>
@@ -49,7 +49,8 @@ void drawRoundedRect(cairo_t* cr, double x, double y, double w, double h, double
 
 } // namespace
 
-DocumentPane::DocumentPane(const std::string& pdfPath) : m_pdfPath(pdfPath) {
+DocumentPane::DocumentPane(const std::string& pdfPath, std::size_t initialPage)
+    : m_pdfPath(pdfPath) {
     m_viewOverlay = gtk_overlay_new();
     m_scroller = gtk_scrolled_window_new(nullptr, nullptr);
     g_signal_connect(m_scroller, "destroy", G_CALLBACK(+[](GtkWidget*, gpointer data) {
@@ -106,7 +107,7 @@ DocumentPane::DocumentPane(const std::string& pdfPath) : m_pdfPath(pdfPath) {
     gtk_widget_set_margin_top(pillWidget, 16);
     gtk_overlay_add_overlay(GTK_OVERLAY(m_viewOverlay), pillWidget);
 
-    loadDocument(pdfPath);
+    loadDocument(pdfPath, "", initialPage);
 }
 
 void DocumentPane::closeDocument() {
@@ -173,13 +174,14 @@ void DocumentPane::closeDocument() {
     const std::size_t afterDocUnrefPriv = MemoryTelemetry::getProcessPrivateBytes();
     PopplerLifetimeTracker::dump("DocumentClosed");
     m_pageTileCache.dumpStats("DocumentClosed");
-    long long docDelta = static_cast<long long>(afterDocUnrefPriv) - static_cast<long long>(beforeDocUnrefPriv);
+    long long docDelta =
+        static_cast<long long>(afterDocUnrefPriv) - static_cast<long long>(beforeDocUnrefPriv);
     std::string docSign = docDelta >= 0 ? "+" : "-";
     std::size_t absDocDelta = docDelta >= 0 ? docDelta : -docDelta;
     MemoryTelemetry::log("[Document Teardown] PopplerDocument unref delta: " +
                          MemoryTelemetry::formatMB(beforeDocUnrefPriv) + " -> " +
-                         MemoryTelemetry::formatMB(afterDocUnrefPriv) + " (" +
-                         docSign + MemoryTelemetry::formatMB(absDocDelta) + ")");
+                         MemoryTelemetry::formatMB(afterDocUnrefPriv) + " (" + docSign +
+                         MemoryTelemetry::formatMB(absDocDelta) + ")");
     m_pdfPath.clear();
     m_layoutWidth = 0.0;
     m_layoutHeight = 0.0;
@@ -191,7 +193,8 @@ void DocumentPane::repointCompanionPath(const std::string& newPdfPath) {
     m_pdfPath = newPdfPath;
 }
 
-bool DocumentPane::loadDocument(const std::string& pdfPath, const std::string& docId) {
+bool DocumentPane::loadDocument(const std::string& pdfPath, const std::string& docId,
+                                std::size_t initialPage) {
     closeDocument();
 
     if (!docId.empty()) {
@@ -248,7 +251,8 @@ bool DocumentPane::loadDocument(const std::string& pdfPath, const std::string& d
         }
         if (!page)
             continue;
-        PopplerLifetimeTracker::onPageCreated(page, static_cast<std::size_t>(i), "DocumentPane::loadDocument ephemeral");
+        PopplerLifetimeTracker::onPageCreated(page, static_cast<std::size_t>(i),
+                                              "DocumentPane::loadDocument ephemeral");
         PageLayout layout;
         layout.page = nullptr;
         poppler_page_get_size(page, &layout.width, &layout.height);
@@ -337,6 +341,14 @@ bool DocumentPane::loadDocument(const std::string& pdfPath, const std::string& d
 
     // Auto-load companion .xopp if present
     m_annotationStore.loadAnnotations(m_pdfPath);
+
+    m_hasPendingInitialPage = false;
+    m_pendingInitialPage = 0;
+    if (!m_pages.empty() && initialPage > 0) {
+        m_pendingInitialPage = std::min(initialPage, m_pages.size() - 1);
+        m_hasPendingInitialPage = true;
+        scrollToPage(m_pendingInitialPage);
+    }
 
     gtk_widget_show_all(m_scroller);
     return true;
@@ -772,10 +784,10 @@ void DocumentPane::applyHighlightSqueeze() {
 }
 
 void DocumentPane::openSearch(bool enableSqueeze, SearchScope scope) {
-    MemoryTelemetry::log("[Search Lifecycle] openSearch called. Scope: " +
-                         std::to_string(static_cast<int>(scope)) +
-                         " | Private: " + MemoryTelemetry::formatMB(MemoryTelemetry::getProcessPrivateBytes()) +
-                         " | WS: " + MemoryTelemetry::formatMB(MemoryTelemetry::getProcessWorkingSet()));
+    MemoryTelemetry::log(
+        "[Search Lifecycle] openSearch called. Scope: " + std::to_string(static_cast<int>(scope)) +
+        " | Private: " + MemoryTelemetry::formatMB(MemoryTelemetry::getProcessPrivateBytes()) +
+        " | WS: " + MemoryTelemetry::formatMB(MemoryTelemetry::getProcessWorkingSet()));
     PopplerLifetimeTracker::dump("openSearch");
     m_pageTileCache.dumpStats("openSearch");
 
@@ -808,15 +820,16 @@ void DocumentPane::closeSearch() {
 
     const std::size_t afterClosePriv = MemoryTelemetry::getProcessPrivateBytes();
     const std::size_t afterCloseWs = MemoryTelemetry::getProcessWorkingSet();
-    long long delta = static_cast<long long>(afterClosePriv) - static_cast<long long>(beforeClosePriv);
+    long long delta =
+        static_cast<long long>(afterClosePriv) - static_cast<long long>(beforeClosePriv);
     std::string sign = delta >= 0 ? "+" : "-";
     std::size_t absDelta = delta >= 0 ? delta : -delta;
 
     MemoryTelemetry::log("[Search Lifecycle] closeSearch completed. Private: " +
                          MemoryTelemetry::formatMB(beforeClosePriv) + " -> " +
                          MemoryTelemetry::formatMB(afterClosePriv) + " (" + sign +
-                         MemoryTelemetry::formatMB(absDelta) + ") | WS: " +
-                         MemoryTelemetry::formatMB(beforeCloseWs) + " -> " +
+                         MemoryTelemetry::formatMB(absDelta) +
+                         ") | WS: " + MemoryTelemetry::formatMB(beforeCloseWs) + " -> " +
                          MemoryTelemetry::formatMB(afterCloseWs));
     PopplerLifetimeTracker::dump("closeSearch");
     m_pageTileCache.dumpStats("closeSearch");
@@ -873,7 +886,8 @@ void DocumentPane::onSearchQueryChanged(const std::string& query, bool enableSqu
 
         m_searchService.searchAsync(
             m_document, m_pdfPath, m_pages, query,
-            [this, enableSqueeze, autoNavigate, onComplete = std::move(onComplete)](std::vector<SearchHit> hits) {
+            [this, enableSqueeze, autoNavigate,
+             onComplete = std::move(onComplete)](std::vector<SearchHit> hits) {
                 m_searchHits = std::move(hits);
                 m_activeSearchHitIndex = 0;
                 if (m_searchBar) {
@@ -909,15 +923,15 @@ void DocumentPane::onSearchQueryChanged(const std::string& query, bool enableSqu
 
         m_searchService.searchAsync(
             m_document, m_pdfPath, m_pages, query,
-            [this, enableSqueeze, wsCount, autoNavigate, onComplete = std::move(onComplete)](std::vector<SearchHit> hits) {
+            [this, enableSqueeze, wsCount, autoNavigate,
+             onComplete = std::move(onComplete)](std::vector<SearchHit> hits) {
                 m_searchHits = std::move(hits);
                 m_activeSearchHitIndex = 0;
                 const std::size_t total = m_searchHits.size() + wsCount;
 
                 if (m_searchBar) {
-                    m_searchBar->setScopedMatchStatus(
-                        m_activeSearchHitIndex, total, m_searchHits.size(),
-                        wsCount);
+                    m_searchBar->setScopedMatchStatus(m_activeSearchHitIndex, total,
+                                                      m_searchHits.size(), wsCount);
                 }
 
                 if (enableSqueeze && !m_searchHits.empty()) {
@@ -1022,11 +1036,11 @@ void DocumentPane::scrollToSearchHit(std::size_t hitIndex) {
     }
 
     const auto& hit = m_searchHits[hitIndex];
-    MemoryTelemetry::log("[Search Nav] scrollToSearchHit [" + std::to_string(hitIndex) + "/" +
-                         std::to_string(m_searchHits.size()) + "] -> Page " +
-                         std::to_string(hit.pageIndex) + " (DocY: " +
-                         std::to_string(hit.docYStart) + ") | Private: " +
-                         MemoryTelemetry::formatMB(MemoryTelemetry::getProcessPrivateBytes()));
+    MemoryTelemetry::log(
+        "[Search Nav] scrollToSearchHit [" + std::to_string(hitIndex) + "/" +
+        std::to_string(m_searchHits.size()) + "] -> Page " + std::to_string(hit.pageIndex) +
+        " (DocY: " + std::to_string(hit.docYStart) +
+        ") | Private: " + MemoryTelemetry::formatMB(MemoryTelemetry::getProcessPrivateBytes()));
 
     const double targetScreenY = docYToScreen(m_searchHits[hitIndex].docYStart);
     GtkAdjustment* vadj = gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(m_scroller));
@@ -1038,16 +1052,41 @@ void DocumentPane::scrollToSearchHit(std::size_t hitIndex) {
     }
 }
 
+std::size_t DocumentPane::currentPage() const {
+    if (m_pages.empty()) {
+        return 0;
+    }
+    GtkAdjustment* vadj =
+        m_scroller ? gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(m_scroller)) : nullptr;
+    if (!vadj) {
+        return 0;
+    }
+    const double scrollY = gtk_adjustment_get_value(vadj);
+    const double pageSize = gtk_adjustment_get_page_size(vadj);
+    const double targetDocY = screenYToDoc(scrollY + std::min(120.0, pageSize * 0.25));
+
+    for (std::size_t i = 0; i < m_pages.size(); ++i) {
+        if (targetDocY >= m_pages[i].y && targetDocY < m_pages[i].y + m_pages[i].height) {
+            return i;
+        }
+    }
+    if (targetDocY < m_pages.front().y) {
+        return 0;
+    }
+    return m_pages.size() - 1;
+}
+
 void DocumentPane::scrollToPage(std::size_t pageIndex) {
     if (pageIndex >= m_pages.size()) {
         return;
     }
 
     const double targetScreenY = docYToScreen(m_pages[pageIndex].y);
-    MemoryTelemetry::log("[Navigation] scrollToPage " + std::to_string(pageIndex) +
-                         " (DocY: " + std::to_string(m_pages[pageIndex].y) +
-                         ") | Private: " + MemoryTelemetry::formatMB(MemoryTelemetry::getProcessPrivateBytes()) +
-                         " | WS: " + MemoryTelemetry::formatMB(MemoryTelemetry::getProcessWorkingSet()));
+    MemoryTelemetry::log(
+        "[Navigation] scrollToPage " + std::to_string(pageIndex) +
+        " (DocY: " + std::to_string(m_pages[pageIndex].y) +
+        ") | Private: " + MemoryTelemetry::formatMB(MemoryTelemetry::getProcessPrivateBytes()) +
+        " | WS: " + MemoryTelemetry::formatMB(MemoryTelemetry::getProcessWorkingSet()));
 
     GtkAdjustment* vadj = gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(m_scroller));
     if (vadj) {
@@ -1060,8 +1099,8 @@ void DocumentPane::scrollToPage(std::size_t pageIndex) {
     }
 }
 
-void DocumentPane::performSearch(const std::string& query, bool enableSqueeze,
-                                 bool autoNavigate, std::function<void()> onComplete) {
+void DocumentPane::performSearch(const std::string& query, bool enableSqueeze, bool autoNavigate,
+                                 std::function<void()> onComplete) {
     openSearch(enableSqueeze, SearchScope::Document);
     onSearchQueryChanged(query, enableSqueeze, autoNavigate, std::move(onComplete));
 }
@@ -1513,6 +1552,11 @@ void DocumentPane::draw(cairo_t* cr) {
     const double viewportY = vadj ? gtk_adjustment_get_value(vadj) : 0.0;
     const double viewportH =
         vadj ? gtk_adjustment_get_page_size(vadj) : static_cast<double>(allocation.height);
+
+    if (m_hasPendingInitialPage) {
+        m_hasPendingInitialPage = false;
+        scrollToPage(m_pendingInitialPage);
+    }
 
     // Pre-fetch bounds: viewport plus 400px margin for smooth scrolling
     const double viewYStart = std::max(0.0, viewportY - 400.0) / m_zoom;

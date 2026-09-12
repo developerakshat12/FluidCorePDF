@@ -48,7 +48,10 @@ class FluidCoreEngine final : public FluidCoreAPI {
     // Spatial scene graph — live slice backed by WorkspaceModel + RTreeIndex.
     std::string insertNode(std::unique_ptr<WorkspaceNode> node) override;
     void updateNodePosition(const std::string& nodeId, double x, double y) override;
+    void setNodeBounds(const std::string& nodeId, const Rectangle& bounds) override;
     void removeNode(const std::string& nodeId) override;
+    WorkspaceNode* findNode(const std::string& nodeId) override;
+    const WorkspaceNode* findNode(const std::string& nodeId) const override;
     std::vector<WorkspaceNode*> queryVisibleNodes(const Rectangle& viewportBounds) const override;
 
     // Pure geometry exposure (ADR-0001): values only, nothing renderable.

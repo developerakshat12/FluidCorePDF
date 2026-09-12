@@ -101,9 +101,20 @@ struct WorkspaceSearchState {
     }
 };
 
+struct CardResizeState {
+    bool isResizing = false;
+    std::string nodeId;
+    FluidCore::Rectangle initialBounds{0.0, 0.0, 0.0, 0.0};
+    double startMouseScreenX = 0.0;
+    double startMouseScreenY = 0.0;
+    bool isImageExcerpt = false;
+    double aspectRatio = 1.0;
+};
+
 struct WorkspaceState {
     ViewportTransform viewport;
     DragSnapState dragSnap;
+    CardResizeState cardResize;
     InkingState inking;
     ConnectorState connector;
     AnimationState animation;
@@ -130,6 +141,7 @@ struct WorkspaceState {
     double minimapMargin = 16.0;
 
     std::string hoveredAnchorCardId;
+    std::string hoveredResizeCardId;
 };
 
 } // namespace FluidCoreApp

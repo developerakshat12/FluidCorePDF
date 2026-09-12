@@ -4,4 +4,6 @@ compile_commands.json
 .vscode/
 .idea/
 *.ltproj
-/debug
+/docs
+*.exe
+*.log

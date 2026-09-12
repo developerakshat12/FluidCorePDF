@@ -34,6 +34,7 @@ param (
     [switch]$Benchmark,
     [switch]$Package,
     [string]$Document = "",
+    [switch]$Monitor,
     [switch]$Clean
 )
 
@@ -103,14 +104,25 @@ if ($Run) {
     if (-not (Test-Path $AppPath)) {
         Write-Error "Binary not found at $AppPath"
     }
-    Write-Host "[FluidCore] Launching $AppPath..." -ForegroundColor Green
+
+    $DocPath = ""
     if ($Document) {
-        $DocPath = $Document
-        if (Test-Path $Document) {
-            $DocPath = (Resolve-Path $Document).Path
-        }
-        & $AppPath $DocPath
-    } else {
-        & $AppPath
+        $DocPath = if (Test-Path $Document) { (Resolve-Path $Document).Path } else { $Document }
     }
+
+    if ($Monitor) {
+        Write-Host "[FluidCore] Launching $AppPath with live terminal monitor..." -ForegroundColor Green
+        $MonitorScript = Join-Path $ProjectRoot "debug\scripts\monitor.ps1"
+        & powershell -ExecutionPolicy Bypass -File $MonitorScript -Launch -Document $DocPath
+    } else {
+        Write-Host "[FluidCore] Launching $AppPath..." -ForegroundColor Green
+        if ($DocPath) {
+            & $AppPath $DocPath
+        } else {
+            & $AppPath
+        }
+    }
+} elseif ($Monitor) {
+    $MonitorScript = Join-Path $ProjectRoot "debug\scripts\monitor.ps1"
+    & powershell -ExecutionPolicy Bypass -File $MonitorScript
 }

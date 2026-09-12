@@ -1,0 +1,25 @@
+diff -Naur a/glib/CMakeLists.txt b/glib/CMakeLists.txt
+--- a/glib/CMakeLists.txt
++++ b/glib/CMakeLists.txt
+@@ -45,9 +45,8 @@
+ 
+ add_custom_command(
+   OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/poppler-enums.h
+-  COMMAND ${GLIB2_MKENUMS_PYTHON}
++  COMMAND ${GLIB2_MKENUMS}
+   ARGS
+-    ${GLIB2_MKENUMS}
+     --template poppler-enums.h.template
+     ${poppler_glib_public_headers} > ${CMAKE_CURRENT_BINARY_DIR}/poppler-enums.h
+   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+@@ -57,9 +56,8 @@
+ 
+ add_custom_command(
+   OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/poppler-enums.c
+-  COMMAND ${GLIB2_MKENUMS_PYTHON}
++  COMMAND ${GLIB2_MKENUMS}
+   ARGS
+-    ${GLIB2_MKENUMS}
+     --template poppler-enums.c.template
+     ${poppler_glib_public_headers} > ${CMAKE_CURRENT_BINARY_DIR}/poppler-enums.c
+   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}

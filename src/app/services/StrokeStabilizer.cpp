@@ -15,6 +15,7 @@ void StrokeStabilizer::beginStroke(Point2D pt, double pressure, uint64_t timesta
     m_lastFilteredPoint = pt;
     m_lastTimestamp = timestamp;
     m_lastVelocity = 0.0;
+    m_prevDirection = {0.0, 0.0};
 
     m_inertiaPos = pt;
     m_inertiaVel = {0.0, 0.0};
@@ -23,7 +24,13 @@ void StrokeStabilizer::beginStroke(Point2D pt, double pressure, uint64_t timesta
 }
 
 StrokeStabilizer::Point2D StrokeStabilizer::filterDeadzone(Point2D pt, uint64_t timestamp) {
-    const double dist = std::hypot(pt.x - m_lastFilteredPoint.x, pt.y - m_lastFilteredPoint.y);
+    const double dx = pt.x - m_lastFilteredPoint.x;
+    const double dy = pt.y - m_lastFilteredPoint.y;
+    const double dist = std::hypot(dx, dy);
+    if (dist < 1e-6) {
+        return m_lastFilteredPoint;
+    }
+
     const double dtMs =
         (timestamp > m_lastTimestamp) ? static_cast<double>(timestamp - m_lastTimestamp) : 0.0;
 
@@ -35,13 +42,26 @@ StrokeStabilizer::Point2D StrokeStabilizer::filterDeadzone(Point2D pt, uint64_t 
     }
 
     m_lastVelocity = 0.7 * m_lastVelocity + 0.3 * velocity;
-    const double rEff =
+    double rEff =
         m_deadzoneRadiusBase * std::max(0.0, 1.0 - (m_lastVelocity / m_velocityThreshold));
+
+    // Curvature awareness: if directional angle deviates from previous segment (turning a curve),
+    // reduce deadzone so fine circular curves and tight turns retain dense samples
+    const double prevLen = std::hypot(m_prevDirection.x, m_prevDirection.y);
+    if (prevLen > 1e-6) {
+        const double cosTheta =
+            (dx * m_prevDirection.x + dy * m_prevDirection.y) / (dist * prevLen);
+        if (cosTheta < 0.95) {
+            const double turnFactor = std::clamp((cosTheta + 1.0) / 1.95, 0.35, 1.0);
+            rEff *= turnFactor;
+        }
+    }
 
     if (dist < rEff) {
         return m_lastFilteredPoint;
     }
 
+    m_prevDirection = {dx, dy};
     m_lastFilteredPoint = pt;
     m_lastTimestamp = timestamp;
     return pt;

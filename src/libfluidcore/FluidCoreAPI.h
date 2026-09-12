@@ -169,7 +169,10 @@ class FluidCoreAPI {
     // Spatial Scene Graph API (UUID-based Identifiers matching SQLite Schema)
     virtual std::string insertNode(std::unique_ptr<WorkspaceNode> node) = 0;
     virtual void updateNodePosition(const std::string& nodeId, double x, double y) = 0;
+    virtual void setNodeBounds(const std::string& nodeId, const Rectangle& bounds) = 0;
     virtual void removeNode(const std::string& nodeId) = 0;
+    virtual WorkspaceNode* findNode(const std::string& nodeId) = 0;
+    virtual const WorkspaceNode* findNode(const std::string& nodeId) const = 0;
     virtual std::vector<WorkspaceNode*>
     queryVisibleNodes(const Rectangle& viewportBounds) const = 0;
 

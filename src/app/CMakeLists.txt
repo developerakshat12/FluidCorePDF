@@ -8,6 +8,8 @@ if(WIN32)
     add_compile_definitions(_USE_MATH_DEFINES)
 endif()
 
+include_directories(${CMAKE_SOURCE_DIR}/debug/telemetry)
+
 set(FLUIDCORE_APP_SOURCES
     main.cpp
     document/DocumentPane.cpp
@@ -206,7 +208,7 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME ScalabilityBenchmarkTest COMMAND scalability_benchmark_test)
 
-    add_executable(search_isolation_probe tests/SearchIsolationProbe.cpp)
+    add_executable(search_isolation_probe ${CMAKE_SOURCE_DIR}/debug/probes/SearchIsolationProbe.cpp)
     target_include_directories(search_isolation_probe PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(search_isolation_probe PRIVATE fluidcore PkgConfig::CAIRO PkgConfig::POPPLER_GLIB PkgConfig::GTK3)
     if(MIMALLOC_FOUND)
@@ -221,6 +223,30 @@ if(BUILD_TESTING)
     else()
         target_compile_options(search_isolation_probe PRIVATE -Wall -Wextra -Wpedantic)
     endif()
+
+    add_executable(poppler_concurrency_test tests/PopplerConcurrencyTest.cpp)
+    target_include_directories(poppler_concurrency_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(poppler_concurrency_test PRIVATE PkgConfig::POPPLER_GLIB PkgConfig::CAIRO)
+    if(MSVC)
+        target_compile_options(poppler_concurrency_test PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(poppler_concurrency_test PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
+    add_executable(poppler_malformed_regression_test tests/PopplerMalformedRegressionTest.cpp)
+    target_include_directories(poppler_malformed_regression_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(poppler_malformed_regression_test PRIVATE PkgConfig::POPPLER_GLIB)
+    if(MSVC)
+        target_compile_options(poppler_malformed_regression_test PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(poppler_malformed_regression_test PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    add_test(NAME PopplerMalformedRegressionTest COMMAND poppler_malformed_regression_test)
+
+    add_custom_target(poppler_tests
+        DEPENDS poppler_concurrency_test poppler_malformed_regression_test search_isolation_probe
+        COMMENT "Build all Poppler concurrency, malformed regression, and isolation tests"
+    )
 endif()
 
 install(TARGETS fluidcore_app RUNTIME DESTINATION bin)

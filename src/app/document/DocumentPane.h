@@ -46,7 +46,7 @@ class DocumentPane {
         std::function<void(const FluidCore::Point& originWorldCoord, const std::string& excerptId)>;
 
     // Empty path shows an empty-state label instead of a document.
-    explicit DocumentPane(const std::string& pdfPath);
+    explicit DocumentPane(const std::string& pdfPath, std::size_t initialPage = 0);
 
     ~DocumentPane();
 
@@ -55,9 +55,12 @@ class DocumentPane {
 
     GtkWidget* widget() const { return m_viewOverlay; }
 
-    bool loadDocument(const std::string& pdfPath, const std::string& docId = "");
+    bool loadDocument(const std::string& pdfPath, const std::string& docId = "",
+                      std::size_t initialPage = 0);
     void closeDocument();
     void repointCompanionPath(const std::string& newPdfPath);
+
+    std::size_t currentPage() const;
 
     bool save() { return saveAnnotations(); }
     bool saveAnnotations();
@@ -248,6 +251,8 @@ class DocumentPane {
     guint m_pulseTimerId = 0;
     double m_savedReadingScrollY = 0.0;
     bool m_hasSavedReadingState = false;
+    std::size_t m_pendingInitialPage = 0;
+    bool m_hasPendingInitialPage = false;
 
     WorkspaceView* m_workspaceView = nullptr;
     FluidCore::FluidCoreAPI* m_coreApi = nullptr;

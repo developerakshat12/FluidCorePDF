@@ -33,6 +33,30 @@ class MoveNodeCommand : public Command {
     Point m_newPos;
 };
 
+// Command representing resizing a WorkspaceNode (e.g. ExcerptCardNode).
+class ResizeNodeCommand : public Command {
+  public:
+    ResizeNodeCommand(WorkspaceModel& model, std::string nodeId, Rectangle oldBounds,
+                      Rectangle newBounds);
+
+    bool execute() override;
+    bool undo() override;
+    bool redo() override;
+
+    std::string description() const override { return "Resize Card"; }
+    std::size_t estimatedSizeBytes() const override;
+
+    const std::string& nodeId() const { return m_nodeId; }
+    Rectangle oldBounds() const { return m_oldBounds; }
+    Rectangle newBounds() const { return m_newBounds; }
+
+  private:
+    WorkspaceModel& m_model;
+    std::string m_nodeId;
+    Rectangle m_oldBounds;
+    Rectangle m_newBounds;
+};
+
 // Command representing inserting a WorkspaceNode into the spatial scene graph.
 class InsertNodeCommand : public Command {
   public:

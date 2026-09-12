@@ -63,9 +63,27 @@ void FluidCoreEngine::updateNodePosition(const std::string& nodeId, double x, do
     m_model.move(nodeId, x, y);
 }
 
+void FluidCoreEngine::setNodeBounds(const std::string& nodeId, const Rectangle& bounds) {
+    auto* node = m_model.findRecursive(nodeId);
+    if (!node)
+        return;
+    if (auto* excerpt = dynamic_cast<ExcerptCardNode*>(node)) {
+        excerpt->setBounds(bounds);
+        m_model.updateBounds(nodeId);
+    }
+}
+
 void FluidCoreEngine::removeNode(const std::string& nodeId) {
     m_graph.removeEdgesForNode(nodeId);
     m_model.remove(nodeId);
+}
+
+WorkspaceNode* FluidCoreEngine::findNode(const std::string& nodeId) {
+    return m_model.findRecursive(nodeId);
+}
+
+const WorkspaceNode* FluidCoreEngine::findNode(const std::string& nodeId) const {
+    return m_model.findRecursive(nodeId);
 }
 
 std::vector<WorkspaceNode*>

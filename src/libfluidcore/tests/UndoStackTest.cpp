@@ -3,6 +3,7 @@
 #include "undo/AnnotationCommands.h"
 #include "undo/Command.h"
 #include "undo/WorkspaceCommands.h"
+#include "workspace/ExcerptCardNode.h"
 #include "workspace/WorkspaceModel.h"
 
 #include <cstdlib>
@@ -63,6 +64,7 @@ using FluidCore::ClearPageStrokesCommand;
 using FluidCore::CompoundCommand;
 using FluidCore::MoveNodeCommand;
 using FluidCore::RemoveStrokeCommand;
+using FluidCore::ResizeNodeCommand;
 using FluidCore::Stroke;
 using FluidCore::UndoStack;
 using FluidCore::WorkspaceModel;
@@ -247,6 +249,38 @@ void testWorkspaceMoveNodeCommand() {
     expect(model.positionOf("card-1").y == 90.0, "redone y");
 
     std::cout << "[PASS] testWorkspaceMoveNodeCommand\n";
+}
+
+void testWorkspaceResizeNodeCommand() {
+    WorkspaceModel model("proj-resize");
+    UndoStack stack;
+
+    auto card = std::make_unique<FluidCore::ExcerptCardNode>(
+        "card-crop-1", FluidCore::Rectangle{100.0, 100.0, 300.0, 200.0}, "doc-1", 0,
+        FluidCore::Rectangle{0.1, 0.1, 0.4, 0.3}, "", true);
+    model.insert(std::move(card));
+
+    expect(model.boundsOf("card-crop-1").w == 300.0, "initial width 300");
+    expect(model.boundsOf("card-crop-1").h == 200.0, "initial height 200");
+
+    const FluidCore::Rectangle oldBounds{100.0, 100.0, 300.0, 200.0};
+    const FluidCore::Rectangle newBounds{100.0, 100.0, 600.0, 400.0}; // 2x scaled, same 3:2 ratio
+
+    stack.pushAndExecute(
+        std::make_unique<ResizeNodeCommand>(model, "card-crop-1", oldBounds, newBounds));
+
+    expect(model.boundsOf("card-crop-1").w == 600.0, "resized width 600");
+    expect(model.boundsOf("card-crop-1").h == 400.0, "resized height 400");
+
+    stack.undo();
+    expect(model.boundsOf("card-crop-1").w == 300.0, "undone width 300");
+    expect(model.boundsOf("card-crop-1").h == 200.0, "undone height 200");
+
+    stack.redo();
+    expect(model.boundsOf("card-crop-1").w == 600.0, "redone width 600");
+    expect(model.boundsOf("card-crop-1").h == 400.0, "redone height 400");
+
+    std::cout << "[PASS] testWorkspaceResizeNodeCommand\n";
 }
 
 void testUndoRedoByteTracking() {
@@ -495,6 +529,7 @@ int main() {
     testCompoundCommand();
     testAnnotationCommands();
     testWorkspaceMoveNodeCommand();
+    testWorkspaceResizeNodeCommand();
     testUndoRedoByteTracking();
     testAddStrokeAutoIdRedo();
     testMacroNestedAndDepthCounting();

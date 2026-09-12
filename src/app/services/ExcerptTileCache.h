@@ -72,7 +72,7 @@ class ExcerptTileCache {
   public:
     static constexpr std::size_t kDefaultMaxBytes = 64 * 1024 * 1024; // 64 MB
     static constexpr int kMaxTileDimension = 1536;                    // 1536 px clamp
-    static constexpr int kMinTileDimension = 16;                       // 16 px minimum
+    static constexpr int kMinTileDimension = 16;                      // 16 px minimum
 
     using RenderReadyCallback =
         std::function<void(const std::string& excerptId, uint64_t requestId)>;

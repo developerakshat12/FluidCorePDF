@@ -24,6 +24,7 @@ struct DocumentRecord {
     size_t pageCount = 0;
     size_t fileSizeBytes = 0;
     uint64_t createdAt = 0;
+    size_t lastViewedPage = 0;
 
     bool operator==(const DocumentRecord&) const = default;
 };

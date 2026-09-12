@@ -218,7 +218,7 @@ void SearchBarWidget::onScopeComboChanged(GtkComboBox* combo, gpointer userData)
 namespace {
 constexpr guint kSearchDebounceMs = 450;
 constexpr std::size_t kMinAutoSearchLength = 3;
-}
+} // namespace
 
 void SearchBarWidget::onEntryChanged(GtkSearchEntry*, gpointer userData) {
     auto* self = static_cast<SearchBarWidget*>(userData);
@@ -259,7 +259,8 @@ gboolean SearchBarWidget::onEntryKeyPress(GtkWidget*, GdkEventKey* event, gpoint
     const bool shift = (event->state & GDK_SHIFT_MASK) != 0;
 
     if (event->keyval == GDK_KEY_Return || event->keyval == GDK_KEY_KP_Enter) {
-        // Cancel pending debounce timer and flush search immediately on Enter (works for any length)
+        // Cancel pending debounce timer and flush search immediately on Enter (works for any
+        // length)
         if (self->m_debounceTimerId != 0) {
             g_source_remove(self->m_debounceTimerId);
             self->m_debounceTimerId = 0;

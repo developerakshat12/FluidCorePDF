@@ -29,5 +29,19 @@ One line per document. Read only what the CLAUDE.md routing table sends you to.
 | icm-method.md | The 3-layer folder architecture governing this repo's own structure |
 | xournalpp-upstream.md | Notes on sibling ../xournalpp checkout and rebase strategy |
 
+## /docs
+| Doc | One-liner |
+|-----|-----------|
+| POPPLER_MUTEX_LEAK_REMEDIATION_AND_AUDIT.md | Authoritative Poppler Win32 CRITICAL_SECTION mutex leak fix, audit & upstream packaging |
+| POPPLER_BUILD_INFO.txt | Build provenance, SHA-256 binary verification hashes, and toolchain info |
+
+## /debug
+| Doc | One-liner |
+|-----|-----------|
+| README.md | Master debug navigation index covering telemetry, scripts, probes, reports, and investigations |
+| investigations/MEMORY_LEAK_INVESTIGATION_CHRONOLOGY_AND_TEST_CASES.md | Chronological multi-phase leak investigation notes & complete test suite catalog |
+| investigations/context.md | Navigation index and section map for memory leak chronology |
+| reports/bug_report_*.md | 20 post-mortem bug reports organized across 5 core subsystems |
+
 ## Repo root
 CONTRIBUTING.md (workflow/standards) · GOVERNANCE.md (roles/licensing/format commitments) · project.yaml (machine-readable project metadata)

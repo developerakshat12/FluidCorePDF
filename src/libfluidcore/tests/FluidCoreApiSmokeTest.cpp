@@ -38,7 +38,10 @@ class StubApi final : public FluidCoreAPI {
 
     std::string insertNode(std::unique_ptr<WorkspaceNode>) override { return {}; }
     void updateNodePosition(const std::string&, double, double) override {}
+    void setNodeBounds(const std::string&, const Rectangle&) override {}
     void removeNode(const std::string&) override {}
+    WorkspaceNode* findNode(const std::string&) override { return nullptr; }
+    const WorkspaceNode* findNode(const std::string&) const override { return nullptr; }
     std::vector<WorkspaceNode*> queryVisibleNodes(const Rectangle&) const override { return {}; }
 
     Rectangle getNodeBounds(const std::string&) const override { return {}; }

@@ -6,7 +6,9 @@ Open-source, offline-first fluid document synthesis platform: fluid PDF reader +
 - `/planning` — PRD, TRD, ROADMAP, MVP scope, ADRs (why & what)
 - `/specs` — feature spec, architecture, flows, file map (how it works)
 - `/src` — actual code: `libfluidcore/` (engine, no GTK) and `app/` (GTK frontend)
-- `/ops` — CI, packaging, benchmarks, release scripts
+- `/ops` — CI, packaging, benchmarks, release scripts, patches
+- `/docs` — canonical Poppler mutex remediation & audit, build provenance
+- `/debug` — historical bug reports and diagnostic archives
 - `/references` — ICM method notes, upstream Xournal++ pointers, research
 - `/skills` — Layer 3 skill registry (load only when routed to)
 
@@ -20,6 +22,8 @@ Open-source, offline-first fluid document synthesis platform: fluid PDF reader +
 | Verify perf budgets | /ops | ops/CONTEXT.md | perf-gate |
 | Implement a spec'd milestone item | /planning → /src | both CONTEXT.md | spec-to-code |
 | Release/packaging/CI | /ops | CONTEXT.md | — |
+| Poppler remediation / audit docs | /docs | POPPLER_MUTEX_LEAK_REMEDIATION_AND_AUDIT.md | — |
+| Past bug reports / diagnostics | /debug | README.md | — |
 | Background/upstream questions | /references | REFERENCES.md | — |
 
 ## Naming Conventions

@@ -69,6 +69,17 @@ void updatePalmProfile(FluidCore::PalmRejectionEngine* engine, GdkDevice* dev) {
     auto profile = FluidCore::PalmRejectionEngine::detectProfile(vid, pid, name);
     engine->setProfileOverride(profile);
 }
+
+bool isPointNearCardResizeHandle(const FluidCore::Rectangle& bounds, const ViewportTransform& vp,
+                                 double mouseScreenX, double mouseScreenY) {
+    const double sx = (bounds.x - vp.originX) * vp.zoom;
+    const double sy = (bounds.y - vp.originY) * vp.zoom;
+    const double sw = bounds.w * vp.zoom;
+    const double sh = bounds.h * vp.zoom;
+    const double hx = sx + sw - 6.0;
+    const double hy = sy + sh - 6.0;
+    return std::hypot(mouseScreenX - hx, mouseScreenY - hy) <= 12.0;
+}
 } // namespace
 
 WorkspaceView::WorkspaceView(FluidCore::FluidCoreAPI& api) : m_api(api) {
@@ -210,6 +221,15 @@ void WorkspaceView::cancelCurrentInteraction() {
 
     // 5. Dismiss popover if renaming
     cancelInlineStackRename();
+
+    // 5.5. Revert in-flight card resize
+    if (m_state.cardResize.isResizing) {
+        if (!m_state.cardResize.nodeId.empty()) {
+            m_api.setNodeBounds(m_state.cardResize.nodeId, m_state.cardResize.initialBounds);
+        }
+        m_state.cardResize = CardResizeState{};
+    }
+    m_state.hoveredResizeCardId.clear();
 
     // 6. Clear selections
     m_state.selectedNodeId.reset();
@@ -1128,6 +1148,63 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
 
         if (!isDrawingOrConnecting) {
             FluidCore::Point wPt = screenToWorld(event->x, event->y);
+
+            // Check if primary click hit the resize handle of an excerpt card
+            if (m_state.inking.currentTool == "select") {
+                const FluidCore::ExcerptCardNode* targetCard = nullptr;
+                if (m_state.selectedNodeId) {
+                    if (const auto* selNode = m_api.findNode(*m_state.selectedNodeId)) {
+                        if (const auto* exc =
+                                dynamic_cast<const FluidCore::ExcerptCardNode*>(selNode)) {
+                            if (isPointNearCardResizeHandle(exc->bounds(), m_state.viewport,
+                                                            event->x, event->y)) {
+                                targetCard = exc;
+                            }
+                        }
+                    }
+                }
+                if (!targetCard && !m_state.hoveredResizeCardId.empty()) {
+                    if (const auto* hovNode = m_api.findNode(m_state.hoveredResizeCardId)) {
+                        if (const auto* exc =
+                                dynamic_cast<const FluidCore::ExcerptCardNode*>(hovNode)) {
+                            if (isPointNearCardResizeHandle(exc->bounds(), m_state.viewport,
+                                                            event->x, event->y)) {
+                                targetCard = exc;
+                            }
+                        }
+                    }
+                }
+                if (!targetCard) {
+                    for (const auto* node : visibleNodes) {
+                        if (const auto* exc =
+                                dynamic_cast<const FluidCore::ExcerptCardNode*>(node)) {
+                            if (isPointNearCardResizeHandle(exc->bounds(), m_state.viewport,
+                                                            event->x, event->y)) {
+                                targetCard = exc;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (targetCard) {
+                    m_state.cardResize.isResizing = true;
+                    m_state.cardResize.nodeId = targetCard->id();
+                    m_state.cardResize.initialBounds = targetCard->bounds();
+                    m_state.cardResize.startMouseScreenX = event->x;
+                    m_state.cardResize.startMouseScreenY = event->y;
+                    m_state.cardResize.isImageExcerpt = targetCard->isImageExcerpt();
+                    m_state.cardResize.aspectRatio =
+                        targetCard->bounds().w / std::max(1.0, targetCard->bounds().h);
+                    m_state.selectedNodeId = targetCard->id();
+                    m_state.dragSnap.dragPending = false;
+                    if (m_area && GTK_IS_WIDGET(m_area)) {
+                        gtk_widget_queue_draw(m_area);
+                    }
+                    return TRUE;
+                }
+            }
+
             if (m_state.inking.currentTool == "select") {
                 std::string hitEdge =
                     WorkspaceInteraction::hitTestEdgeAtWorldPoint(m_api, wPt, 8.0);
@@ -1279,6 +1356,48 @@ gboolean WorkspaceView::onButtonRelease(GdkEventButton* event) {
                     gdk_window_set_cursor(win, nullptr);
                 }
             }
+        }
+        return TRUE;
+    }
+
+    if (m_state.cardResize.isResizing) {
+        const std::string nodeId = m_state.cardResize.nodeId;
+        const auto oldBounds = m_state.cardResize.initialBounds;
+        const auto* node = m_api.findNode(nodeId);
+        const auto newBounds = node ? node->bounds() : oldBounds;
+
+        m_state.cardResize.isResizing = false;
+
+        if (node && (std::abs(newBounds.w - oldBounds.w) > 1.0 ||
+                     std::abs(newBounds.h - oldBounds.h) > 1.0)) {
+            // Commit to R-Tree spatial index
+            m_api.setNodeBounds(nodeId, newBounds);
+
+            // Push to undo stack (using push, not pushAndExecute, because node already has
+            // newBounds)
+            if (auto* engine = dynamic_cast<FluidCore::FluidCoreEngine*>(&m_api)) {
+                m_undoStack.push(std::make_unique<FluidCore::ResizeNodeCommand>(
+                    engine->workspaceModel(), nodeId, oldBounds, newBounds));
+            }
+
+            // If image excerpt, trigger async crop tile rerender at high resolution for new
+            // dimensions
+            if (m_state.cardResize.isImageExcerpt && m_excerptTileCache) {
+                if (const auto* excerpt = dynamic_cast<const FluidCore::ExcerptCardNode*>(node)) {
+                    m_excerptTileCache->requestCropAsync(
+                        excerpt->id(), excerpt->sourceDocId(), excerpt->sourcePageNo(),
+                        excerpt->sourceNormalizedRect(), newBounds.w - 16.0, newBounds.h - 40.0,
+                        m_state.viewport.zoom);
+                }
+            }
+        }
+
+        if (m_area && GTK_IS_WIDGET(m_area)) {
+            GdkWindow* win = gtk_widget_get_window(m_area);
+            if (win) {
+                gdk_window_set_cursor(win, nullptr);
+            }
+            gtk_widget_queue_draw(m_area);
         }
         return TRUE;
     }
@@ -1511,6 +1630,56 @@ gboolean WorkspaceView::onMotion(GdkEventMotion* event) {
         return TRUE;
     }
 
+    if (m_state.cardResize.isResizing) {
+        const double deltaScreenX = event->x - m_state.cardResize.startMouseScreenX;
+        const double deltaScreenY = event->y - m_state.cardResize.startMouseScreenY;
+        const double zoom = m_state.viewport.zoom;
+        const double deltaWorldX = deltaScreenX / zoom;
+        const double deltaWorldY = deltaScreenY / zoom;
+
+        const auto& init = m_state.cardResize.initialBounds;
+        double newW = init.w;
+        double newH = init.h;
+
+        if (m_state.cardResize.isImageExcerpt) {
+            const double scaleX = (init.w + deltaWorldX) / std::max(1.0, init.w);
+            const double scaleY = (init.h + deltaWorldY) / std::max(1.0, init.h);
+            const double scale = std::max(scaleX, scaleY);
+
+            newW = init.w * scale;
+            newW = std::clamp(newW, 160.0, 1600.0);
+            newH = newW / m_state.cardResize.aspectRatio;
+            if (newH < 100.0) {
+                newH = 100.0;
+                newW = newH * m_state.cardResize.aspectRatio;
+            } else if (newH > 1200.0) {
+                newH = 1200.0;
+                newW = newH * m_state.cardResize.aspectRatio;
+            }
+        } else {
+            newW = std::clamp(init.w + deltaWorldX, 180.0, 1200.0);
+            newH = std::clamp(init.h + deltaWorldY, 80.0, 1000.0);
+        }
+
+        m_api.setNodeBounds(m_state.cardResize.nodeId, {init.x, init.y, newW, newH});
+
+        GdkWindow* win = gtk_widget_get_window(m_area);
+        if (win) {
+            GdkDisplay* display = gdk_window_get_display(win);
+            GdkCursor* resizeCursor = gdk_cursor_new_from_name(display, "se-resize");
+            if (!resizeCursor) {
+                resizeCursor = gdk_cursor_new_for_display(display, GDK_BOTTOM_RIGHT_CORNER);
+            }
+            gdk_window_set_cursor(win, resizeCursor);
+            if (resizeCursor) {
+                g_object_unref(resizeCursor);
+            }
+        }
+
+        gtk_widget_queue_draw(m_area);
+        return TRUE;
+    }
+
     if (m_state.dragSnap.dragPending && !m_state.dragSnap.isDraggingCard) {
         const double dragDist = std::hypot(event->x - m_state.dragSnap.dragStartScreenX,
                                            event->y - m_state.dragSnap.dragStartScreenY);
@@ -1627,6 +1796,7 @@ gboolean WorkspaceView::onMotion(GdkEventMotion* event) {
             GdkDisplay* display = gdk_window_get_display(win);
 
             std::string newHoveredId;
+            std::string newHoveredResizeId;
             bool isHoveringChevron = false;
             if (m_state.viewport.zoom >= 0.2) {
                 const FluidCore::Point worldTopLeft = screenToWorld(0, 0);
@@ -1685,6 +1855,39 @@ gboolean WorkspaceView::onMotion(GdkEventMotion* event) {
                         }
                     }
                 }
+
+                if (m_state.inking.currentTool == "select") {
+                    if (m_state.selectedNodeId) {
+                        if (const auto* selNode = m_api.findNode(*m_state.selectedNodeId)) {
+                            if (const auto* exc =
+                                    dynamic_cast<const FluidCore::ExcerptCardNode*>(selNode)) {
+                                if (isPointNearCardResizeHandle(exc->bounds(), m_state.viewport,
+                                                                event->x, event->y)) {
+                                    newHoveredResizeId = exc->id();
+                                }
+                            }
+                        }
+                    }
+                    if (newHoveredResizeId.empty()) {
+                        for (const auto* node : visibleNodes) {
+                            if (const auto* exc =
+                                    dynamic_cast<const FluidCore::ExcerptCardNode*>(node)) {
+                                if (isPointNearCardResizeHandle(exc->bounds(), m_state.viewport,
+                                                                event->x, event->y)) {
+                                    newHoveredResizeId = exc->id();
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (newHoveredResizeId != m_state.hoveredResizeCardId) {
+                m_state.hoveredResizeCardId = newHoveredResizeId;
+                if (m_area && GTK_IS_WIDGET(m_area)) {
+                    gtk_widget_queue_draw(m_area);
+                }
             }
 
             if (newHoveredId != m_state.hoveredAnchorCardId) {
@@ -1694,7 +1897,15 @@ gboolean WorkspaceView::onMotion(GdkEventMotion* event) {
                 }
             }
 
-            if (!m_state.hoveredAnchorCardId.empty() || isHoveringChevron) {
+            if (!m_state.hoveredResizeCardId.empty()) {
+                GdkCursor* resizeCursor = gdk_cursor_new_from_name(display, "se-resize");
+                if (!resizeCursor) {
+                    resizeCursor = gdk_cursor_new_for_display(display, GDK_BOTTOM_RIGHT_CORNER);
+                }
+                gdk_window_set_cursor(win, resizeCursor);
+                if (resizeCursor)
+                    g_object_unref(resizeCursor);
+            } else if (!m_state.hoveredAnchorCardId.empty() || isHoveringChevron) {
                 GdkCursor* pointerCursor = gdk_cursor_new_for_display(display, GDK_HAND2);
                 gdk_window_set_cursor(win, pointerCursor);
                 if (pointerCursor)

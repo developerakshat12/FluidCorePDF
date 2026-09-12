@@ -1,7 +1,7 @@
 #include "ExcerptTileCache.h"
+#include "MemoryTelemetry.h"
 #include "geometry/StrokeHitTest.h"
 #include "services/PdfExportService.h"
-#include "services/MemoryTelemetry.h"
 
 #include <algorithm>
 #include <cmath>
@@ -392,24 +392,21 @@ ExcerptTileCache::ExcerptTileCacheStats ExcerptTileCache::getStats() const {
     for (const auto& node : m_lruList) {
         int tierInt = static_cast<int>(node.key.tier);
         stats.tierCounts[tierInt]++;
-        stats.residentCrops.push_back(ExcerptCropInfo{
-            node.key.docId,
-            node.key.pageNo,
-            node.key.tier,
-            node.surface.width(),
-            node.surface.height(),
-            node.bytes
-        });
+        stats.residentCrops.push_back(ExcerptCropInfo{node.key.docId, node.key.pageNo,
+                                                      node.key.tier, node.surface.width(),
+                                                      node.surface.height(), node.bytes});
     }
     return stats;
 }
 
 void ExcerptTileCache::dumpStats(const std::string& tag) const {
     auto stats = getStats();
-    static const char* tierNames[] = {"Overview(0.5x)", "Standard(1x)", "HiDpi(2x)", "Retina(4x)", "Ultra(8x)"};
+    static const char* tierNames[] = {"Overview(0.5x)", "Standard(1x)", "HiDpi(2x)", "Retina(4x)",
+                                      "Ultra(8x)"};
     std::string tierBreakdown = "";
     for (const auto& [tierInt, count] : stats.tierCounts) {
-        if (!tierBreakdown.empty()) tierBreakdown += ", ";
+        if (!tierBreakdown.empty())
+            tierBreakdown += ", ";
         const char* name = (tierInt >= 0 && tierInt <= 4) ? tierNames[tierInt] : "Unknown";
         tierBreakdown += std::string(name) + ": " + std::to_string(count);
     }
@@ -417,11 +414,12 @@ void ExcerptTileCache::dumpStats(const std::string& tag) const {
         tierBreakdown = "none";
     }
 
-    MemoryTelemetry::log("[ExcerptTileCache] === " + tag + " === " +
-                         "Entries: " + std::to_string(stats.entryCount) +
-                         " | Bytes: " + MemoryTelemetry::formatMB(stats.currentBytes) + "/" + MemoryTelemetry::formatMB(stats.maxBytes) +
-                         " | Active Req: " + std::to_string(stats.activeRequests) +
-                         " | Tiers: [" + tierBreakdown + "]");
+    MemoryTelemetry::log("[ExcerptTileCache] === " + tag +
+                         " === " + "Entries: " + std::to_string(stats.entryCount) +
+                         " | Bytes: " + MemoryTelemetry::formatMB(stats.currentBytes) + "/" +
+                         MemoryTelemetry::formatMB(stats.maxBytes) +
+                         " | Active Req: " + std::to_string(stats.activeRequests) + " | Tiers: [" +
+                         tierBreakdown + "]");
 }
 
 } // namespace FluidCoreApp
