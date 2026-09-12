@@ -128,7 +128,7 @@ Architecture: ${ARCH}
 Essential: no
 Installed-Size: ${INSTALLED_SIZE}
 Maintainer: FluidCore Platform Contributors <maintainers@fluidcore.org>
-Depends: libc6 (>= 2.34), libgtk-3-0 (>= 3.22), libpoppler-glib8 (>= 20.0), libcairo2 (>= 1.16), libsqlite3-0 (>= 3.35), zlib1g (>= 1.2.11)
+Depends: libc6 (>= 2.34), libgtk-3-0 (>= 3.22), libpoppler-glib8 (>= 20.0) | libpoppler-glib8t64, libcairo2 (>= 1.16), libsqlite3-0 (>= 3.35), zlib1g (>= 1.2.11)
 Recommends: shared-mime-info, hicolor-icon-theme
 Homepage: https://github.com/fluidcore/fluidcore-platform
 Description: Offline-first fluid document synthesis platform

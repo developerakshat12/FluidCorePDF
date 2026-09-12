@@ -73,7 +73,7 @@ jobs:
   app-shell:
     # GUI code compiles on runners but cannot open displays: compile-link only.
     # Runtime/visual verification happens locally (WSLg / dev container).
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
         with:

@@ -114,7 +114,7 @@ fi
 echo -e "\033[1;36m[FluidCore AppImage] Bundling required runtime shared libraries...\033[0m"
 
 # Excludelist regex: system base libraries that must be provided by host OS
-EXCLUDE_REGEX="^(libc|libm|libpthread|libdl|librt|ld-linux|libresolv|libnss|libutil|libX11|libX11-xcb|libxcb|libGL|libEGL|libGLX|libOpenGL|libdrm|libasound)\.so"
+EXCLUDE_REGEX="^(libc|libm|libpthread|libdl|librt|ld-linux|libresolv|libnss|libutil|libX11|libX11-xcb|libxcb|libGL|libEGL|libGLX|libOpenGL|libdrm|libasound|libstdc\+\+|libgcc_s)\.so"
 
 LIBS_TO_COPY=()
 while IFS= read -r line; do

@@ -2,7 +2,7 @@
 # ==============================================================================
 # build-linux.sh - Native Linux Build, Test, Benchmark, and Packaging Harness
 # ==============================================================================
-# Mirrors ops/scripts/build-win.ps1 for Linux environments (Ubuntu 24.04, CI, etc.)
+# Mirrors ops/scripts/build-win.ps1 for Linux environments (Ubuntu 22.04+, CI, etc.)
 # Usage:
 #   ./ops/scripts/build-linux.sh [OPTIONS]
 # Options:

@@ -65,6 +65,11 @@ else()
     target_compile_options(fluidcore_app PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
+if(UNIX AND NOT APPLE)
+    # Statically link libstdc++ and libgcc on Linux to eliminate host GLIBCXX version mismatches
+    target_link_options(fluidcore_app PRIVATE -static-libgcc -static-libstdc++)
+endif()
+
 if(BUILD_TESTING)
     add_executable(damage_rect_test tests/DamageRectTest.cpp)
     target_include_directories(damage_rect_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
