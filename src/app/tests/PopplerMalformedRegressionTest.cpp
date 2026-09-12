@@ -23,8 +23,16 @@
 void testCorpusBuffer(const char* label, const uint8_t* data, size_t len, int& passed,
                       int& failed) {
     (void)label;
+    (void)failed;
     GError* error = nullptr;
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
     PopplerDocument* doc = poppler_document_new_from_data((char*)data, len, nullptr, &error);
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
     if (!doc) {
         // Expected behavior for severely malformed PDF: clean error, no crash
         if (error) {
