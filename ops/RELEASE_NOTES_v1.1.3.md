@@ -7,6 +7,7 @@ FluidCore **v1.1.3** delivers high-impact slice-of-life usability enhancements, 
 3. **Highlighter Layer Stacking**: Highlighter strokes always render cleanly beneath solid pen strokes across both the PDF Document Reader and the Infinite Spatial Workspace canvas.
 4. **PDF Page Position Persistence**: Projects now remember and automatically restore the active PDF reading page across saves and reloads, backed by an idempotent SQLite schema migration.
 5. **Comprehensive Memory Leak Remediation**: Root-cause resolution of MinGW `winpthread` mutex retention via native Win32 `CRITICAL_SECTION` patching, ephemeral background search workers, and `mimalloc` heap slack reclamation.
+6. **Linux Distribution Packaging & ABI Portability Fix**: Re-targeted Linux CI and release packagers to Ubuntu 22.04 LTS (GLIBC 2.35), statically linked C++ runtime (`-static-libgcc -static-libstdc++`), and refined library bundling in AppImage/.deb to eliminate `GLIBC_2.38` and `GLIBCXX_3.4.31` launch errors.
 
 ---
 
@@ -66,6 +67,16 @@ FluidCore **v1.1.3** delivers high-impact slice-of-life usability enhancements, 
 - **`mimalloc` Hardened Heap Management**:
   - Linked `mimalloc` across `fluidcore_app` with `PurgeDelay=0` and active decommit flags to aggressively return unmapped virtual memory slack directly to Windows.
   - Added internal live memory telemetry (`MemoryTelemetry.h`) and telemetry monitoring scripts in `debug/scripts/`.
+
+#### 6. Linux Distribution Packaging & ABI Portability Hardening
+- **Universal GLIBC 2.35+ Compatibility**:
+  - Re-targeted GitHub Actions release and packaging runners from `ubuntu-24.04` to `ubuntu-22.04`.
+  - Releases are now built against GLIBC 2.35, resolving runtime failures (`version GLIBC_2.38 not found`) on Ubuntu 22.04 LTS, Debian 12, Linux Mint 21, and other enterprise distributions, while maintaining forward compatibility with Ubuntu 24.04+.
+- **Static C++ Runtime Linking (`-static-libgcc -static-libstdc++`)**:
+  - Statically linked `libstdc++` and `libgcc` into `fluidcore_app` on Linux, eliminating `GLIBCXX_3.4.xx` runtime version mismatches.
+- **AppImage & Debian Package Refinements**:
+  - Updated `package-appimage.sh` excludelist to prevent bundling `libstdc++`/`libgcc_s` which could shadow newer host GPU display drivers.
+  - Enhanced `package-deb.sh` dependencies with `libpoppler-glib8 (>= 20.0) | libpoppler-glib8t64` for seamless installation across both Ubuntu 22.04 and Ubuntu 24.04 (t64 transition).
 
 ---
 
