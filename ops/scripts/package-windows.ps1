@@ -19,6 +19,10 @@ param (
 
 $ErrorActionPreference = "Stop"
 
+if ($MsysRoot -and (Test-Path "$MsysRoot\msys64\ucrt64\bin") -and -not (Test-Path "$MsysRoot\ucrt64\share\glib-2.0\schemas")) {
+    $MsysRoot = "$MsysRoot\msys64"
+}
+
 if (-not $MsysRoot) {
     # Check PATH for active gcc or objdump in ucrt64
     $GccCmd = Get-Command gcc.exe -ErrorAction SilentlyContinue
@@ -31,14 +35,26 @@ if (-not $MsysRoot) {
     $MsysCandidates = @(
         $env:MSYS2_ROOT,
         "$env:RUNNER_TEMP\msys64",
+        "C:\msys64\msys64",
+        "D:\a\_temp\msys64",
         "C:\msys64",
         "D:\msys64",
         "C:\tools\msys64"
     )
+    # First search for candidate containing GLib schemas / GTK3
     foreach ($Cand in $MsysCandidates) {
-        if ($Cand -and (Test-Path "$Cand\ucrt64\bin")) {
+        if ($Cand -and (Test-Path "$Cand\ucrt64\share\glib-2.0\schemas")) {
             $MsysRoot = $Cand
             break
+        }
+    }
+    # Fallback to any candidate containing ucrt64\bin
+    if (-not $MsysRoot) {
+        foreach ($Cand in $MsysCandidates) {
+            if ($Cand -and (Test-Path "$Cand\ucrt64\bin")) {
+                $MsysRoot = $Cand
+                break
+            }
         }
     }
 }
