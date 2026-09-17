@@ -18,7 +18,7 @@ An **open-source, offline-first fluid document synthesis platform** designed for
 https://github.com/developerakshat12/FluidCorePDF/raw/main/Images/FluidCore_Demo.mp4
 
 <div align="center">
-  <video src="Images/FluidCore_Demo.mp4" width="100%" controls title="FluidCore Feature Walkthrough & Demonstration Video">
+  <video src="Images/FluidCore Demo.mp4" width="100%" controls title="FluidCore Feature Walkthrough & Demonstration Video">
     Your browser does not support the video tag. You can <a href="Images/FluidCore_Demo.mp4">view or download the demo video directly (Images/FluidCore_Demo.mp4)</a>.
   </video>
   <p><em>Full walkthrough: dynamic document squeeze, card extraction, spatial canvas organization, and vector inking in action.</em></p>
