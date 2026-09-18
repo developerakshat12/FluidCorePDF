@@ -7,3 +7,11 @@ compile_commands.json
 /docs
 *.exe
 *.log
+
+# Claude Agent files
+CLAUDE.md
+/planning/
+/references/
+/skills/
+/tasks/
+/specs/
