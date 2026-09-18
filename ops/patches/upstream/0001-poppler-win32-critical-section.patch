@@ -1,5 +1,5 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-From: FluidCore Engineering <dev@fluidcore.org>
+From: developerakshat12 <akafluidcore@gmail.com>
 Date: Sat, 12 Sep 2026 12:00:00 +0000
 Subject: [PATCH] Use native Win32 CRITICAL_SECTION for recursive mutexes on Windows
 
