@@ -38,6 +38,7 @@ std::string createSyntheticPdf(const std::string& filePath, int numPages = 15) {
     cairo_destroy(cr);
     cairo_surface_finish(surface);
     cairo_surface_destroy(surface);
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
     return filePath;
 }

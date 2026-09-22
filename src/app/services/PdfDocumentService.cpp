@@ -198,7 +198,7 @@ PopplerPagePtr PdfDocumentService::getMainPage(const std::string& docId, std::si
 }
 
 PopplerPagePtr PdfDocumentService::getBackgroundPage(const std::string& docId, std::size_t pageNo) {
-    std::lock_guard<std::mutex> workerLock(m_workerPopplerMutex);
+    std::lock_guard<std::mutex> workerLock(globalPopplerMutex());
 
     std::string filePath;
     {
@@ -404,7 +404,7 @@ void PdfDocumentService::cancelDocumentRequests(const std::string& docId) {
 }
 
 void PdfDocumentService::clear() {
-    std::lock_guard<std::mutex> workerLock(m_workerPopplerMutex);
+    std::lock_guard<std::mutex> workerLock(globalPopplerMutex());
     std::lock_guard<std::mutex> regLock(m_registryMutex);
     m_documents.clear();
     m_cancelledDocIds.clear();

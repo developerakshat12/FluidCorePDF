@@ -86,7 +86,6 @@ class PdfDocumentService {
     const DocEntry* resolveEntryLocked(const std::string& docId) const;
 
     mutable std::mutex m_registryMutex;
-    std::mutex m_workerPopplerMutex;
 
     std::unordered_map<std::string, DocEntry> m_documents;
     std::unordered_set<std::string> m_cancelledDocIds;
