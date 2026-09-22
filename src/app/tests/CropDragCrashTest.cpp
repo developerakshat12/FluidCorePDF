@@ -99,14 +99,20 @@ int main() {
             bool execOk = cmd.execute();
             std::cout << "InsertNodeCommand execute result: " << execOk << "\n";
 
-            std::cout << "4. Testing tileCache.requestCropAsync for excerpt-crop-1...\n";
+            std::cout << "4. Testing WorkspaceRenderer::draw (exercises Pango/Cairo font rasterization pipeline)...\n";
+            cairo_surface_t* drawSurface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1200, 800);
+            cairo_t* drawCr = cairo_create(drawSurface);
+            FluidCoreApp::WorkspaceRenderer::draw(drawCr, state, engine, &tileCache, 1200, 800);
+            std::cout << "Initial WorkspaceRenderer::draw completed successfully!\n";
+
+            std::cout << "5. Testing tileCache.requestCropAsync for excerpt-crop-1...\n";
             uint64_t req1 = tileCache.requestCropAsync("excerpt-crop-1", testPdf, 0,
                                                        payload.sourceNormalizedRect, cardW - 20.0,
                                                        cardH - 36.0, 1.0);
             std::cout << "Initial requestCropAsync dispatched request: " << req1 << "\n";
 
             std::cout
-                << "5. Running GLib main context iterations to process background render...\n";
+                << "6. Running GLib main context iterations to process background render...\n";
             FluidCoreApp::CropCacheKey key1 = FluidCoreApp::CropCacheKey::fromNormalizedRect(
                 testPdf, 0, payload.sourceNormalizedRect, FluidCoreApp::LodTier::HiDpi);
             FluidCoreApp::CairoSurfaceHandle initialSurface;
@@ -190,6 +196,9 @@ int main() {
             } else {
                 std::cerr << "FAILED to render crop from bundled document path!\n";
             }
+
+            cairo_destroy(drawCr);
+            cairo_surface_destroy(drawSurface);
 
             // Drain any remaining pending GLib idle callbacks before tileCache destruction
             for (int i = 0; i < 20; ++i) {

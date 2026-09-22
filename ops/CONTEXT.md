@@ -32,8 +32,18 @@ ops/
 4. **Windows Release Packaging & CI Checklist**:
    - Both `.github/workflows/ci.yml` and `.github/workflows/release.yml` MUST install:
      `mingw-w64-ucrt-x86_64-librsvg`, `mingw-w64-ucrt-x86_64-adwaita-icon-theme`, `mingw-w64-ucrt-x86_64-hicolor-icon-theme`, and `mingw-w64-ucrt-x86_64-gtk-update-icon-cache`.
-   - Both workflows MUST pin Cairo to stable `1.18.4-4` via `pacman -U https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-cairo-1.18.4-4-any.pkg.tar.zst` to prevent upstream Cairo 1.18.6 COLRv1 `assert (!"reached")` abort on Windows.
+   - **Cairo Version Pinning (Regression Protocol)**: Both workflows MUST pin Cairo to stable `1.18.4-4` via `pacman -U https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-cairo-1.18.4-4-any.pkg.tar.zst`.
+     - *Symptom:* Application launches, opens a blank window or splash, and crashes within 1–2 seconds with Windows exit code `0xC0000409` (`STATUS_STACK_BUFFER_OVERRUN`) in `ucrtbase.dll!abort()`. `CropDragCrashTest` fails during font rasterization.
+     - *Root Cause:* Upstream Cairo 1.18.6+ introduced a fatal assertion abort in `cairo-colr-glyph-render.c:1168: assert (!"reached");` when the Windows DirectWrite backend queries system fonts containing COLRv1 color glyph tables (e.g. `Segoe UI Emoji`).
+     - *Diagnostic Check:* Run `Select-String "cairo-1.18.6" libcairo-2.dll` or run under GDB: `b abort` -> backtrace will show `libcairo-2.dll` in the call stack above `pango_cairo_show_layout`.
+     - *Remediation Command:*
+       ```bash
+       curl -sSL --retry 3 "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-cairo-1.18.4-4-any.pkg.tar.zst" -o /tmp/cairo.pkg.tar.zst
+       pacman -U --noconfirm /tmp/cairo.pkg.tar.zst
+       ```
+   - `CropDragCrashTest` actively executes `WorkspaceRenderer::draw` against an image surface to smoke-test Pango/Cairo font rasterization and detect upstream font table regressions before releases.
    - `package-windows.ps1` must execute `gdk-pixbuf-query-loaders.exe` with relative paths so `loaders.cache` correctly maps `pixbufloader_svg.dll`.
+   - `package-windows.ps1` contains an automated binary string scan ensuring `cairo-1.18.6` is never bundled into distributions.
    - `src/app/main.cpp` must resolve the application directory via `GetModuleFileNameW(NULL, ...)` to ensure `GSETTINGS_SCHEMA_DIR`, `FONTCONFIG_PATH`, and `GDK_PIXBUF_MODULE_FILE` point to bundled resources.
 
 ## Avoid
