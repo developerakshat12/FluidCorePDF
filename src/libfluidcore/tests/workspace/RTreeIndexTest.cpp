@@ -113,8 +113,7 @@ int testDeepSplitBoundsPropagation() {
 
     // Small zoomed-in viewport querying a specific child element
     for (int i = 0; i < 60; i += 5) {
-        Rectangle probe{static_cast<double>(i * 30 + 5), static_cast<double>(i * 30 + 5), 5.0,
-                        5.0};
+        Rectangle probe{static_cast<double>(i * 30 + 5), static_cast<double>(i * 30 + 5), 5.0, 5.0};
         auto found = index.query(probe);
         auto expected = oracleQuery(live, probe);
         failures += check(sameHandles(found, expected),

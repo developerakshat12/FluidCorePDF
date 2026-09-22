@@ -131,16 +131,28 @@ int main(int argc, char** argv) {
     cmd2.execute();
 
     FluidCoreApp::WorkspaceRenderer::draw(cr, state, engine, &tileCache, 1200, 800);
-    for (int i = 0; i < 50; ++i) {
+    FluidCoreApp::CropCacheKey key2 = FluidCoreApp::CropCacheKey::fromNormalizedRect(
+        bundledPath, 10, payload2.sourceNormalizedRect, FluidCoreApp::LodTier::Standard);
+
+    FluidCoreApp::CairoSurfaceHandle renderedSurface;
+    for (int i = 0; i < 100; ++i) {
         g_main_context_iteration(nullptr, FALSE);
+        renderedSurface = tileCache.get(key2);
+        if (!renderedSurface) {
+            renderedSurface =
+                tileCache.getBestAvailableSurface(bundledPath, 10, payload2.sourceNormalizedRect);
+        }
+        if (renderedSurface) {
+            break;
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
     FluidCoreApp::WorkspaceRenderer::draw(cr, state, engine, &tileCache, 1200, 800);
 
     // Verify surface in tileCache is valid
-    FluidCoreApp::CropCacheKey key2 = FluidCoreApp::CropCacheKey::fromNormalizedRect(
-        bundledPath, 10, payload2.sourceNormalizedRect, FluidCoreApp::LodTier::Standard);
-    auto renderedSurface = tileCache.get(key2);
+    if (!renderedSurface) {
+        renderedSurface = tileCache.get(key2);
+    }
     if (!renderedSurface) {
         renderedSurface =
             tileCache.getBestAvailableSurface(bundledPath, 10, payload2.sourceNormalizedRect);
@@ -158,6 +170,13 @@ int main(int argc, char** argv) {
 
     cairo_destroy(cr);
     cairo_surface_destroy(surface);
+
+    // Drain any remaining pending GLib idle callbacks before destroying tileCache
+    for (int i = 0; i < 20; ++i) {
+        if (!g_main_context_iteration(nullptr, FALSE)) {
+            break;
+        }
+    }
 
     std::error_code ec;
     std::filesystem::remove_all(tempDir, ec);

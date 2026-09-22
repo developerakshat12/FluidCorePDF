@@ -2325,7 +2325,8 @@ void WorkspaceView::cancelActiveTouches(const std::vector<uint32_t>& /*touchIds*
 }
 
 std::string WorkspaceView::getAssetsImagesDirectory() const {
-    return WorkspaceInteraction::getAssetsImagesDirectory(m_state.projectBundlePath.empty() ? m_api.projectPath() : m_state.projectBundlePath);
+    return WorkspaceInteraction::getAssetsImagesDirectory(
+        m_state.projectBundlePath.empty() ? m_api.projectPath() : m_state.projectBundlePath);
 }
 
 std::string WorkspaceView::allocateUniqueImageFilename(const std::string& prefix) const {
@@ -2381,7 +2382,8 @@ bool WorkspaceView::pasteImageFromClipboard() {
     double cardH = (imgW > 0) ? (headerH + 16.0 + (cardW - 32.0) * ((double)imgH / imgW)) : 240.0;
     cardH = std::clamp(cardH, 120.0, 800.0);
 
-    FluidCore::Rectangle bounds{worldCenter.x - cardW / 2.0, worldCenter.y - cardH / 2.0, cardW, cardH};
+    FluidCore::Rectangle bounds{worldCenter.x - cardW / 2.0, worldCenter.y - cardH / 2.0, cardW,
+                                cardH};
 
     static std::atomic<uint64_t> s_imgSeq{0};
     uint64_t ts = static_cast<uint64_t>(g_get_real_time());

@@ -250,11 +250,13 @@ PopplerPagePtr PdfDocumentService::getBackgroundPage(const std::string& docId, s
                 entry->backgroundDoc.reset(bgDoc);
                 docToUse = bgDoc;
             } else if (error) {
-                std::cerr << "[PdfDocumentService] Failed to load bgDoc: " << error->message << "\n";
+                std::cerr << "[PdfDocumentService] Failed to load bgDoc: " << error->message
+                          << "\n";
                 g_error_free(error);
             }
         } else if (error) {
-            std::cerr << "[PdfDocumentService] Failed to get URI for '" << filePath << "': " << error->message << "\n";
+            std::cerr << "[PdfDocumentService] Failed to get URI for '" << filePath
+                      << "': " << error->message << "\n";
             g_error_free(error);
         }
     }
@@ -268,8 +270,7 @@ PopplerPagePtr PdfDocumentService::getBackgroundPage(const std::string& docId, s
         return nullptr;
     }
 
-    PopplerPage* page =
-        poppler_document_get_page(docToUse, static_cast<int>(pageNo));
+    PopplerPage* page = poppler_document_get_page(docToUse, static_cast<int>(pageNo));
     return PopplerPagePtr(page);
 }
 
@@ -328,11 +329,13 @@ CairoSurfaceHandle PdfDocumentService::renderBackgroundCrop(
                 entry->backgroundDoc.reset(bgDoc);
                 docToUse = bgDoc;
             } else if (error) {
-                std::cerr << "[PdfDocumentService] Failed to load bgDoc: " << error->message << "\n";
+                std::cerr << "[PdfDocumentService] Failed to load bgDoc: " << error->message
+                          << "\n";
                 g_error_free(error);
             }
         } else if (error) {
-            std::cerr << "[PdfDocumentService] Failed to get URI for '" << filePath << "': " << error->message << "\n";
+            std::cerr << "[PdfDocumentService] Failed to get URI for '" << filePath
+                      << "': " << error->message << "\n";
             g_error_free(error);
         }
     }
@@ -346,8 +349,7 @@ CairoSurfaceHandle PdfDocumentService::renderBackgroundCrop(
         return CairoSurfaceHandle{};
     }
 
-    PopplerPage* page =
-        poppler_document_get_page(docToUse, static_cast<int>(pageNo));
+    PopplerPage* page = poppler_document_get_page(docToUse, static_cast<int>(pageNo));
     if (!page) {
         return CairoSurfaceHandle{};
     }

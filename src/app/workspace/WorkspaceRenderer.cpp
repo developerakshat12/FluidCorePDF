@@ -159,7 +159,8 @@ void WorkspaceRenderer::drawMinimap(cairo_t* cr, const WorkspaceState& state,
     drawRoundedRect(cr, mm.x + 1.0, mm.y + 1.0, mm.w - 2.0, mm.h - 2.0, 7.0);
     cairo_clip(cr);
 
-    // Miniature macro nodes (cards and stacks; skip individual ink strokes for ultra-fluid rendering)
+    // Miniature macro nodes (cards and stacks; skip individual ink strokes for ultra-fluid
+    // rendering)
     const FluidCore::Rectangle queryAll{mapWorldX, mapWorldY, mapWorldW, mapWorldH};
     cairo_set_source_rgba(cr, 0.45, 0.58, 0.75, 0.7);
     for (const FluidCore::WorkspaceNode* node : api.queryVisibleNodes(queryAll)) {
@@ -528,14 +529,16 @@ void WorkspaceRenderer::drawExcerptCard(cairo_t* cr, const WorkspaceState& state
                     if (!std::filesystem::exists(fullImgPath, ec)) {
                         std::string pRoot = state.projectBundlePath;
                         if (!pRoot.empty()) {
-                            std::filesystem::path candidate = std::filesystem::path(pRoot) / excerpt->sourceDocId();
+                            std::filesystem::path candidate =
+                                std::filesystem::path(pRoot) / excerpt->sourceDocId();
                             if (std::filesystem::exists(candidate, ec)) {
                                 fullImgPath = candidate;
                             }
                         }
                         if (!std::filesystem::exists(fullImgPath, ec)) {
                             std::filesystem::path sessCandidate =
-                                std::filesystem::temp_directory_path() / "FluidCore" / "session_assets" / excerpt->sourceDocId();
+                                std::filesystem::temp_directory_path() / "FluidCore" /
+                                "session_assets" / excerpt->sourceDocId();
                             if (std::filesystem::exists(sessCandidate, ec)) {
                                 fullImgPath = sessCandidate;
                             }
@@ -549,9 +552,11 @@ void WorkspaceRenderer::drawExcerptCard(cairo_t* cr, const WorkspaceState& state
                     if (it != s_imgSurfaceCache.end()) {
                         surface = it->second;
                     } else if (std::filesystem::exists(fullImgPath, ec)) {
-                        GdkPixbuf* pb = gdk_pixbuf_new_from_file(fullImgPath.string().c_str(), nullptr);
+                        GdkPixbuf* pb =
+                            gdk_pixbuf_new_from_file(fullImgPath.string().c_str(), nullptr);
                         if (pb) {
-                            cairo_surface_t* cSurf = gdk_cairo_surface_create_from_pixbuf(pb, 1, nullptr);
+                            cairo_surface_t* cSurf =
+                                gdk_cairo_surface_create_from_pixbuf(pb, 1, nullptr);
                             if (cSurf) {
                                 surface = CairoSurfaceHandle(cSurf, true);
                                 s_imgSurfaceCache[cacheKey] = surface;

@@ -151,8 +151,8 @@ void testNodeAndGraphRehydration() {
     std::string err;
     DocumentRecord docRecord{"doc-1", "Quantum.pdf", "documents/doc-1.pdf", "sha-1", 10,
                              50000,   1000};
-    DocumentRecord docRecord2{"doc-2", "Hardware.pdf", "documents/doc-2.pdf", "sha-2", 20,
-                              60000,   1000};
+    DocumentRecord docRecord2{"doc-2", "Hardware.pdf", "documents/doc-2.pdf", "sha-2", 20, 60000,
+                              1000};
     bool saved = store.saveProject(model, graph, {docRecord, docRecord2}, &err);
     assert(saved && "saveProject should succeed");
 
@@ -510,7 +510,9 @@ void testLastViewedPagePersistenceAndMigration() {
 
         // Create legacy schema without last_viewed_page
         const char* legacyDDL =
-            "CREATE TABLE projects (project_id TEXT PRIMARY KEY NOT NULL, title TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, schema_version INTEGER NOT NULL DEFAULT 1);"
+            "CREATE TABLE projects (project_id TEXT PRIMARY KEY NOT NULL, title TEXT NOT NULL, "
+            "created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, schema_version INTEGER NOT "
+            "NULL DEFAULT 1);"
             "INSERT INTO projects VALUES ('legacy-proj', 'Legacy', 1000, 1000, 1);"
             "CREATE TABLE documents ("
             "    doc_id TEXT PRIMARY KEY NOT NULL,"
@@ -522,7 +524,8 @@ void testLastViewedPagePersistenceAndMigration() {
             "    file_size_bytes INTEGER NOT NULL,"
             "    created_at INTEGER NOT NULL"
             ");"
-            "INSERT INTO documents VALUES ('legacy-doc', 'legacy-proj', 'Old.pdf', 'documents/Old.pdf', 'h00', "
+            "INSERT INTO documents VALUES ('legacy-doc', 'legacy-proj', 'Old.pdf', "
+            "'documents/Old.pdf', 'h00', "
             "50, 10000, 1000);";
 
         char* sqlErr = nullptr;
@@ -587,7 +590,8 @@ void testExternalPathPersistenceAndMigration() {
         "    created_at INTEGER NOT NULL,"
         "    last_viewed_page INTEGER DEFAULT 0"
         ");"
-        "INSERT INTO documents VALUES ('legacy-doc', 'legacy-proj', 'Original.pdf', 'documents/Original.pdf', 'h00', "
+        "INSERT INTO documents VALUES ('legacy-doc', 'legacy-proj', 'Original.pdf', "
+        "'documents/Original.pdf', 'h00', "
         "25, 50000, 1000, 3);";
 
     char* sqlErr = nullptr;
@@ -606,8 +610,15 @@ void testExternalPathPersistenceAndMigration() {
     assert(doc->lastViewedPage == 3);
 
     // Register a new external document
-    DocumentRecord extDoc{"doc-external-1", "ExternalBook.pdf", "documents/ExternalBook.pdf", "sha256-ext", 120,
-                          500000, 2000, 10, "C:/Users/Student/Documents/ExternalBook.pdf"};
+    DocumentRecord extDoc{"doc-external-1",
+                          "ExternalBook.pdf",
+                          "documents/ExternalBook.pdf",
+                          "sha256-ext",
+                          120,
+                          500000,
+                          2000,
+                          10,
+                          "C:/Users/Student/Documents/ExternalBook.pdf"};
     assert(store.registerDocument(extDoc, &err));
 
     auto retrievedExt = store.getDocument("doc-external-1");

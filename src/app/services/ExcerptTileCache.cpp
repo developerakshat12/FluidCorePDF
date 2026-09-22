@@ -59,10 +59,12 @@ struct AsyncRenderResult {
     CropCacheKey cacheKey;
     CairoSurfaceHandle surface;
     ExcerptTileCache* cache = nullptr;
+    std::weak_ptr<std::atomic<bool>> aliveToken;
 };
 
 ExcerptTileCache::ExcerptTileCache(PdfDocumentService& docService, std::size_t maxBytes)
-    : m_docService(docService), m_maxBytes(maxBytes) {
+    : m_docService(docService), m_maxBytes(maxBytes),
+      m_alive(std::make_shared<std::atomic<bool>>(true)) {
     GError* error = nullptr;
     m_threadPool = g_thread_pool_new(asyncWorkerFunc, this, 2, FALSE, &error);
     if (error) {
@@ -74,6 +76,9 @@ ExcerptTileCache::ExcerptTileCache(PdfDocumentService& docService, std::size_t m
 }
 
 ExcerptTileCache::~ExcerptTileCache() {
+    if (m_alive) {
+        *m_alive = false;
+    }
     clear();
     if (m_threadPool) {
         g_thread_pool_free(m_threadPool, TRUE, TRUE);
@@ -257,6 +262,7 @@ uint64_t ExcerptTileCache::requestCropAsync(const std::string& excerptId, const 
     task->targetPixelW = targetW;
     task->targetPixelH = targetH;
     task->cache = this;
+    task->aliveToken = m_alive;
 
     if (m_strokeProvider) {
         m_strokeProvider(docId, pageNo, normRect, task->intersectingStrokes);
@@ -284,6 +290,12 @@ void ExcerptTileCache::asyncWorkerFunc(gpointer data, gpointer /*userData*/) {
         return;
     }
 
+    auto aliveLock = task->aliveToken.lock();
+    if (!aliveLock || !*aliveLock) {
+        delete task;
+        return;
+    }
+
     ExcerptTileCache* cache = task->cache;
     if (cache->m_docService.isDocumentCancelled(task->docId)) {
         delete task;
@@ -301,6 +313,7 @@ void ExcerptTileCache::asyncWorkerFunc(gpointer data, gpointer /*userData*/) {
     result->cacheKey = task->cacheKey;
     result->surface = surface;
     result->cache = cache;
+    result->aliveToken = task->aliveToken;
 
     delete task;
 
@@ -313,8 +326,9 @@ gboolean ExcerptTileCache::onRenderCompletedIdle(gpointer data) {
         return G_SOURCE_REMOVE;
     }
 
-    ExcerptTileCache* cache = result->cache;
-    if (cache) {
+    auto aliveLock = result->aliveToken.lock();
+    if (aliveLock && *aliveLock && result->cache) {
+        ExcerptTileCache* cache = result->cache;
         cache->m_inFlightKeys.erase(result->cacheKey);
         if (result->surface && cache->m_cancelledRequestIds.count(result->requestId) == 0 &&
             !cache->m_docService.isDocumentCancelled(result->docId)) {

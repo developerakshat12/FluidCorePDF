@@ -627,18 +627,19 @@ bool ProjectStore::registerDocument(const DocumentRecord& doc, std::string* erro
         return false;
     }
 
-    SqliteStatement stmt(m_db,
-                         "INSERT INTO documents (doc_id, project_id, filename, file_path_relative, "
-                         "file_sha256, page_count, file_size_bytes, created_at, last_viewed_page, external_path) "
-                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
-                         "ON CONFLICT(doc_id) DO UPDATE SET "
-                         "filename = excluded.filename, "
-                         "file_path_relative = excluded.file_path_relative, "
-                         "file_sha256 = excluded.file_sha256, "
-                         "page_count = excluded.page_count, "
-                         "file_size_bytes = excluded.file_size_bytes, "
-                         "last_viewed_page = excluded.last_viewed_page, "
-                         "external_path = excluded.external_path;");
+    SqliteStatement stmt(
+        m_db,
+        "INSERT INTO documents (doc_id, project_id, filename, file_path_relative, "
+        "file_sha256, page_count, file_size_bytes, created_at, last_viewed_page, external_path) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(doc_id) DO UPDATE SET "
+        "filename = excluded.filename, "
+        "file_path_relative = excluded.file_path_relative, "
+        "file_sha256 = excluded.file_sha256, "
+        "page_count = excluded.page_count, "
+        "file_size_bytes = excluded.file_size_bytes, "
+        "last_viewed_page = excluded.last_viewed_page, "
+        "external_path = excluded.external_path;");
 
     if (!stmt.isValid()) {
         if (error)
@@ -707,9 +708,10 @@ std::vector<DocumentRecord> ProjectStore::listDocuments() const {
     if (!m_db)
         return list;
 
-    SqliteStatement stmt(
-        m_db, "SELECT doc_id, filename, file_path_relative, file_sha256, page_count, "
-              "file_size_bytes, created_at, last_viewed_page, external_path FROM documents WHERE project_id = ?;");
+    SqliteStatement stmt(m_db,
+                         "SELECT doc_id, filename, file_path_relative, file_sha256, page_count, "
+                         "file_size_bytes, created_at, last_viewed_page, external_path FROM "
+                         "documents WHERE project_id = ?;");
     if (!stmt.isValid())
         return list;
 
@@ -744,9 +746,10 @@ std::optional<DocumentRecord> ProjectStore::getDocument(const std::string& docId
     if (!m_db)
         return std::nullopt;
 
-    SqliteStatement stmt(
-        m_db, "SELECT doc_id, filename, file_path_relative, file_sha256, page_count, "
-              "file_size_bytes, created_at, last_viewed_page, external_path FROM documents WHERE doc_id = ?;");
+    SqliteStatement stmt(m_db,
+                         "SELECT doc_id, filename, file_path_relative, file_sha256, page_count, "
+                         "file_size_bytes, created_at, last_viewed_page, external_path FROM "
+                         "documents WHERE doc_id = ?;");
     if (!stmt.isValid())
         return std::nullopt;
 
@@ -952,11 +955,11 @@ bool serializeNodeRecursive(sqlite3* db, const std::string& projectId, const Wor
         // Recurse on stack children
         int childZ = zIndex + 1;
         for (const auto& child : stack->children()) {
-            if (!serializeNodeRecursive(db, projectId, child.get(), nodeId, childZ++, insertNodeStmt,
-                                       insertAnchorStmt, insertTagStmt, insertEntityTagStmt,
-                                       insertFtsStmt, deleteFtsStmt, insertInkStrokeStmt,
-                                       currentModelNodeIds, currentModelStrokeIds,
-                                       executeOrRollback)) {
+            if (!serializeNodeRecursive(db, projectId, child.get(), nodeId, childZ++,
+                                        insertNodeStmt, insertAnchorStmt, insertTagStmt,
+                                        insertEntityTagStmt, insertFtsStmt, deleteFtsStmt,
+                                        insertInkStrokeStmt, currentModelNodeIds,
+                                        currentModelStrokeIds, executeOrRollback)) {
                 return false;
             }
         }
@@ -1139,11 +1142,11 @@ bool ProjectStore::saveProject(const WorkspaceModel& model, const GraphTopology&
     for (const std::string& nodeId : model.allNodeIds()) {
         const WorkspaceNode* node = model.find(nodeId);
         if (node) {
-            if (!serializeNodeRecursive(m_db, m_metadata.projectId, node, "", rootZ++, insertNodeStmt,
-                                       insertAnchorStmt, insertTagStmt, insertEntityTagStmt,
-                                       insertFtsStmt, deleteFtsStmt, insertInkStrokeStmt,
-                                       currentModelNodeIds, currentModelStrokeIds,
-                                       executeOrRollback)) {
+            if (!serializeNodeRecursive(m_db, m_metadata.projectId, node, "", rootZ++,
+                                        insertNodeStmt, insertAnchorStmt, insertTagStmt,
+                                        insertEntityTagStmt, insertFtsStmt, deleteFtsStmt,
+                                        insertInkStrokeStmt, currentModelNodeIds,
+                                        currentModelStrokeIds, executeOrRollback)) {
                 return false;
             }
         }

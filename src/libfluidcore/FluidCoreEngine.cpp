@@ -313,8 +313,8 @@ bool FluidCoreEngine::saveProjectWithError(std::string* error) {
         }
 
         // Self-healing check: ensure any ExcerptCardNode in m_model (including nested in stacks)
-        // whose sourceDocId is not yet in docs gets an automatic fallback DocumentRecord registered,
-        // preventing fatal SQLite FOREIGN KEY constraint violations.
+        // whose sourceDocId is not yet in docs gets an automatic fallback DocumentRecord
+        // registered, preventing fatal SQLite FOREIGN KEY constraint violations.
         auto ensureDocRegistered = [&](auto& self, const WorkspaceNode* node) -> void {
             if (!node)
                 return;

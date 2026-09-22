@@ -63,8 +63,9 @@ int testMinimapHitTestAndRect() {
     // Test spacebar peek visibility
     state.showMinimap = false;
     state.isSpacePeekingMinimap = false;
-    failed += check(!WorkspaceInteraction::minimapHitTest(state, mm.x + 10, mm.y + 10, viewW, viewH),
-                    "Hit test with minimap off and peek off returns false");
+    failed +=
+        check(!WorkspaceInteraction::minimapHitTest(state, mm.x + 10, mm.y + 10, viewW, viewH),
+              "Hit test with minimap off and peek off returns false");
 
     state.isSpacePeekingMinimap = true;
     failed += check(WorkspaceInteraction::minimapHitTest(state, mm.x + 10, mm.y + 10, viewW, viewH),
@@ -103,7 +104,7 @@ int testAssetImageHelpers() {
     std::string bundlePath = "C:/Projects/MyProject.ltproj";
     std::string assetsDir = WorkspaceInteraction::getAssetsImagesDirectory(bundlePath);
     failed += check(assetsDir.find("assets") != std::string::npos &&
-                    assetsDir.find("images") != std::string::npos,
+                        assetsDir.find("images") != std::string::npos,
                     "Bundle assets/images directory path contains assets/images");
 
     std::string tempAssetsDir = WorkspaceInteraction::getAssetsImagesDirectory("");
@@ -111,8 +112,10 @@ int testAssetImageHelpers() {
                     "Session temp assets directory path contains session_assets");
 
     // Test unique filename allocation
-    std::string name1 = WorkspaceInteraction::allocateUniqueImageFilename(tempAssetsDir, "screenshot");
-    std::string name2 = WorkspaceInteraction::allocateUniqueImageFilename(tempAssetsDir, "screenshot");
+    std::string name1 =
+        WorkspaceInteraction::allocateUniqueImageFilename(tempAssetsDir, "screenshot");
+    std::string name2 =
+        WorkspaceInteraction::allocateUniqueImageFilename(tempAssetsDir, "screenshot");
     failed += check(name1 != name2, "Consecutive allocated image filenames are unique");
     failed += check(name1.rfind(".png") == name1.length() - 4, "Allocated filename ends with .png");
     failed += check(name1.find("screenshot_") == 0, "Allocated filename starts with prefix");

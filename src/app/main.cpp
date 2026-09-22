@@ -568,7 +568,8 @@ void performSaveProjectAs(AppViewContext* ctx) {
                         std::filesystem::path srcImgPath = imgPath;
                         if (!std::filesystem::exists(srcImgPath, ec)) {
                             std::filesystem::path sessionCandidate =
-                                std::filesystem::temp_directory_path() / "FluidCore" / "session_assets" / "assets" / "images" / imgFilename;
+                                std::filesystem::temp_directory_path() / "FluidCore" /
+                                "session_assets" / "assets" / "images" / imgFilename;
                             if (std::filesystem::exists(sessionCandidate, ec)) {
                                 srcImgPath = sessionCandidate;
                             }
@@ -581,7 +582,8 @@ void performSaveProjectAs(AppViewContext* ctx) {
                             ec.clear();
                             if (!same) {
                                 std::filesystem::copy_file(
-                                    srcImgPath, dstImg, std::filesystem::copy_options::overwrite_existing, ec);
+                                    srcImgPath, dstImg,
+                                    std::filesystem::copy_options::overwrite_existing, ec);
                                 ec.clear();
                             }
                         }
@@ -609,14 +611,16 @@ void performSaveProjectAs(AppViewContext* ctx) {
                             if (resolvedPath.empty() && ctx->pane) {
                                 resolvedPath = ctx->pane->pdfPath();
                             }
-                            std::filesystem::path p(resolvedPath.empty() ? cardDocId : resolvedPath);
+                            std::filesystem::path p(resolvedPath.empty() ? cardDocId
+                                                                         : resolvedPath);
                             std::string filename = p.filename().string();
                             if (filename.empty()) {
                                 filename = "document.pdf";
                             }
                             std::string absPath;
                             if (!resolvedPath.empty() && std::filesystem::exists(p, ec)) {
-                                absPath = std::filesystem::absolute(p, ec).lexically_normal().string();
+                                absPath =
+                                    std::filesystem::absolute(p, ec).lexically_normal().string();
                             }
                             ec.clear();
 
@@ -834,7 +838,8 @@ void performSaveProject(AppViewContext* ctx) {
                         std::filesystem::path srcImgPath = imgPath;
                         if (!std::filesystem::exists(srcImgPath, ec)) {
                             std::filesystem::path sessionCandidate =
-                                std::filesystem::temp_directory_path() / "FluidCore" / "session_assets" / "assets" / "images" / imgFilename;
+                                std::filesystem::temp_directory_path() / "FluidCore" /
+                                "session_assets" / "assets" / "images" / imgFilename;
                             if (std::filesystem::exists(sessionCandidate, ec)) {
                                 srcImgPath = sessionCandidate;
                             }
@@ -847,7 +852,8 @@ void performSaveProject(AppViewContext* ctx) {
                             ec.clear();
                             if (!same) {
                                 std::filesystem::copy_file(
-                                    srcImgPath, dstImg, std::filesystem::copy_options::overwrite_existing, ec);
+                                    srcImgPath, dstImg,
+                                    std::filesystem::copy_options::overwrite_existing, ec);
                                 ec.clear();
                             }
                         }
@@ -866,9 +872,11 @@ void performSaveProject(AppViewContext* ctx) {
                         knownDocIds.insert(relPath);
                     } else {
                         const std::string& cardDocId = card->sourceDocId();
-                        if (!cardDocId.empty() && knownDocIds.find(cardDocId) == knownDocIds.end()) {
-                            std::string resPath =
-                                ctx->pdfDocService ? ctx->pdfDocService->getFilePath(cardDocId) : "";
+                        if (!cardDocId.empty() &&
+                            knownDocIds.find(cardDocId) == knownDocIds.end()) {
+                            std::string resPath = ctx->pdfDocService
+                                                      ? ctx->pdfDocService->getFilePath(cardDocId)
+                                                      : "";
                             if (resPath.empty() && ctx->pane) {
                                 resPath = ctx->pane->pdfPath();
                             }
@@ -878,7 +886,8 @@ void performSaveProject(AppViewContext* ctx) {
                                 filename = "document.pdf";
                             std::string absPath;
                             if (!resPath.empty() && std::filesystem::exists(p, ec)) {
-                                absPath = std::filesystem::absolute(p, ec).lexically_normal().string();
+                                absPath =
+                                    std::filesystem::absolute(p, ec).lexically_normal().string();
                             }
                             ec.clear();
 
@@ -1013,7 +1022,8 @@ void performOpenProject(AppViewContext* ctx) {
                     if (s.size() < 4)
                         return false;
                     std::string tail = s.substr(s.size() - 4);
-                    std::transform(tail.begin(), tail.end(), tail.begin(), [](unsigned char c) { return std::tolower(c); });
+                    std::transform(tail.begin(), tail.end(), tail.begin(),
+                                   [](unsigned char c) { return std::tolower(c); });
                     return tail == ".pdf";
                 };
                 if (endsWithPdf(fn) || endsWithPdf(rel) || endsWithPdf(ext) || !ext.empty()) {
@@ -1029,7 +1039,8 @@ void performOpenProject(AppViewContext* ctx) {
 
                 // Option 1: Legacy bundled document
                 std::filesystem::path bundledPath = bundle / primaryDoc.relativePath;
-                if (std::filesystem::exists(bundledPath, ec) && std::filesystem::is_regular_file(bundledPath, ec)) {
+                if (std::filesystem::exists(bundledPath, ec) &&
+                    std::filesystem::is_regular_file(bundledPath, ec)) {
                     resolvedPath = bundledPath.string();
                 }
                 ec.clear();
@@ -1037,7 +1048,8 @@ void performOpenProject(AppViewContext* ctx) {
                 // Option 2: External path reference
                 if (resolvedPath.empty() && !primaryDoc.externalPath.empty()) {
                     std::filesystem::path extPath(primaryDoc.externalPath);
-                    if (std::filesystem::exists(extPath, ec) && std::filesystem::is_regular_file(extPath, ec)) {
+                    if (std::filesystem::exists(extPath, ec) &&
+                        std::filesystem::is_regular_file(extPath, ec)) {
                         resolvedPath = extPath.string();
                     }
                     ec.clear();
@@ -1046,7 +1058,8 @@ void performOpenProject(AppViewContext* ctx) {
                 // Option 3: Fallback check relativePath as literal path
                 if (resolvedPath.empty() && !primaryDoc.relativePath.empty()) {
                     std::filesystem::path literalPath(primaryDoc.relativePath);
-                    if (std::filesystem::exists(literalPath, ec) && std::filesystem::is_regular_file(literalPath, ec)) {
+                    if (std::filesystem::exists(literalPath, ec) &&
+                        std::filesystem::is_regular_file(literalPath, ec)) {
                         resolvedPath = literalPath.string();
                     }
                     ec.clear();
@@ -1059,16 +1072,19 @@ void performOpenProject(AppViewContext* ctx) {
                                                  : bundledPath.string();
                     GtkWidget* warnDialog = gtk_message_dialog_new(
                         ctx->window, GTK_DIALOG_MODAL, GTK_MESSAGE_WARNING, GTK_BUTTONS_NONE,
-                        "Referenced PDF document could not be found at:\n%s\n\nWould you like to locate the replacement PDF file?",
+                        "Referenced PDF document could not be found at:\n%s\n\nWould you like to "
+                        "locate the replacement PDF file?",
                         missingLoc.c_str());
                     gtk_dialog_add_button(GTK_DIALOG(warnDialog), "_Cancel", GTK_RESPONSE_CANCEL);
-                    gtk_dialog_add_button(GTK_DIALOG(warnDialog), "_Locate PDF...", GTK_RESPONSE_ACCEPT);
+                    gtk_dialog_add_button(GTK_DIALOG(warnDialog), "_Locate PDF...",
+                                          GTK_RESPONSE_ACCEPT);
                     gint resp = gtk_dialog_run(GTK_DIALOG(warnDialog));
                     gtk_widget_destroy(warnDialog);
 
                     if (resp == GTK_RESPONSE_ACCEPT) {
                         GtkFileChooserNative* native = gtk_file_chooser_native_new(
-                            "Locate Replacement PDF Document", ctx->window, GTK_FILE_CHOOSER_ACTION_OPEN, "_Open", "_Cancel");
+                            "Locate Replacement PDF Document", ctx->window,
+                            GTK_FILE_CHOOSER_ACTION_OPEN, "_Open", "_Cancel");
                         configureNativeFileChooser(native, ctx);
 
                         GtkFileFilter* filter = gtk_file_filter_new();
@@ -1084,7 +1100,9 @@ void performOpenProject(AppViewContext* ctx) {
                                 resolvedPath = normalizePath(rawLoc);
                                 g_free(rawLoc);
                                 primaryDoc.externalPath =
-                                    std::filesystem::absolute(resolvedPath, ec).lexically_normal().string();
+                                    std::filesystem::absolute(resolvedPath, ec)
+                                        .lexically_normal()
+                                        .string();
                                 ec.clear();
                                 ctx->engine->projectStore().registerDocument(primaryDoc, nullptr);
                                 ctx->isProjectDirty = true;
@@ -1096,7 +1114,8 @@ void performOpenProject(AppViewContext* ctx) {
 
                 if (!resolvedPath.empty() && ctx->pane) {
                     size_t targetPage = 0;
-                    if (primaryDoc.pageCount > 0 && primaryDoc.lastViewedPage < primaryDoc.pageCount) {
+                    if (primaryDoc.pageCount > 0 &&
+                        primaryDoc.lastViewedPage < primaryDoc.pageCount) {
                         targetPage = primaryDoc.lastViewedPage;
                     } else if (primaryDoc.pageCount > 0) {
                         targetPage = primaryDoc.pageCount - 1;
@@ -1104,7 +1123,8 @@ void performOpenProject(AppViewContext* ctx) {
                     ctx->pane->loadDocument(resolvedPath, primaryDoc.docId, targetPage);
 
                     // Load companion .xopp from bundle
-                    std::string docStem = std::filesystem::path(primaryDoc.filename).stem().string();
+                    std::string docStem =
+                        std::filesystem::path(primaryDoc.filename).stem().string();
                     std::filesystem::path xopp1 = bundle / "documents" / (docStem + ".xopp");
                     std::filesystem::path xopp2 = bundle / primaryDoc.relativePath;
                     xopp2.replace_extension(".xopp");
@@ -1125,7 +1145,8 @@ void performOpenProject(AppViewContext* ctx) {
 
                 if (ctx->pdfDocService && !resolvedPath.empty()) {
                     ctx->pdfDocService->clear();
-                    PopplerDocument* activeDoc = (ctx->pane && ctx->pane->document()) ? ctx->pane->document() : nullptr;
+                    PopplerDocument* activeDoc =
+                        (ctx->pane && ctx->pane->document()) ? ctx->pane->document() : nullptr;
                     for (const auto& doc : docs) {
                         std::string dPath;
                         if (doc.docId == primaryDoc.docId) {
@@ -1135,7 +1156,8 @@ void performOpenProject(AppViewContext* ctx) {
                                 dPath = (bundle / doc.relativePath).string();
                             } else if (!doc.externalPath.empty()) {
                                 dPath = doc.externalPath;
-                            } else if (std::filesystem::exists(bundle / "documents" / doc.filename, ec)) {
+                            } else if (std::filesystem::exists(bundle / "documents" / doc.filename,
+                                                               ec)) {
                                 dPath = (bundle / "documents" / doc.filename).string();
                             }
                             ec.clear();
@@ -1145,10 +1167,12 @@ void performOpenProject(AppViewContext* ctx) {
                         }
                         ctx->pdfDocService->registerMainDocument(doc.docId, activeDoc, dPath);
                         if (!doc.relativePath.empty() && doc.relativePath != doc.docId) {
-                            ctx->pdfDocService->registerMainDocument(doc.relativePath, activeDoc, dPath);
+                            ctx->pdfDocService->registerMainDocument(doc.relativePath, activeDoc,
+                                                                     dPath);
                         }
                         if (!doc.filename.empty() && doc.filename != doc.docId) {
-                            ctx->pdfDocService->registerMainDocument(doc.filename, activeDoc, dPath);
+                            ctx->pdfDocService->registerMainDocument(doc.filename, activeDoc,
+                                                                     dPath);
                         }
                     }
                 }
@@ -2856,8 +2880,8 @@ void onActivate(GtkApplication* app, gpointer userData) {
             topToolbar->updateUndoRedoState(canUndo, canRedo);
         }
         if (headerBar && viewCtx) {
-            bool hasUndoableChanges = (workspace && workspace->canUndo()) ||
-                                      (documentPane && documentPane->canUndo());
+            bool hasUndoableChanges =
+                (workspace && workspace->canUndo()) || (documentPane && documentPane->canUndo());
             bool dirty = viewCtx->isProjectDirty || hasUndoableChanges;
             headerBar->setSaveStatus(dirty ? FluidCoreApp::SaveStatus::Unsaved
                                            : FluidCoreApp::SaveStatus::Saved);
@@ -2865,24 +2889,26 @@ void onActivate(GtkApplication* app, gpointer userData) {
     };
     viewCtx->updateUndoRedoUI = updateUndoRedoUI;
 
-    workspace->undoStack().setChangeListener([lastActivePane, updateUndoRedoUI, viewCtx, workspace]() {
-        *lastActivePane = ActivePane::Workspace;
-        if (workspace && workspace->canUndo()) {
-            viewCtx->isProjectDirty = true;
-        } else if (workspace && !workspace->canUndo()) {
-            viewCtx->isProjectDirty = false;
-        }
-        updateUndoRedoUI();
-    });
-    documentPane->undoStack().setChangeListener([lastActivePane, updateUndoRedoUI, viewCtx, documentPane]() {
-        *lastActivePane = ActivePane::Document;
-        if (documentPane && documentPane->canUndo()) {
-            viewCtx->isProjectDirty = true;
-        } else if (documentPane && !documentPane->canUndo()) {
-            viewCtx->isProjectDirty = false;
-        }
-        updateUndoRedoUI();
-    });
+    workspace->undoStack().setChangeListener(
+        [lastActivePane, updateUndoRedoUI, viewCtx, workspace]() {
+            *lastActivePane = ActivePane::Workspace;
+            if (workspace && workspace->canUndo()) {
+                viewCtx->isProjectDirty = true;
+            } else if (workspace && !workspace->canUndo()) {
+                viewCtx->isProjectDirty = false;
+            }
+            updateUndoRedoUI();
+        });
+    documentPane->undoStack().setChangeListener(
+        [lastActivePane, updateUndoRedoUI, viewCtx, documentPane]() {
+            *lastActivePane = ActivePane::Document;
+            if (documentPane && documentPane->canUndo()) {
+                viewCtx->isProjectDirty = true;
+            } else if (documentPane && !documentPane->canUndo()) {
+                viewCtx->isProjectDirty = false;
+            }
+            updateUndoRedoUI();
+        });
 
     documentPane->setOnActivatedCallback([lastActivePane, updateUndoRedoUI]() {
         if (*lastActivePane != ActivePane::Document) {
@@ -3039,9 +3065,8 @@ void onActivate(GtkApplication* app, gpointer userData) {
         workspace->setMinimapVisible(newVisible);
     });
 
-    workspace->setOnMinimapVisibilityChanged([topToolbar](bool visible) {
-        topToolbar->setMinimapActive(visible);
-    });
+    workspace->setOnMinimapVisibilityChanged(
+        [topToolbar](bool visible) { topToolbar->setMinimapActive(visible); });
 
     topToolbar->setOnSearch([documentPane]() {
         if (documentPane) {
@@ -3337,7 +3362,8 @@ void onActivate(GtkApplication* app, gpointer userData) {
                 performExport(ctx);
                 return TRUE;
             }
-            if (ctrl && !shift && !alt && (event->keyval == GDK_KEY_m || event->keyval == GDK_KEY_M)) {
+            if (ctrl && !shift && !alt &&
+                (event->keyval == GDK_KEY_m || event->keyval == GDK_KEY_M)) {
                 if (ws) {
                     const bool newVisible = !ws->isMinimapVisible();
                     ws->setMinimapVisible(newVisible);
@@ -3346,12 +3372,15 @@ void onActivate(GtkApplication* app, gpointer userData) {
             }
 
             // Undo / Redo fallback accelerators
-            if (ctrl && !shift && !alt && (event->keyval == GDK_KEY_z || event->keyval == GDK_KEY_Z)) {
+            if (ctrl && !shift && !alt &&
+                (event->keyval == GDK_KEY_z || event->keyval == GDK_KEY_Z)) {
                 g_action_group_activate_action(G_ACTION_GROUP(windowWidget), "undo", nullptr);
                 return TRUE;
             }
-            if ((ctrl && shift && !alt && (event->keyval == GDK_KEY_z || event->keyval == GDK_KEY_Z)) ||
-                (ctrl && !shift && !alt && (event->keyval == GDK_KEY_y || event->keyval == GDK_KEY_Y))) {
+            if ((ctrl && shift && !alt &&
+                 (event->keyval == GDK_KEY_z || event->keyval == GDK_KEY_Z)) ||
+                (ctrl && !shift && !alt &&
+                 (event->keyval == GDK_KEY_y || event->keyval == GDK_KEY_Y))) {
                 g_action_group_activate_action(G_ACTION_GROUP(windowWidget), "redo", nullptr);
                 return TRUE;
             }
@@ -3450,27 +3479,33 @@ void onActivate(GtkApplication* app, gpointer userData) {
             // Alt+1 to Alt+6 tool accelerators
             if (!ctrl && alt && !shift) {
                 if (event->keyval == GDK_KEY_1) {
-                    if (tm) tm->setActiveTool(FluidCoreApp::Tool::Pen);
+                    if (tm)
+                        tm->setActiveTool(FluidCoreApp::Tool::Pen);
                     return TRUE;
                 }
                 if (event->keyval == GDK_KEY_2) {
-                    if (tm) tm->setActiveTool(FluidCoreApp::Tool::Highlighter);
+                    if (tm)
+                        tm->setActiveTool(FluidCoreApp::Tool::Highlighter);
                     return TRUE;
                 }
                 if (event->keyval == GDK_KEY_3) {
-                    if (tm) tm->toggleEraser();
+                    if (tm)
+                        tm->toggleEraser();
                     return TRUE;
                 }
                 if (event->keyval == GDK_KEY_4) {
-                    if (tm) tm->setActiveTool(FluidCoreApp::Tool::Select);
+                    if (tm)
+                        tm->setActiveTool(FluidCoreApp::Tool::Select);
                     return TRUE;
                 }
                 if (event->keyval == GDK_KEY_5) {
-                    if (tm) tm->setActiveTool(FluidCoreApp::Tool::Crop);
+                    if (tm)
+                        tm->setActiveTool(FluidCoreApp::Tool::Crop);
                     return TRUE;
                 }
                 if (event->keyval == GDK_KEY_6) {
-                    if (tm) tm->setActiveTool(FluidCoreApp::Tool::Connector);
+                    if (tm)
+                        tm->setActiveTool(FluidCoreApp::Tool::Connector);
                     return TRUE;
                 }
             }

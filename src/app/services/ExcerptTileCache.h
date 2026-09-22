@@ -167,6 +167,7 @@ class ExcerptTileCache {
         int targetPixelH = 0;
         std::vector<FluidCore::Stroke> intersectingStrokes;
         ExcerptTileCache* cache = nullptr;
+        std::weak_ptr<std::atomic<bool>> aliveToken;
     };
 
     void evict(std::size_t incomingBytes);
@@ -181,6 +182,7 @@ class ExcerptTileCache {
     std::unordered_map<CropCacheKey, std::list<CacheNode>::iterator, CropCacheKeyHash> m_lookup;
 
     GThreadPool* m_threadPool = nullptr;
+    std::shared_ptr<std::atomic<bool>> m_alive;
     std::atomic<uint64_t> m_nextRequestId{1};
     std::unordered_set<uint64_t> m_activeRequestIds;
     std::unordered_set<uint64_t> m_cancelledRequestIds;
