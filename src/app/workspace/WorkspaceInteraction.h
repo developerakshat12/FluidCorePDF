@@ -48,6 +48,11 @@ class WorkspaceInteraction {
     static void promptRenameStack(FluidCore::FluidCoreAPI& api, GtkWidget* area,
                                   const std::string& stackId);
 
+    // Asset image directory and unique filename helpers
+    static std::string getAssetsImagesDirectory(const std::string& projectBundlePath = "");
+    static std::string allocateUniqueImageFilename(const std::string& assetsDir,
+                                                   const std::string& prefix = "image");
+
     // Drag-and-drop drop handling
     static void handleExcerptDrop(WorkspaceState& state, FluidCore::FluidCoreAPI& api,
                                   GtkWidget* area, GdkDragContext* context, gint x, gint y,

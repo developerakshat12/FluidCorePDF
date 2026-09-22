@@ -59,6 +59,9 @@ class DocumentPane {
                       std::size_t initialPage = 0);
     void closeDocument();
     void repointCompanionPath(const std::string& newPdfPath);
+    void setCompanionPath(const std::string& companionPath) { m_companionPath = companionPath; }
+    const std::string& companionPath() const { return m_companionPath; }
+    bool loadCompanionAnnotations(const std::string& companionPath);
 
     std::size_t currentPage() const;
 
@@ -198,6 +201,7 @@ class DocumentPane {
     void applySearchSqueeze();
 
     std::string m_pdfPath;
+    std::string m_companionPath;
     std::string m_docId = "doc-primary";
 
     GtkWidget* m_viewOverlay = nullptr;

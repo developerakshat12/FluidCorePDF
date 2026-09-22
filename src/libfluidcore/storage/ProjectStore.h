@@ -19,12 +19,13 @@ namespace FluidCore {
 struct DocumentRecord {
     std::string docId;
     std::string filename;
-    std::string relativePath; // Normalized forward-slash relative path within bundle
+    std::string relativePath; // Internal relative path inside bundle (used when bundled)
     std::string sha256;
     size_t pageCount = 0;
     size_t fileSizeBytes = 0;
     uint64_t createdAt = 0;
     size_t lastViewedPage = 0;
+    std::string externalPath; // Strictly absolute normalized path to external PDF if not bundled
 
     bool operator==(const DocumentRecord&) const = default;
 };

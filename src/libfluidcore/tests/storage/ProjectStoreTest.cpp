@@ -151,7 +151,9 @@ void testNodeAndGraphRehydration() {
     std::string err;
     DocumentRecord docRecord{"doc-1", "Quantum.pdf", "documents/doc-1.pdf", "sha-1", 10,
                              50000,   1000};
-    bool saved = store.saveProject(model, graph, {docRecord}, &err);
+    DocumentRecord docRecord2{"doc-2", "Hardware.pdf", "documents/doc-2.pdf", "sha-2", 20,
+                              60000,   1000};
+    bool saved = store.saveProject(model, graph, {docRecord, docRecord2}, &err);
     assert(saved && "saveProject should succeed");
 
     store.closeProject();
@@ -167,7 +169,7 @@ void testNodeAndGraphRehydration() {
     bool rehydrated = loadStore.rehydrate(loadedModel, loadedGraph, loadedDocs, &err);
     assert(rehydrated);
 
-    assert(loadedDocs.size() == 1);
+    assert(loadedDocs.size() == 2);
     assert(loadedDocs[0].docId == "doc-1");
 
     assert(loadedModel.nodeCount() == 3);
@@ -354,7 +356,15 @@ void testUnrecognizedNodeTypeSafety() {
 
     WorkspaceModel model("proj-safety");
     GraphTopology graph;
-    std::vector<DocumentRecord> docs;
+    DocumentRecord doc;
+    doc.docId = "doc-1";
+    doc.filename = "doc1.pdf";
+    doc.relativePath = "documents/doc1.pdf";
+    doc.sha256 = "sha256-safety";
+    doc.pageCount = 10;
+    doc.fileSizeBytes = 1024;
+    doc.createdAt = 1000;
+    std::vector<DocumentRecord> docs = {doc};
 
     // 1. Valid top-level excerpt card
     auto validCard = std::make_unique<ExcerptCardNode>("card-valid", Rectangle{10, 20, 100, 50},
@@ -500,21 +510,20 @@ void testLastViewedPagePersistenceAndMigration() {
 
         // Create legacy schema without last_viewed_page
         const char* legacyDDL =
-            "CREATE TABLE project_metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);"
-            "INSERT INTO project_metadata (key, value) VALUES ('project_id', 'legacy-proj'), "
-            "('schema_version', '1');"
+            "CREATE TABLE projects (project_id TEXT PRIMARY KEY NOT NULL, title TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, schema_version INTEGER NOT NULL DEFAULT 1);"
+            "INSERT INTO projects VALUES ('legacy-proj', 'Legacy', 1000, 1000, 1);"
             "CREATE TABLE documents ("
-            "    doc_id TEXT PRIMARY KEY,"
+            "    doc_id TEXT PRIMARY KEY NOT NULL,"
+            "    project_id TEXT NOT NULL,"
             "    filename TEXT NOT NULL,"
-            "    relative_path TEXT NOT NULL,"
-            "    sha256 TEXT NOT NULL,"
+            "    file_path_relative TEXT NOT NULL,"
+            "    file_sha256 TEXT NOT NULL,"
             "    page_count INTEGER NOT NULL,"
             "    file_size_bytes INTEGER NOT NULL,"
-            "    imported_at INTEGER NOT NULL,"
-            "    custom_metadata TEXT"
+            "    created_at INTEGER NOT NULL"
             ");"
-            "INSERT INTO documents VALUES ('legacy-doc', 'Old.pdf', 'documents/Old.pdf', 'h00', "
-            "50, 10000, 1000, NULL);";
+            "INSERT INTO documents VALUES ('legacy-doc', 'legacy-proj', 'Old.pdf', 'documents/Old.pdf', 'h00', "
+            "50, 10000, 1000);";
 
         char* sqlErr = nullptr;
         assert(sqlite3_exec(db, legacyDDL, nullptr, nullptr, &sqlErr) == SQLITE_OK);
@@ -553,6 +562,74 @@ void testLastViewedPagePersistenceAndMigration() {
     std::cout << "  Passed!\n";
 }
 
+void testExternalPathPersistenceAndMigration() {
+    std::cout << "[ProjectStoreTest] testExternalPathPersistenceAndMigration...\n";
+    const std::string testDir = "build/test_external_path_migration.ltproj";
+    std::error_code ec;
+    std::filesystem::remove_all(testDir, ec);
+
+    // 1. Create a legacy database without external_path column
+    std::filesystem::create_directories(testDir, ec);
+    sqlite3* db = nullptr;
+    assert(sqlite3_open((testDir + "/project.db").c_str(), &db) == SQLITE_OK);
+
+    const char* legacyDDL =
+        "CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);"
+        "INSERT INTO metadata VALUES ('project_id', 'legacy-proj'), ('schema_version', '1');"
+        "CREATE TABLE documents ("
+        "    doc_id TEXT PRIMARY KEY,"
+        "    project_id TEXT NOT NULL,"
+        "    filename TEXT NOT NULL,"
+        "    relative_path TEXT NOT NULL,"
+        "    file_sha256 TEXT NOT NULL,"
+        "    page_count INTEGER NOT NULL,"
+        "    file_size_bytes INTEGER NOT NULL,"
+        "    created_at INTEGER NOT NULL,"
+        "    last_viewed_page INTEGER DEFAULT 0"
+        ");"
+        "INSERT INTO documents VALUES ('legacy-doc', 'legacy-proj', 'Original.pdf', 'documents/Original.pdf', 'h00', "
+        "25, 50000, 1000, 3);";
+
+    char* sqlErr = nullptr;
+    assert(sqlite3_exec(db, legacyDDL, nullptr, nullptr, &sqlErr) == SQLITE_OK);
+    sqlite3_close(db);
+
+    // Open legacy project with ProjectStore (triggers idempotent migration for external_path)
+    ProjectStore store;
+    std::string err;
+    assert(store.openProject(testDir, &err));
+
+    // Verify legacy document loaded with empty externalPath and preserved lastViewedPage
+    auto doc = store.getDocument("legacy-doc");
+    assert(doc.has_value());
+    assert(doc->externalPath.empty());
+    assert(doc->lastViewedPage == 3);
+
+    // Register a new external document
+    DocumentRecord extDoc{"doc-external-1", "ExternalBook.pdf", "documents/ExternalBook.pdf", "sha256-ext", 120,
+                          500000, 2000, 10, "C:/Users/Student/Documents/ExternalBook.pdf"};
+    assert(store.registerDocument(extDoc, &err));
+
+    auto retrievedExt = store.getDocument("doc-external-1");
+    assert(retrievedExt.has_value());
+    assert(retrievedExt->externalPath == "C:/Users/Student/Documents/ExternalBook.pdf");
+    assert(retrievedExt->filename == "ExternalBook.pdf");
+    assert(retrievedExt->lastViewedPage == 10);
+
+    store.closeProject();
+
+    // Reopen to verify persistence and idempotency
+    ProjectStore storeReopen;
+    assert(storeReopen.openProject(testDir, &err));
+    auto docReopen = storeReopen.getDocument("doc-external-1");
+    assert(docReopen.has_value());
+    assert(docReopen->externalPath == "C:/Users/Student/Documents/ExternalBook.pdf");
+    storeReopen.closeProject();
+
+    std::filesystem::remove_all(testDir, ec);
+    std::cout << "  Passed!\n";
+}
+
 } // namespace
 
 int main() {
@@ -563,6 +640,7 @@ int main() {
     testIncrementalSavesAndPruning();
     testUnrecognizedNodeTypeSafety();
     testLastViewedPagePersistenceAndMigration();
+    testExternalPathPersistenceAndMigration();
     std::cout << "All ProjectStoreTest cases passed successfully!\n" << std::flush;
     return 0;
 }

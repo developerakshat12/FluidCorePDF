@@ -448,9 +448,6 @@ void performSaveProjectAs(AppViewContext* ctx) {
 
         // Map: canonical source path -> destination filename
         std::unordered_map<std::string, std::string> copiedPathToDstFilename;
-        std::vector<std::string> copiedFiles;
-        bool copySuccess = true;
-        std::string copyError;
 
         for (const auto& [docId, origPath] : allDocs) {
             if (origPath.empty())
@@ -461,66 +458,30 @@ void performSaveProjectAs(AppViewContext* ctx) {
 
             std::string srcKey = srcPdf.string();
             if (copiedPathToDstFilename.find(srcKey) != copiedPathToDstFilename.end()) {
-                continue; // Already copied this file once
+                continue;
             }
 
             std::string filename = srcPdf.filename().string();
-            std::filesystem::path dstPdf = bundlePath / "documents" / filename;
+            std::filesystem::path dstXopp = bundlePath / "documents" / filename;
+            dstXopp.replace_extension(".xopp");
 
-            bool sameFile = false;
-            if (std::filesystem::exists(dstPdf, ec)) {
-                sameFile = std::filesystem::equivalent(srcPdf, dstPdf, ec);
-            }
-            ec.clear();
+            // Migrate any pre-existing companion .xopp into bundle if present alongside srcPdf
+            std::filesystem::path srcXopp1 = srcPdf;
+            srcXopp1.replace_extension(".xopp");
+            std::filesystem::path srcXopp2 = srcPdf.string() + ".xopp";
 
-            if (!sameFile) {
-                std::filesystem::copy_file(srcPdf, dstPdf,
-                                           std::filesystem::copy_options::overwrite_existing, ec);
-                if (ec) {
-                    copySuccess = false;
-                    copyError = "Failed to copy " + filename + ": " + ec.message();
-                    break;
-                }
-                copiedFiles.push_back(dstPdf.string());
-
-                // Check both standard companion naming schemes:
-                // 1. file.xopp (replace_extension)
-                // 2. file.pdf.xopp (append)
-                std::filesystem::path srcXopp1 = srcPdf;
-                srcXopp1.replace_extension(".xopp");
-                std::filesystem::path srcXopp2 = srcPdf.string() + ".xopp";
-                std::filesystem::path dstXopp = dstPdf;
-                dstXopp.replace_extension(".xopp");
-
+            if (!std::filesystem::exists(dstXopp, ec)) {
                 if (std::filesystem::exists(srcXopp1, ec)) {
                     std::filesystem::copy_file(
                         srcXopp1, dstXopp, std::filesystem::copy_options::overwrite_existing, ec);
-                    if (!ec) {
-                        copiedFiles.push_back(dstXopp.string());
-                    }
                 } else if (std::filesystem::exists(srcXopp2, ec)) {
                     std::filesystem::copy_file(
                         srcXopp2, dstXopp, std::filesystem::copy_options::overwrite_existing, ec);
-                    if (!ec) {
-                        copiedFiles.push_back(dstXopp.string());
-                    }
                 }
-                ec.clear();
             }
+            ec.clear();
 
             copiedPathToDstFilename[srcKey] = filename;
-        }
-
-        if (!copySuccess) {
-            for (const auto& f : copiedFiles) {
-                std::filesystem::remove(f, ec);
-            }
-            std::filesystem::remove_all(bundlePath, ec);
-            showMessage(ctx->window, GTK_MESSAGE_ERROR, "Copy Failed", copyError);
-            if (ctx->headerBar)
-                ctx->headerBar->setSaveStatus(FluidCoreApp::SaveStatus::Failed);
-            ctx->pendingActionProceed = nullptr;
-            return;
         }
 
         // Initialize bundle database
@@ -550,14 +511,19 @@ void performSaveProjectAs(AppViewContext* ctx) {
                 filename = "document.pdf";
             }
             std::string relativePath = "documents/" + filename;
+            std::string absExtPath;
+            if (!origPath.empty() && std::filesystem::exists(srcPdf, ec)) {
+                absExtPath = std::filesystem::absolute(srcPdf, ec).lexically_normal().string();
+            }
+            ec.clear();
+
             size_t pageCount = (ctx->pane && ctx->pane->document() &&
                                 (ctx->pane->docId() == docId || ctx->pane->pdfPath() == origPath))
                                    ? ctx->pane->pages().size()
                                    : 1;
             size_t fileSizeBytes = 0;
-            std::filesystem::path dstPdf = bundlePath / relativePath;
-            if (std::filesystem::exists(dstPdf, ec)) {
-                fileSizeBytes = std::filesystem::file_size(dstPdf, ec);
+            if (!absExtPath.empty() && std::filesystem::exists(absExtPath, ec)) {
+                fileSizeBytes = std::filesystem::file_size(absExtPath, ec);
             }
             ec.clear();
 
@@ -565,6 +531,7 @@ void performSaveProjectAs(AppViewContext* ctx) {
             rec.docId = docId;
             rec.filename = filename;
             rec.relativePath = relativePath;
+            rec.externalPath = absExtPath;
             rec.sha256 = "sha256-placeholder";
             rec.pageCount = pageCount > 0 ? pageCount : 1;
             rec.fileSizeBytes = fileSizeBytes;
@@ -578,92 +545,121 @@ void performSaveProjectAs(AppViewContext* ctx) {
             registeredDocIds.insert(docId);
         }
 
-        // Ensure every ExcerptCardNode in the workspace has its sourceDocId registered
+        // Migrate image cards and register any missing document nodes in projectStore
         if (ctx->engine) {
-            for (const std::string& nId : ctx->engine->workspaceModel().allNodeIds()) {
-                const auto* node = ctx->engine->workspaceModel().find(nId);
-                if (const auto* card = dynamic_cast<const FluidCore::ExcerptCardNode*>(node)) {
-                    const std::string& cardDocId = card->sourceDocId();
-                    if (!cardDocId.empty() &&
-                        registeredDocIds.find(cardDocId) == registeredDocIds.end()) {
-                        std::string resolvedPath;
-                        if (ctx->pdfDocService) {
-                            resolvedPath = ctx->pdfDocService->getFilePath(cardDocId);
+            std::filesystem::path dstAssetsDir = bundlePath / "assets" / "images";
+            std::filesystem::create_directories(dstAssetsDir, ec);
+            ec.clear();
+
+            auto ensureDocAndImages = [&](auto& self, FluidCore::WorkspaceNode* node) -> void {
+                if (!node)
+                    return;
+                if (auto* card = dynamic_cast<FluidCore::ExcerptCardNode*>(node)) {
+                    if (card->isImageExcerpt()) {
+                        std::string docId = card->sourceDocId();
+                        std::filesystem::path imgPath(docId);
+                        std::string imgFilename = imgPath.filename().string();
+                        if (imgFilename.empty()) {
+                            imgFilename = "image.png";
                         }
-                        if (resolvedPath.empty() && ctx->pane) {
-                            resolvedPath = ctx->pane->pdfPath();
-                        }
-                        std::filesystem::path p(resolvedPath.empty() ? cardDocId : resolvedPath);
-                        std::string filename = p.filename().string();
-                        if (filename.empty()) {
-                            filename = "document.pdf";
-                        }
-                        std::string relativePath = "documents/" + filename;
-                        size_t fileSizeBytes = 0;
-                        std::filesystem::path dstPdf = bundlePath / relativePath;
-                        if (std::filesystem::exists(dstPdf, ec)) {
-                            fileSizeBytes = std::filesystem::file_size(dstPdf, ec);
+                        std::filesystem::path dstImg = dstAssetsDir / imgFilename;
+
+                        // Check if file exists at imgPath or session assets
+                        std::filesystem::path srcImgPath = imgPath;
+                        if (!std::filesystem::exists(srcImgPath, ec)) {
+                            std::filesystem::path sessionCandidate =
+                                std::filesystem::temp_directory_path() / "FluidCore" / "session_assets" / "assets" / "images" / imgFilename;
+                            if (std::filesystem::exists(sessionCandidate, ec)) {
+                                srcImgPath = sessionCandidate;
+                            }
                         }
                         ec.clear();
 
-                        FluidCore::DocumentRecord rec;
-                        rec.docId = cardDocId;
-                        rec.filename = filename;
-                        rec.relativePath = relativePath;
-                        rec.sha256 = "sha256-placeholder";
-                        rec.pageCount = card->sourcePageNo() + 1;
-                        rec.fileSizeBytes = fileSizeBytes;
-                        rec.createdAt = now;
+                        if (std::filesystem::exists(srcImgPath, ec)) {
+                            bool same = std::filesystem::exists(dstImg, ec) &&
+                                        std::filesystem::equivalent(srcImgPath, dstImg, ec);
+                            ec.clear();
+                            if (!same) {
+                                std::filesystem::copy_file(
+                                    srcImgPath, dstImg, std::filesystem::copy_options::overwrite_existing, ec);
+                                ec.clear();
+                            }
+                        }
 
-                        ctx->engine->projectStore().registerDocument(rec, nullptr);
-                        registeredDocIds.insert(cardDocId);
+                        std::string relPath = "assets/images/" + imgFilename;
+                        card->setSourceDocId(relPath);
+
+                        FluidCore::DocumentRecord imgRec;
+                        imgRec.docId = relPath;
+                        imgRec.filename = imgFilename;
+                        imgRec.relativePath = relPath;
+                        imgRec.externalPath = "";
+                        imgRec.pageCount = 1;
+                        imgRec.createdAt = now;
+                        ctx->engine->projectStore().registerDocument(imgRec, nullptr);
+                        registeredDocIds.insert(relPath);
+                    } else {
+                        const std::string& cardDocId = card->sourceDocId();
+                        if (!cardDocId.empty() &&
+                            registeredDocIds.find(cardDocId) == registeredDocIds.end()) {
+                            std::string resolvedPath;
+                            if (ctx->pdfDocService) {
+                                resolvedPath = ctx->pdfDocService->getFilePath(cardDocId);
+                            }
+                            if (resolvedPath.empty() && ctx->pane) {
+                                resolvedPath = ctx->pane->pdfPath();
+                            }
+                            std::filesystem::path p(resolvedPath.empty() ? cardDocId : resolvedPath);
+                            std::string filename = p.filename().string();
+                            if (filename.empty()) {
+                                filename = "document.pdf";
+                            }
+                            std::string absPath;
+                            if (!resolvedPath.empty() && std::filesystem::exists(p, ec)) {
+                                absPath = std::filesystem::absolute(p, ec).lexically_normal().string();
+                            }
+                            ec.clear();
+
+                            FluidCore::DocumentRecord rec;
+                            rec.docId = cardDocId;
+                            rec.filename = filename;
+                            rec.relativePath = "documents/" + filename;
+                            rec.externalPath = absPath;
+                            rec.sha256 = "sha256-placeholder";
+                            rec.pageCount = card->sourcePageNo() + 1;
+                            rec.fileSizeBytes = 0;
+                            rec.createdAt = now;
+
+                            ctx->engine->projectStore().registerDocument(rec, nullptr);
+                            registeredDocIds.insert(cardDocId);
+                        }
+                    }
+                } else if (auto* stack = dynamic_cast<FluidCore::CardStackNode*>(node)) {
+                    for (const auto& child : stack->children()) {
+                        self(self, child.get());
                     }
                 }
+            };
+
+            for (const std::string& nId : ctx->engine->workspaceModel().allNodeIds()) {
+                ensureDocAndImages(ensureDocAndImages, ctx->engine->workspaceModel().find(nId));
             }
         }
 
-        // Canonical source switch: ensure documents and companions reside in bundle before save
+        // Set companion persistence path for active documents
         for (const auto& [docId, origPath] : allDocs) {
             if (origPath.empty())
                 continue;
             std::filesystem::path srcPdf(origPath);
-            if (!std::filesystem::exists(srcPdf, ec))
-                continue;
-
             std::string filename = srcPdf.filename().string();
             if (filename.empty()) {
                 filename = "document.pdf";
             }
-            std::filesystem::path dstPdf = bundlePath / "documents" / filename;
-            bool sameFile = false;
-            if (std::filesystem::exists(dstPdf, ec)) {
-                sameFile = std::filesystem::equivalent(srcPdf, dstPdf, ec);
-            }
-            ec.clear();
+            std::filesystem::path dstXopp = bundlePath / "documents" / filename;
+            dstXopp.replace_extension(".xopp");
 
-            if (!sameFile) {
-                std::filesystem::copy_file(srcPdf, dstPdf,
-                                           std::filesystem::copy_options::overwrite_existing, ec);
-                ec.clear();
-                std::filesystem::path srcXopp(srcPdf);
-                srcXopp.replace_extension(".xopp");
-                if (std::filesystem::exists(srcXopp, ec)) {
-                    std::filesystem::path dstXopp(dstPdf);
-                    dstXopp.replace_extension(".xopp");
-                    std::filesystem::copy_file(
-                        srcXopp, dstXopp, std::filesystem::copy_options::overwrite_existing, ec);
-                    ec.clear();
-                }
-            }
-
-            std::string newPath = dstPdf.string();
-            if (ctx->pdfDocService) {
-                ctx->pdfDocService->repointDocumentPath(docId, newPath);
-                ctx->pdfDocService->registerMainDocument(
-                    newPath, ctx->pane ? ctx->pane->document() : nullptr, newPath);
-            }
             if (ctx->pane && (ctx->pane->docId() == docId || ctx->pane->pdfPath() == origPath)) {
-                ctx->pane->repointCompanionPath(newPath);
+                ctx->pane->setCompanionPath(dstXopp.string());
             }
         }
 
@@ -675,11 +671,13 @@ void performSaveProjectAs(AppViewContext* ctx) {
 
         if (ok) {
 
-            ctx->isProjectDirty = false;
-            if (ctx->workspace)
+            if (ctx->workspace) {
+                ctx->workspace->setProjectBundlePath(chosenPath);
                 ctx->workspace->undoStack().clear();
+            }
             if (ctx->pane)
                 ctx->pane->undoStack().clear();
+            ctx->isProjectDirty = false;
 
             std::filesystem::path stemPath(chosenPath);
             std::string title = stemPath.stem().string();
@@ -767,34 +765,22 @@ void performSaveProject(AppViewContext* ctx) {
             if (filename.empty()) {
                 filename = "document.pdf";
             }
-            std::filesystem::path dstPdf = bundlePath / "documents" / filename;
-            bool sameFile = false;
-            if (std::filesystem::exists(dstPdf, ec)) {
-                sameFile = std::filesystem::equivalent(srcPdf, dstPdf, ec);
+            std::filesystem::path dstXopp = bundlePath / "documents" / filename;
+            dstXopp.replace_extension(".xopp");
+
+            std::string absExtPath;
+            if (!origPath.empty() && std::filesystem::exists(srcPdf, ec)) {
+                absExtPath = std::filesystem::absolute(srcPdf, ec).lexically_normal().string();
             }
             ec.clear();
 
-            if (!sameFile) {
-                std::filesystem::copy_file(srcPdf, dstPdf,
-                                           std::filesystem::copy_options::overwrite_existing, ec);
-                if (!ec) {
-                    std::string newPath = dstPdf.string();
-                    if (ctx->pdfDocService) {
-                        ctx->pdfDocService->repointDocumentPath(docId, newPath);
-                        ctx->pdfDocService->registerMainDocument(
-                            newPath, ctx->pane ? ctx->pane->document() : nullptr, newPath);
-                    }
-                    if (ctx->pane &&
-                        (ctx->pane->docId() == docId || ctx->pane->pdfPath() == origPath)) {
-                        ctx->pane->repointCompanionPath(newPath);
-                    }
-                }
-                ec.clear();
+            if (ctx->pane && (ctx->pane->docId() == docId || ctx->pane->pdfPath() == origPath)) {
+                ctx->pane->setCompanionPath(dstXopp.string());
             }
 
             size_t fileSizeBytes = 0;
-            if (std::filesystem::exists(dstPdf, ec)) {
-                fileSizeBytes = std::filesystem::file_size(dstPdf, ec);
+            if (!absExtPath.empty() && std::filesystem::exists(absExtPath, ec)) {
+                fileSizeBytes = std::filesystem::file_size(absExtPath, ec);
             }
             ec.clear();
 
@@ -806,11 +792,13 @@ void performSaveProject(AppViewContext* ctx) {
                 rec.docId = docId;
                 rec.filename = filename;
                 rec.relativePath = "documents/" + filename;
+                rec.externalPath = absExtPath;
                 rec.sha256 = "sha256-placeholder";
                 rec.createdAt = now;
             }
             rec.filename = filename;
             rec.relativePath = "documents/" + filename;
+            rec.externalPath = absExtPath;
             rec.fileSizeBytes = fileSizeBytes;
             if (ctx->pane && ctx->pane->document() &&
                 (ctx->pane->docId() == docId || ctx->pane->pdfPath() == origPath)) {
@@ -823,33 +811,100 @@ void performSaveProject(AppViewContext* ctx) {
             knownDocIds.insert(docId);
         }
 
-        // Ensure newly created cards have documents registered
+        // Migrate image cards and register any missing document nodes in projectStore
         if (ctx->engine) {
-            for (const std::string& nId : ctx->engine->workspaceModel().allNodeIds()) {
-                const auto* node = ctx->engine->workspaceModel().find(nId);
-                if (const auto* card = dynamic_cast<const FluidCore::ExcerptCardNode*>(node)) {
-                    const std::string& cardDocId = card->sourceDocId();
-                    if (!cardDocId.empty() && knownDocIds.find(cardDocId) == knownDocIds.end()) {
-                        std::string resPath =
-                            ctx->pdfDocService ? ctx->pdfDocService->getFilePath(cardDocId) : "";
-                        if (resPath.empty() && ctx->pane) {
-                            resPath = ctx->pane->pdfPath();
+            std::filesystem::path dstAssetsDir = bundlePath / "assets" / "images";
+            std::filesystem::create_directories(dstAssetsDir, ec);
+            ec.clear();
+
+            auto ensureDocAndImages = [&](auto& self, FluidCore::WorkspaceNode* node) -> void {
+                if (!node)
+                    return;
+                if (auto* card = dynamic_cast<FluidCore::ExcerptCardNode*>(node)) {
+                    if (card->isImageExcerpt()) {
+                        std::string docId = card->sourceDocId();
+                        std::filesystem::path imgPath(docId);
+                        std::string imgFilename = imgPath.filename().string();
+                        if (imgFilename.empty()) {
+                            imgFilename = "image.png";
                         }
-                        std::filesystem::path p(resPath.empty() ? cardDocId : resPath);
-                        std::string filename = p.filename().string();
-                        if (filename.empty())
-                            filename = "document.pdf";
-                        FluidCore::DocumentRecord rec{cardDocId,
-                                                      filename,
-                                                      "documents/" + filename,
-                                                      "sha256-placeholder",
-                                                      card->sourcePageNo() + 1,
-                                                      0,
-                                                      now};
-                        ctx->engine->projectStore().registerDocument(rec, nullptr);
-                        knownDocIds.insert(cardDocId);
+                        std::filesystem::path dstImg = dstAssetsDir / imgFilename;
+
+                        // Check if file exists at imgPath or session assets
+                        std::filesystem::path srcImgPath = imgPath;
+                        if (!std::filesystem::exists(srcImgPath, ec)) {
+                            std::filesystem::path sessionCandidate =
+                                std::filesystem::temp_directory_path() / "FluidCore" / "session_assets" / "assets" / "images" / imgFilename;
+                            if (std::filesystem::exists(sessionCandidate, ec)) {
+                                srcImgPath = sessionCandidate;
+                            }
+                        }
+                        ec.clear();
+
+                        if (std::filesystem::exists(srcImgPath, ec)) {
+                            bool same = std::filesystem::exists(dstImg, ec) &&
+                                        std::filesystem::equivalent(srcImgPath, dstImg, ec);
+                            ec.clear();
+                            if (!same) {
+                                std::filesystem::copy_file(
+                                    srcImgPath, dstImg, std::filesystem::copy_options::overwrite_existing, ec);
+                                ec.clear();
+                            }
+                        }
+
+                        std::string relPath = "assets/images/" + imgFilename;
+                        card->setSourceDocId(relPath);
+
+                        FluidCore::DocumentRecord imgRec;
+                        imgRec.docId = relPath;
+                        imgRec.filename = imgFilename;
+                        imgRec.relativePath = relPath;
+                        imgRec.externalPath = "";
+                        imgRec.pageCount = 1;
+                        imgRec.createdAt = now;
+                        ctx->engine->projectStore().registerDocument(imgRec, nullptr);
+                        knownDocIds.insert(relPath);
+                    } else {
+                        const std::string& cardDocId = card->sourceDocId();
+                        if (!cardDocId.empty() && knownDocIds.find(cardDocId) == knownDocIds.end()) {
+                            std::string resPath =
+                                ctx->pdfDocService ? ctx->pdfDocService->getFilePath(cardDocId) : "";
+                            if (resPath.empty() && ctx->pane) {
+                                resPath = ctx->pane->pdfPath();
+                            }
+                            std::filesystem::path p(resPath.empty() ? cardDocId : resPath);
+                            std::string filename = p.filename().string();
+                            if (filename.empty())
+                                filename = "document.pdf";
+                            std::string absPath;
+                            if (!resPath.empty() && std::filesystem::exists(p, ec)) {
+                                absPath = std::filesystem::absolute(p, ec).lexically_normal().string();
+                            }
+                            ec.clear();
+
+                            FluidCore::DocumentRecord rec;
+                            rec.docId = cardDocId;
+                            rec.filename = filename;
+                            rec.relativePath = "documents/" + filename;
+                            rec.externalPath = absPath;
+                            rec.sha256 = "sha256-placeholder";
+                            rec.pageCount = card->sourcePageNo() + 1;
+                            rec.fileSizeBytes = 0;
+                            rec.createdAt = now;
+
+                            ctx->engine->projectStore().registerDocument(rec, nullptr);
+                            knownDocIds.insert(cardDocId);
+                        }
+                    }
+                } else if (auto* stack = dynamic_cast<FluidCore::CardStackNode*>(node)) {
+                    for (const auto& child : stack->children()) {
+                        self(self, child.get());
                     }
                 }
+            };
+
+            for (const std::string& nId : ctx->engine->workspaceModel().allNodeIds()) {
+                ensureDocAndImages(ensureDocAndImages, ctx->engine->workspaceModel().find(nId));
             }
         }
 
@@ -860,11 +915,11 @@ void performSaveProject(AppViewContext* ctx) {
         }
 
         if (ok) {
-            ctx->isProjectDirty = false;
             if (ctx->workspace)
                 ctx->workspace->undoStack().clear();
             if (ctx->pane)
                 ctx->pane->undoStack().clear();
+            ctx->isProjectDirty = false;
             if (ctx->headerBar) {
                 ctx->headerBar->setSaveStatus(FluidCoreApp::SaveStatus::Saved);
             }
@@ -948,27 +1003,152 @@ void performOpenProject(AppViewContext* ctx) {
             }
 
             auto docs = ctx->engine->projectStore().listDocuments();
-            if (!docs.empty()) {
-                std::filesystem::path bundle(chosenPath);
-                std::filesystem::path primaryDoc = bundle / docs[0].relativePath;
-                if (ctx->pane) {
-                    size_t targetPage = 0;
-                    if (docs[0].pageCount > 0 && docs[0].lastViewedPage < docs[0].pageCount) {
-                        targetPage = docs[0].lastViewedPage;
-                    } else if (docs[0].pageCount > 0) {
-                        targetPage = docs[0].pageCount - 1;
-                    }
-                    ctx->pane->loadDocument(primaryDoc.string(), docs[0].docId, targetPage);
+            // Filter to find actual PDF documents (ignore image asset records)
+            std::vector<FluidCore::DocumentRecord> pdfDocs;
+            for (const auto& doc : docs) {
+                std::string fn = doc.filename;
+                std::string rel = doc.relativePath;
+                std::string ext = doc.externalPath;
+                auto endsWithPdf = [](const std::string& s) {
+                    if (s.size() < 4)
+                        return false;
+                    std::string tail = s.substr(s.size() - 4);
+                    std::transform(tail.begin(), tail.end(), tail.begin(), [](unsigned char c) { return std::tolower(c); });
+                    return tail == ".pdf";
+                };
+                if (endsWithPdf(fn) || endsWithPdf(rel) || endsWithPdf(ext) || !ext.empty()) {
+                    pdfDocs.push_back(doc);
                 }
-                if (ctx->pdfDocService && ctx->pane && ctx->pane->document()) {
+            }
+
+            if (!pdfDocs.empty()) {
+                std::filesystem::path bundle(chosenPath);
+                auto primaryDoc = pdfDocs[0];
+                std::string resolvedPath;
+                std::error_code ec;
+
+                // Option 1: Legacy bundled document
+                std::filesystem::path bundledPath = bundle / primaryDoc.relativePath;
+                if (std::filesystem::exists(bundledPath, ec) && std::filesystem::is_regular_file(bundledPath, ec)) {
+                    resolvedPath = bundledPath.string();
+                }
+                ec.clear();
+
+                // Option 2: External path reference
+                if (resolvedPath.empty() && !primaryDoc.externalPath.empty()) {
+                    std::filesystem::path extPath(primaryDoc.externalPath);
+                    if (std::filesystem::exists(extPath, ec) && std::filesystem::is_regular_file(extPath, ec)) {
+                        resolvedPath = extPath.string();
+                    }
+                    ec.clear();
+                }
+
+                // Option 3: Fallback check relativePath as literal path
+                if (resolvedPath.empty() && !primaryDoc.relativePath.empty()) {
+                    std::filesystem::path literalPath(primaryDoc.relativePath);
+                    if (std::filesystem::exists(literalPath, ec) && std::filesystem::is_regular_file(literalPath, ec)) {
+                        resolvedPath = literalPath.string();
+                    }
+                    ec.clear();
+                }
+
+                // Missing / Moved external PDF: Prompt interactive "Locate PDF" flow
+                if (resolvedPath.empty()) {
+                    std::string missingLoc = !primaryDoc.externalPath.empty()
+                                                 ? primaryDoc.externalPath
+                                                 : bundledPath.string();
+                    GtkWidget* warnDialog = gtk_message_dialog_new(
+                        ctx->window, GTK_DIALOG_MODAL, GTK_MESSAGE_WARNING, GTK_BUTTONS_NONE,
+                        "Referenced PDF document could not be found at:\n%s\n\nWould you like to locate the replacement PDF file?",
+                        missingLoc.c_str());
+                    gtk_dialog_add_button(GTK_DIALOG(warnDialog), "_Cancel", GTK_RESPONSE_CANCEL);
+                    gtk_dialog_add_button(GTK_DIALOG(warnDialog), "_Locate PDF...", GTK_RESPONSE_ACCEPT);
+                    gint resp = gtk_dialog_run(GTK_DIALOG(warnDialog));
+                    gtk_widget_destroy(warnDialog);
+
+                    if (resp == GTK_RESPONSE_ACCEPT) {
+                        GtkFileChooserNative* native = gtk_file_chooser_native_new(
+                            "Locate Replacement PDF Document", ctx->window, GTK_FILE_CHOOSER_ACTION_OPEN, "_Open", "_Cancel");
+                        configureNativeFileChooser(native, ctx);
+
+                        GtkFileFilter* filter = gtk_file_filter_new();
+                        gtk_file_filter_set_name(filter, "PDF Documents (*.pdf)");
+                        gtk_file_filter_add_pattern(filter, "*.pdf");
+                        gtk_file_filter_add_mime_type(filter, "application/pdf");
+                        gtk_file_chooser_add_filter(GTK_FILE_CHOOSER(native), filter);
+
+                        gint fRes = gtk_native_dialog_run(GTK_NATIVE_DIALOG(native));
+                        if (fRes == GTK_RESPONSE_ACCEPT) {
+                            gchar* rawLoc = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(native));
+                            if (rawLoc) {
+                                resolvedPath = normalizePath(rawLoc);
+                                g_free(rawLoc);
+                                primaryDoc.externalPath =
+                                    std::filesystem::absolute(resolvedPath, ec).lexically_normal().string();
+                                ec.clear();
+                                ctx->engine->projectStore().registerDocument(primaryDoc, nullptr);
+                                ctx->isProjectDirty = true;
+                            }
+                        }
+                        g_object_unref(native);
+                    }
+                }
+
+                if (!resolvedPath.empty() && ctx->pane) {
+                    size_t targetPage = 0;
+                    if (primaryDoc.pageCount > 0 && primaryDoc.lastViewedPage < primaryDoc.pageCount) {
+                        targetPage = primaryDoc.lastViewedPage;
+                    } else if (primaryDoc.pageCount > 0) {
+                        targetPage = primaryDoc.pageCount - 1;
+                    }
+                    ctx->pane->loadDocument(resolvedPath, primaryDoc.docId, targetPage);
+
+                    // Load companion .xopp from bundle
+                    std::string docStem = std::filesystem::path(primaryDoc.filename).stem().string();
+                    std::filesystem::path xopp1 = bundle / "documents" / (docStem + ".xopp");
+                    std::filesystem::path xopp2 = bundle / primaryDoc.relativePath;
+                    xopp2.replace_extension(".xopp");
+
+                    std::string companionToUse = xopp1.string();
+                    if (std::filesystem::exists(xopp1, ec)) {
+                        companionToUse = xopp1.string();
+                    } else if (std::filesystem::exists(xopp2, ec)) {
+                        companionToUse = xopp2.string();
+                    }
+                    ec.clear();
+
+                    ctx->pane->setCompanionPath(companionToUse);
+                    ctx->pane->loadCompanionAnnotations(companionToUse);
+                } else if (ctx->pane) {
+                    ctx->pane->closeDocument();
+                }
+
+                if (ctx->pdfDocService && !resolvedPath.empty()) {
                     ctx->pdfDocService->clear();
+                    PopplerDocument* activeDoc = (ctx->pane && ctx->pane->document()) ? ctx->pane->document() : nullptr;
                     for (const auto& doc : docs) {
-                        std::string dPath = (bundle / doc.relativePath).string();
-                        if (doc.docId == docs[0].docId) {
-                            ctx->pdfDocService->registerMainDocument(doc.docId,
-                                                                     ctx->pane->document(), dPath);
+                        std::string dPath;
+                        if (doc.docId == primaryDoc.docId) {
+                            dPath = resolvedPath;
                         } else {
-                            ctx->pdfDocService->registerMainDocument(doc.docId, nullptr, dPath);
+                            if (std::filesystem::exists(bundle / doc.relativePath, ec)) {
+                                dPath = (bundle / doc.relativePath).string();
+                            } else if (!doc.externalPath.empty()) {
+                                dPath = doc.externalPath;
+                            } else if (std::filesystem::exists(bundle / "documents" / doc.filename, ec)) {
+                                dPath = (bundle / "documents" / doc.filename).string();
+                            }
+                            ec.clear();
+                            if (dPath.empty()) {
+                                dPath = resolvedPath;
+                            }
+                        }
+                        ctx->pdfDocService->registerMainDocument(doc.docId, activeDoc, dPath);
+                        if (!doc.relativePath.empty() && doc.relativePath != doc.docId) {
+                            ctx->pdfDocService->registerMainDocument(doc.relativePath, activeDoc, dPath);
+                        }
+                        if (!doc.filename.empty() && doc.filename != doc.docId) {
+                            ctx->pdfDocService->registerMainDocument(doc.filename, activeDoc, dPath);
                         }
                     }
                 }
@@ -978,6 +1158,20 @@ void performOpenProject(AppViewContext* ctx) {
                 }
             }
 
+            if (ctx->excerptTileCache) {
+                ctx->excerptTileCache->clear();
+            }
+            if (ctx->workspace) {
+                ctx->workspace->undoStack().clear();
+                ctx->workspace->setProjectBundlePath(chosenPath);
+                ctx->workspace->notifyModelReloaded();
+            }
+            if (ctx->pane) {
+                ctx->pane->undoStack().clear();
+            }
+            if (ctx->toolManager) {
+                ctx->toolManager->setActiveTool(FluidCoreApp::Tool::Select);
+            }
             ctx->isProjectDirty = false;
             if (ctx->headerBar) {
                 ctx->headerBar->setProjectTitle(ctx->engine->projectTitle(), chosenPath);
@@ -1077,6 +1271,7 @@ void performNewProject(AppViewContext* ctx) {
                 ctx->engine->newProject("Untitled Project");
             }
             if (ctx->workspace) {
+                ctx->workspace->setProjectBundlePath("");
                 ctx->workspace->notifyModelReloaded();
             }
             if (ctx->pane) {
@@ -2454,11 +2649,14 @@ void onActivate(GtkApplication* app, gpointer userData) {
         });
 
     const auto initialProps = toolManager->propertiesForTool(toolManager->activeTool());
+    const char* initToolStr = FluidCoreApp::ToolManager::toolToString(toolManager->activeTool());
     if (documentPane) {
+        documentPane->setTool(initToolStr);
         documentPane->setColor(initialProps.color);
         documentPane->setStrokeWidth(initialProps.width);
     }
     if (workspace) {
+        workspace->setTool(initToolStr);
         workspace->setColor(initialProps.color);
         workspace->setStrokeWidth(initialProps.width);
     }
@@ -2658,20 +2856,31 @@ void onActivate(GtkApplication* app, gpointer userData) {
             topToolbar->updateUndoRedoState(canUndo, canRedo);
         }
         if (headerBar && viewCtx) {
-            bool dirty = viewCtx->isProjectDirty || (workspace ? workspace->canUndo() : false) ||
-                         (documentPane ? documentPane->canUndo() : false);
+            bool hasUndoableChanges = (workspace && workspace->canUndo()) ||
+                                      (documentPane && documentPane->canUndo());
+            bool dirty = viewCtx->isProjectDirty || hasUndoableChanges;
             headerBar->setSaveStatus(dirty ? FluidCoreApp::SaveStatus::Unsaved
                                            : FluidCoreApp::SaveStatus::Saved);
         }
     };
     viewCtx->updateUndoRedoUI = updateUndoRedoUI;
 
-    workspace->undoStack().setChangeListener([lastActivePane, updateUndoRedoUI]() {
+    workspace->undoStack().setChangeListener([lastActivePane, updateUndoRedoUI, viewCtx, workspace]() {
         *lastActivePane = ActivePane::Workspace;
+        if (workspace && workspace->canUndo()) {
+            viewCtx->isProjectDirty = true;
+        } else if (workspace && !workspace->canUndo()) {
+            viewCtx->isProjectDirty = false;
+        }
         updateUndoRedoUI();
     });
-    documentPane->undoStack().setChangeListener([lastActivePane, updateUndoRedoUI]() {
+    documentPane->undoStack().setChangeListener([lastActivePane, updateUndoRedoUI, viewCtx, documentPane]() {
         *lastActivePane = ActivePane::Document;
+        if (documentPane && documentPane->canUndo()) {
+            viewCtx->isProjectDirty = true;
+        } else if (documentPane && !documentPane->canUndo()) {
+            viewCtx->isProjectDirty = false;
+        }
         updateUndoRedoUI();
     });
 
@@ -2825,10 +3034,13 @@ void onActivate(GtkApplication* app, gpointer userData) {
         }
     });
 
-    topToolbar->setOnToggleMinimap([workspace, topToolbar]() {
+    topToolbar->setOnToggleMinimap([workspace]() {
         const bool newVisible = !workspace->isMinimapVisible();
         workspace->setMinimapVisible(newVisible);
-        topToolbar->setMinimapActive(newVisible);
+    });
+
+    workspace->setOnMinimapVisibilityChanged([topToolbar](bool visible) {
+        topToolbar->setMinimapActive(visible);
     });
 
     topToolbar->setOnSearch([documentPane]() {
@@ -3125,8 +3337,26 @@ void onActivate(GtkApplication* app, gpointer userData) {
                 performExport(ctx);
                 return TRUE;
             }
+            if (ctrl && !shift && !alt && (event->keyval == GDK_KEY_m || event->keyval == GDK_KEY_M)) {
+                if (ws) {
+                    const bool newVisible = !ws->isMinimapVisible();
+                    ws->setMinimapVisible(newVisible);
+                }
+                return TRUE;
+            }
 
-            // Quick Esc handling
+            // Undo / Redo fallback accelerators
+            if (ctrl && !shift && !alt && (event->keyval == GDK_KEY_z || event->keyval == GDK_KEY_Z)) {
+                g_action_group_activate_action(G_ACTION_GROUP(windowWidget), "undo", nullptr);
+                return TRUE;
+            }
+            if ((ctrl && shift && !alt && (event->keyval == GDK_KEY_z || event->keyval == GDK_KEY_Z)) ||
+                (ctrl && !shift && !alt && (event->keyval == GDK_KEY_y || event->keyval == GDK_KEY_Y))) {
+                g_action_group_activate_action(G_ACTION_GROUP(windowWidget), "redo", nullptr);
+                return TRUE;
+            }
+
+            // Quick Esc handling: cancel current drag/search and reset tool to Select
             if (event->keyval == GDK_KEY_Escape) {
                 if (ws) {
                     ws->cancelCurrentInteraction();
@@ -3134,6 +3364,9 @@ void onActivate(GtkApplication* app, gpointer userData) {
                 if (pane) {
                     pane->clearTextSelection();
                     pane->clearCropSelection();
+                }
+                if (tm) {
+                    tm->setActiveTool(FluidCoreApp::Tool::Select);
                 }
                 return TRUE;
             }
@@ -3214,11 +3447,47 @@ void onActivate(GtkApplication* app, gpointer userData) {
                 return TRUE;
             }
 
-            // Quick single-key tool switching and keypad zoom when no modifier is held
+            // Alt+1 to Alt+6 tool accelerators
+            if (!ctrl && alt && !shift) {
+                if (event->keyval == GDK_KEY_1) {
+                    if (tm) tm->setActiveTool(FluidCoreApp::Tool::Pen);
+                    return TRUE;
+                }
+                if (event->keyval == GDK_KEY_2) {
+                    if (tm) tm->setActiveTool(FluidCoreApp::Tool::Highlighter);
+                    return TRUE;
+                }
+                if (event->keyval == GDK_KEY_3) {
+                    if (tm) tm->toggleEraser();
+                    return TRUE;
+                }
+                if (event->keyval == GDK_KEY_4) {
+                    if (tm) tm->setActiveTool(FluidCoreApp::Tool::Select);
+                    return TRUE;
+                }
+                if (event->keyval == GDK_KEY_5) {
+                    if (tm) tm->setActiveTool(FluidCoreApp::Tool::Crop);
+                    return TRUE;
+                }
+                if (event->keyval == GDK_KEY_6) {
+                    if (tm) tm->setActiveTool(FluidCoreApp::Tool::Connector);
+                    return TRUE;
+                }
+            }
+
+            // Quick single-key tool switching, keypad zoom, and Delete/Backspace
             if (!ctrl && !alt && !shift) {
                 GtkWidget* focusWidget = gtk_window_get_focus(GTK_WINDOW(windowWidget));
                 if (focusWidget && GTK_IS_ENTRY(focusWidget)) {
                     return FALSE;
+                }
+
+                if (event->keyval == GDK_KEY_Delete || event->keyval == GDK_KEY_KP_Delete ||
+                    event->keyval == GDK_KEY_BackSpace) {
+                    if (ws && (ws->hasSelectedNode() || ws->hasSelectedEdge())) {
+                        ws->deleteSelected();
+                        return TRUE;
+                    }
                 }
 
                 if (event->keyval == GDK_KEY_plus || event->keyval == GDK_KEY_equal ||
@@ -3256,33 +3525,40 @@ void onActivate(GtkApplication* app, gpointer userData) {
                         ws->setSpacePressed(true);
                     return TRUE;
                 }
-                if (event->keyval == GDK_KEY_s || event->keyval == GDK_KEY_S) {
+                if (event->keyval == GDK_KEY_s || event->keyval == GDK_KEY_S ||
+                    event->keyval == GDK_KEY_F4) {
                     if (tm)
                         tm->setActiveTool(FluidCoreApp::Tool::Select);
                     return TRUE;
                 }
                 if (event->keyval == GDK_KEY_p || event->keyval == GDK_KEY_P ||
-                    event->keyval == GDK_KEY_b || event->keyval == GDK_KEY_B) {
+                    event->keyval == GDK_KEY_b || event->keyval == GDK_KEY_B ||
+                    event->keyval == GDK_KEY_F1) {
                     if (tm)
                         tm->setActiveTool(FluidCoreApp::Tool::Pen);
                     return TRUE;
                 }
-                if (event->keyval == GDK_KEY_h || event->keyval == GDK_KEY_H) {
+                if (event->keyval == GDK_KEY_h || event->keyval == GDK_KEY_H ||
+                    event->keyval == GDK_KEY_F2) {
                     if (tm)
                         tm->setActiveTool(FluidCoreApp::Tool::Highlighter);
                     return TRUE;
                 }
-                if (event->keyval == GDK_KEY_e || event->keyval == GDK_KEY_E) {
+                if (event->keyval == GDK_KEY_e || event->keyval == GDK_KEY_E ||
+                    event->keyval == GDK_KEY_F3) {
                     if (tm)
                         tm->toggleEraser();
                     return TRUE;
                 }
-                if (event->keyval == GDK_KEY_c || event->keyval == GDK_KEY_C) {
+                if (event->keyval == GDK_KEY_c || event->keyval == GDK_KEY_C ||
+                    event->keyval == GDK_KEY_F5) {
                     if (tm)
                         tm->setActiveTool(FluidCoreApp::Tool::Crop);
                     return TRUE;
                 }
-                if (event->keyval == GDK_KEY_l || event->keyval == GDK_KEY_L) {
+                if (event->keyval == GDK_KEY_l || event->keyval == GDK_KEY_L ||
+                    event->keyval == GDK_KEY_a || event->keyval == GDK_KEY_A ||
+                    event->keyval == GDK_KEY_F6) {
                     if (tm)
                         tm->setActiveTool(FluidCoreApp::Tool::Connector);
                     return TRUE;

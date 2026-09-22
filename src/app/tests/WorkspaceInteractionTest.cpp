@@ -60,6 +60,18 @@ int testMinimapHitTestAndRect() {
     failed += check(!WorkspaceInteraction::minimapHitTest(state, 50, 50, viewW, viewH),
                     "Hit test outside minimap returns false");
 
+    // Test spacebar peek visibility
+    state.showMinimap = false;
+    state.isSpacePeekingMinimap = false;
+    failed += check(!WorkspaceInteraction::minimapHitTest(state, mm.x + 10, mm.y + 10, viewW, viewH),
+                    "Hit test with minimap off and peek off returns false");
+
+    state.isSpacePeekingMinimap = true;
+    failed += check(WorkspaceInteraction::minimapHitTest(state, mm.x + 10, mm.y + 10, viewW, viewH),
+                    "Hit test with spacebar peek on returns true");
+    failed += check(!WorkspaceInteraction::minimapHitTest(state, 50, 50, viewW, viewH),
+                    "Hit test outside minimap during spacebar peek returns false");
+
     return failed;
 }
 
@@ -84,6 +96,30 @@ int testSpatialHitTesting() {
     return failed;
 }
 
+int testAssetImageHelpers() {
+    int failed = 0;
+
+    // Test asset directory resolution
+    std::string bundlePath = "C:/Projects/MyProject.ltproj";
+    std::string assetsDir = WorkspaceInteraction::getAssetsImagesDirectory(bundlePath);
+    failed += check(assetsDir.find("assets") != std::string::npos &&
+                    assetsDir.find("images") != std::string::npos,
+                    "Bundle assets/images directory path contains assets/images");
+
+    std::string tempAssetsDir = WorkspaceInteraction::getAssetsImagesDirectory("");
+    failed += check(tempAssetsDir.find("session_assets") != std::string::npos,
+                    "Session temp assets directory path contains session_assets");
+
+    // Test unique filename allocation
+    std::string name1 = WorkspaceInteraction::allocateUniqueImageFilename(tempAssetsDir, "screenshot");
+    std::string name2 = WorkspaceInteraction::allocateUniqueImageFilename(tempAssetsDir, "screenshot");
+    failed += check(name1 != name2, "Consecutive allocated image filenames are unique");
+    failed += check(name1.rfind(".png") == name1.length() - 4, "Allocated filename ends with .png");
+    failed += check(name1.find("screenshot_") == 0, "Allocated filename starts with prefix");
+
+    return failed;
+}
+
 } // namespace
 
 int main() {
@@ -91,6 +127,7 @@ int main() {
     failed += testCoordinateTransforms();
     failed += testMinimapHitTestAndRect();
     failed += testSpatialHitTesting();
+    failed += testAssetImageHelpers();
 
     if (failed == 0) {
         std::cout << "All WorkspaceInteraction tests passed!\n";

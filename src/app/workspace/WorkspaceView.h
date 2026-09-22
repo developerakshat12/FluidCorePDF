@@ -71,6 +71,14 @@ class WorkspaceView {
         return m_state.viewport.worldToScreen(worldX, worldY);
     }
 
+    GtkWidget* area() const { return m_area; }
+
+    bool pasteImageFromClipboard();
+    std::string allocateUniqueImageFilename(const std::string& prefix = "image") const;
+    std::string getAssetsImagesDirectory() const;
+    void setProjectBundlePath(const std::string& path) { m_state.projectBundlePath = path; }
+    const std::string& projectBundlePath() const { return m_state.projectBundlePath; }
+
     // Viewport navigation
     void zoomAt(double factor, double focalScreenX, double focalScreenY);
     void setZoom(double zoom);
@@ -86,6 +94,13 @@ class WorkspaceView {
 
     bool isMinimapVisible() const { return m_state.showMinimap; }
     void setMinimapVisible(bool visible);
+    void setOnMinimapVisibilityChanged(std::function<void(bool)> cb) {
+        m_onMinimapVisibilityChanged = std::move(cb);
+    }
+
+    bool hasSelectedNode() const { return m_state.selectedNodeId.has_value(); }
+    bool hasSelectedEdge() const { return m_state.selectedEdgeId.has_value(); }
+    void deleteSelected();
 
     // Workspace Search & Navigation API (TASK-4.3)
     void setSearchResults(std::vector<FluidCore::WorkspaceMatch> matches, const std::string& query,
@@ -180,6 +195,7 @@ class WorkspaceView {
     NavigateToSourceCallback m_onNavigateToSource;
     ExcerptAddedCallback m_onExcerptAdded;
     ActivatedCallback m_onActivated;
+    std::function<void(bool)> m_onMinimapVisibilityChanged;
 
     // Popover inline stack rename widgets
     GtkWidget* m_activeRenamePopover = nullptr;

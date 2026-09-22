@@ -136,12 +136,14 @@ struct WorkspaceState {
     bool isEraserPointerHovering = false;
 
     bool showMinimap = true;
+    bool isSpacePeekingMinimap = false;
     double minimapWidth = 200.0;
     double minimapHeight = 140.0;
     double minimapMargin = 16.0;
 
     std::string hoveredAnchorCardId;
     std::string hoveredResizeCardId;
+    std::string projectBundlePath;
 };
 
 } // namespace FluidCoreApp

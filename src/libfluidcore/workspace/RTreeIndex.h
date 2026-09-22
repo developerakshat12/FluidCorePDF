@@ -64,6 +64,7 @@ class RTreeIndex {
     std::uint32_t chooseSubtree(std::uint32_t nodeIdx, const Rectangle& bounds) const;
     bool eraseFrom(std::uint32_t nodeIdx, Handle handle, const Rectangle& hint);
     void tightenUp(std::uint32_t nodeIdx);
+    void collapseRootIfNeeded();
     void collect(std::uint32_t nodeIdx, const Rectangle& region, std::vector<Handle>& out) const;
 
     std::vector<Node> m_nodes;

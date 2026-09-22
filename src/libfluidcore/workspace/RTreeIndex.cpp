@@ -11,13 +11,13 @@ double area(const Rectangle& r) {
 }
 
 bool intersects(const Rectangle& a, const Rectangle& b) {
-    return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+    return a.x <= b.x + b.w && b.x <= a.x + a.w && a.y <= b.y + b.h && b.y <= a.y + a.h;
 }
 
 Rectangle unionOf(const Rectangle& a, const Rectangle& b) {
-    if (a.w <= 0 || a.h <= 0)
+    if (a.w < 0 || a.h < 0)
         return b;
-    if (b.w <= 0 || b.h <= 0)
+    if (b.w < 0 || b.h < 0)
         return a;
     const double minX = std::min(a.x, b.x);
     const double minY = std::min(a.y, b.y);
@@ -31,6 +31,19 @@ double enlargement(const Rectangle& target, const Rectangle& extra) {
 }
 
 } // namespace
+
+void RTreeIndex::collapseRootIfNeeded() {
+    while (m_root != kNoneNode && !m_nodes[m_root].leaf && m_nodes[m_root].entries.size() == 1) {
+        const std::uint32_t oldRoot = m_root;
+        m_root = m_nodes[oldRoot].entries.front().child;
+        m_nodes[oldRoot].entries.clear();
+        m_freeNodes.push_back(oldRoot);
+    }
+    if (m_root != kNoneNode && m_nodes[m_root].entries.empty()) {
+        m_freeNodes.push_back(m_root);
+        m_root = kNoneNode;
+    }
+}
 
 RTreeIndex::Handle RTreeIndex::insert(const Rectangle& bounds) {
     const Handle handle = m_nextHandle++;
@@ -50,12 +63,7 @@ bool RTreeIndex::remove(Handle handle) {
     eraseFrom(m_root, handle, it->second);
     m_bounds.erase(it);
 
-    while (m_root != kNoneNode && !m_nodes[m_root].leaf && m_nodes[m_root].entries.size() == 1) {
-        const std::uint32_t oldRoot = m_root;
-        m_root = m_nodes[oldRoot].entries.front().child;
-        m_nodes[oldRoot].entries.clear();
-        m_freeNodes.push_back(oldRoot);
-    }
+    collapseRootIfNeeded();
     return true;
 }
 
@@ -67,6 +75,7 @@ void RTreeIndex::update(Handle handle, const Rectangle& bounds) {
     const Rectangle previous = it->second;
     it->second = bounds;
     eraseFrom(m_root, handle, previous);
+    collapseRootIfNeeded();
 
     Entry entry;
     entry.bounds = bounds;
@@ -127,9 +136,10 @@ std::uint32_t RTreeIndex::insertEntry(std::uint32_t nodeIdx, Entry entry) {
 
     const std::uint32_t childIdx = chooseSubtree(nodeIdx, entry.bounds);
     const std::uint32_t sibling = insertEntry(childIdx, std::move(entry));
-    tightenUp(nodeIdx);
-    if (sibling == kNoneNode)
+    if (sibling == kNoneNode) {
+        tightenUp(nodeIdx);
         return kNoneNode;
+    }
 
     Entry up;
     up.child = sibling;
@@ -137,6 +147,7 @@ std::uint32_t RTreeIndex::insertEntry(std::uint32_t nodeIdx, Entry entry) {
     m_nodes[nodeIdx].entries.push_back(std::move(up));
     if (m_nodes[nodeIdx].entries.size() > kMaxEntries)
         return splitNode(nodeIdx);
+    tightenUp(nodeIdx);
     return kNoneNode;
 }
 

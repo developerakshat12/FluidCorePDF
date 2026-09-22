@@ -10,10 +10,29 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
+#include <gdk-pixbuf/gdk-pixbuf.h>
+#include <gdk/gdk.h>
+#include <gdk/gdkcairo.h>
 #include <iomanip>
 #include <sstream>
+#include <unordered_map>
 
 namespace FluidCoreApp {
+
+namespace {
+bool isRasterImageDoc(const std::string& docId) {
+    std::string lower = docId;
+    std::transform(lower.begin(), lower.end(), lower.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    if (lower.ends_with(".pdf") || lower.ends_with(".xopp")) {
+        return false;
+    }
+    return lower.ends_with(".png") || lower.ends_with(".jpg") || lower.ends_with(".jpeg") ||
+           lower.ends_with(".bmp") || lower.ends_with(".webp") || lower.ends_with(".gif") ||
+           lower.ends_with(".tiff") || lower.ends_with(".ico");
+}
+} // namespace
 
 constexpr double kBaseGridStep = 32.0;
 constexpr double kMajorGridMultiple = 5.0;
@@ -84,7 +103,8 @@ void WorkspaceRenderer::drawBackgroundGrid(cairo_t* cr, const WorkspaceState& st
 
 void WorkspaceRenderer::drawMinimap(cairo_t* cr, const WorkspaceState& state,
                                     FluidCore::FluidCoreAPI& api, int width, int height) {
-    if (!state.showMinimap)
+    const bool isVisible = state.showMinimap || state.isSpacePeekingMinimap;
+    if (!isVisible)
         return;
 
     const FluidCore::Rectangle mm = WorkspaceInteraction::getMinimapRect(state, width, height);
@@ -139,10 +159,13 @@ void WorkspaceRenderer::drawMinimap(cairo_t* cr, const WorkspaceState& state,
     drawRoundedRect(cr, mm.x + 1.0, mm.y + 1.0, mm.w - 2.0, mm.h - 2.0, 7.0);
     cairo_clip(cr);
 
-    // Miniature nodes
+    // Miniature macro nodes (cards and stacks; skip individual ink strokes for ultra-fluid rendering)
     const FluidCore::Rectangle queryAll{mapWorldX, mapWorldY, mapWorldW, mapWorldH};
     cairo_set_source_rgba(cr, 0.45, 0.58, 0.75, 0.7);
     for (const FluidCore::WorkspaceNode* node : api.queryVisibleNodes(queryAll)) {
+        if (dynamic_cast<const FluidCore::CanvasStrokeNode*>(node)) {
+            continue;
+        }
         const FluidCore::Rectangle b = node->bounds();
         const FluidCore::Point p1 = worldToMinimap(b.x, b.y);
         const FluidCore::Point p2 = worldToMinimap(b.x + b.w, b.y + b.h);
@@ -456,7 +479,11 @@ void WorkspaceRenderer::drawExcerptCard(cairo_t* cr, const WorkspaceState& state
 
         std::ostringstream headerOss;
         if (excerpt) {
-            headerOss << docLabel << " • Page " << pageNum;
+            if (excerpt->isImageExcerpt() && isRasterImageDoc(excerpt->sourceDocId())) {
+                headerOss << (!excerpt->textSnippet().empty() ? excerpt->textSnippet() : docLabel);
+            } else {
+                headerOss << docLabel << " • Page " << pageNum;
+            }
         } else {
             headerOss << docLabel;
         }
@@ -495,7 +522,44 @@ void WorkspaceRenderer::drawExcerptCard(cairo_t* cr, const WorkspaceState& state
 
             if (bodyW > 8.0 && bodyH > 8.0) {
                 CairoSurfaceHandle surface;
-                if (tileCache) {
+                if (isRasterImageDoc(excerpt->sourceDocId())) {
+                    std::filesystem::path fullImgPath(excerpt->sourceDocId());
+                    std::error_code ec;
+                    if (!std::filesystem::exists(fullImgPath, ec)) {
+                        std::string pRoot = state.projectBundlePath;
+                        if (!pRoot.empty()) {
+                            std::filesystem::path candidate = std::filesystem::path(pRoot) / excerpt->sourceDocId();
+                            if (std::filesystem::exists(candidate, ec)) {
+                                fullImgPath = candidate;
+                            }
+                        }
+                        if (!std::filesystem::exists(fullImgPath, ec)) {
+                            std::filesystem::path sessCandidate =
+                                std::filesystem::temp_directory_path() / "FluidCore" / "session_assets" / excerpt->sourceDocId();
+                            if (std::filesystem::exists(sessCandidate, ec)) {
+                                fullImgPath = sessCandidate;
+                            }
+                        }
+                    }
+                    ec.clear();
+
+                    static std::unordered_map<std::string, CairoSurfaceHandle> s_imgSurfaceCache;
+                    std::string cacheKey = fullImgPath.string();
+                    auto it = s_imgSurfaceCache.find(cacheKey);
+                    if (it != s_imgSurfaceCache.end()) {
+                        surface = it->second;
+                    } else if (std::filesystem::exists(fullImgPath, ec)) {
+                        GdkPixbuf* pb = gdk_pixbuf_new_from_file(fullImgPath.string().c_str(), nullptr);
+                        if (pb) {
+                            cairo_surface_t* cSurf = gdk_cairo_surface_create_from_pixbuf(pb, 1, nullptr);
+                            if (cSurf) {
+                                surface = CairoSurfaceHandle(cSurf, true);
+                                s_imgSurfaceCache[cacheKey] = surface;
+                            }
+                            g_object_unref(pb);
+                        }
+                    }
+                } else if (tileCache) {
                     LodTier tier = computeLodTierFromZoom(zoom);
                     CropCacheKey key = CropCacheKey::fromNormalizedRect(
                         excerpt->sourceDocId(), excerpt->sourcePageNo(),

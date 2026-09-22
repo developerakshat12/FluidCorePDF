@@ -397,6 +397,25 @@ int testNonStandardPageFilteringAndPointToPixelAlignment() {
     return failures;
 }
 
+int testPdfDocumentServiceAliasAndLegacyPathResolution() {
+    std::cout << "Running testPdfDocumentServiceAliasAndLegacyPathResolution...\n";
+    int failures = 0;
+
+    PdfDocumentService docService;
+    docService.registerMainDocument("doc-primary", nullptr, "D:/docs/sample.pdf");
+    docService.registerMainDocument("sample.pdf", nullptr, "D:/docs/sample.pdf");
+
+    // Test resolving legacy path with assets/images prefix
+    failures += check(docService.getFilePath("assets/images/sample.pdf") == "D:/docs/sample.pdf",
+                      "Legacy assets/images/sample.pdf resolves to primary document path");
+    failures += check(docService.getFilePath("documents/sample.pdf") == "D:/docs/sample.pdf",
+                      "documents/sample.pdf resolves to primary document path");
+    failures += check(docService.getFilePath("sample.pdf") == "D:/docs/sample.pdf",
+                      "Direct filename resolves to primary document path");
+
+    return failures;
+}
+
 } // namespace
 
 int main() {
@@ -412,6 +431,7 @@ int main() {
     totalFailures += testNonStandardPageFilteringAndPointToPixelAlignment();
     totalFailures += testZeroLeakRefcounting();
     totalFailures += testRealPdfCropRendering();
+    totalFailures += testPdfDocumentServiceAliasAndLegacyPathResolution();
 
     if (totalFailures == 0) {
         std::cout << "All ExcerptTileCache tests passed successfully!\n";

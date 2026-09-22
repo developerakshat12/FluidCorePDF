@@ -358,7 +358,7 @@ void TopToolbarWidget::createWidgets() {
 
     g_signal_connect(m_minimapBtn, "toggled", G_CALLBACK(+[](GtkToggleButton*, gpointer data) {
                          auto* self = static_cast<TopToolbarWidget*>(data);
-                         if (self && self->m_onToggleMinimap)
+                         if (self && !self->m_updatingMinimapState && self->m_onToggleMinimap)
                              self->m_onToggleMinimap();
                      }),
                      this);
@@ -962,7 +962,13 @@ void TopToolbarWidget::updateUndoRedoState(bool canUndo, bool canRedo) {
 
 void TopToolbarWidget::setMinimapActive(bool active) {
     if (m_minimapBtn && GTK_IS_TOGGLE_BUTTON(m_minimapBtn)) {
-        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(m_minimapBtn), active ? TRUE : FALSE);
+        const gboolean current = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(m_minimapBtn));
+        const gboolean target = active ? TRUE : FALSE;
+        if (current != target) {
+            m_updatingMinimapState = true;
+            gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(m_minimapBtn), target);
+            m_updatingMinimapState = false;
+        }
     }
 }
 

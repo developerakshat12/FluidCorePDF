@@ -826,20 +826,33 @@ gboolean InkOverlay::onButtonRelease(GdkEventButton* event) {
                 m_pane.undoStack().pushAndExecute(std::move(compound));
             }
         } else if (!samples.empty()) {
-            m_activeStroke.points.clear();
-            m_activeStroke.pressures.clear();
-            m_activeStroke.points.reserve(samples.size());
-            m_activeStroke.pressures.reserve(samples.size());
-
-            for (std::size_t i = 0; i < samples.size(); ++i) {
-                m_activeStroke.points.push_back({samples[i].point.x, samples[i].point.y});
-                m_activeStroke.pressures.push_back(samples[i].pressure);
+            bool isTrivialClick = false;
+            if (samples.size() <= 1) {
+                isTrivialClick = true;
+            } else if (samples.size() == 2) {
+                double dx = samples[1].point.x - samples[0].point.x;
+                double dy = samples[1].point.y - samples[0].point.y;
+                if (dx * dx + dy * dy < 1.0) {
+                    isTrivialClick = true;
+                }
             }
 
-            FluidCore::Rectangle strokeBounds = FluidCore::computeStrokeBounds(m_activeStroke);
-            m_pane.undoStack().pushAndExecute(std::make_unique<FluidCore::AddStrokeCommand>(
-                m_annotationStore, m_activePageIndex, std::move(m_activeStroke)));
-            m_pane.notifyAnnotationChangedSpatial(m_activePageIndex, strokeBounds);
+            if (!isTrivialClick) {
+                m_activeStroke.points.clear();
+                m_activeStroke.pressures.clear();
+                m_activeStroke.points.reserve(samples.size());
+                m_activeStroke.pressures.reserve(samples.size());
+
+                for (std::size_t i = 0; i < samples.size(); ++i) {
+                    m_activeStroke.points.push_back({samples[i].point.x, samples[i].point.y});
+                    m_activeStroke.pressures.push_back(samples[i].pressure);
+                }
+
+                FluidCore::Rectangle strokeBounds = FluidCore::computeStrokeBounds(m_activeStroke);
+                m_pane.undoStack().pushAndExecute(std::make_unique<FluidCore::AddStrokeCommand>(
+                    m_annotationStore, m_activePageIndex, std::move(m_activeStroke)));
+                m_pane.notifyAnnotationChangedSpatial(m_activePageIndex, strokeBounds);
+            }
         }
     }
 

@@ -11,9 +11,56 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cmath>
+#include <ctime>
+#include <filesystem>
+#include <gdk-pixbuf/gdk-pixbuf.h>
+#include <iomanip>
+#include <sstream>
 
 namespace FluidCoreApp {
+
+std::string WorkspaceInteraction::getAssetsImagesDirectory(const std::string& projectBundlePath) {
+    if (!projectBundlePath.empty()) {
+        std::filesystem::path bundleImages =
+            std::filesystem::path(projectBundlePath) / "assets" / "images";
+        return bundleImages.string();
+    }
+    std::filesystem::path tempDir =
+        std::filesystem::temp_directory_path() / "FluidCore" / "session_assets" / "assets" / "images";
+    return tempDir.string();
+}
+
+std::string WorkspaceInteraction::allocateUniqueImageFilename(const std::string& assetsDir,
+                                                               const std::string& prefix) {
+    auto now = std::chrono::system_clock::now();
+    std::time_t tt = std::chrono::system_clock::to_time_t(now);
+    std::tm tmVal;
+#if defined(_WIN32)
+    localtime_s(&tmVal, &tt);
+#else
+    localtime_r(&tt, &tmVal);
+#endif
+    char timeBuf[32];
+    std::strftime(timeBuf, sizeof(timeBuf), "%Y%m%d_%H%M%S", &tmVal);
+
+    static std::atomic<uint32_t> s_seqCounter{1};
+    uint32_t seq = s_seqCounter.fetch_add(1);
+
+    std::error_code ec;
+    for (int attempt = 0; attempt < 10000; ++attempt) {
+        std::ostringstream ss;
+        ss << prefix << "_" << timeBuf << "_" << std::setw(3) << std::setfill('0') << seq << ".png";
+        std::string filename = ss.str();
+        std::filesystem::path target = std::filesystem::path(assetsDir) / filename;
+        if (!std::filesystem::exists(target, ec)) {
+            return filename;
+        }
+        seq = s_seqCounter.fetch_add(1);
+    }
+    return prefix + "_" + std::to_string(g_get_real_time()) + ".png";
+}
 
 FluidCore::Rectangle WorkspaceInteraction::getMinimapRect(const WorkspaceState& state,
                                                           int viewWidth, int viewHeight) {
@@ -26,7 +73,8 @@ FluidCore::Rectangle WorkspaceInteraction::getMinimapRect(const WorkspaceState& 
 
 bool WorkspaceInteraction::minimapHitTest(const WorkspaceState& state, double screenX,
                                           double screenY, int viewWidth, int viewHeight) {
-    if (!state.showMinimap)
+    const bool isVisible = state.showMinimap || state.isSpacePeekingMinimap;
+    if (!isVisible)
         return false;
     const FluidCore::Rectangle r = getMinimapRect(state, viewWidth, viewHeight);
     return screenX >= r.x && screenX <= r.x + r.w && screenY >= r.y && screenY <= r.y + r.h;
@@ -366,10 +414,141 @@ void WorkspaceInteraction::handleExcerptDrop(WorkspaceState& state, FluidCore::F
     }
 
     FluidCore::Point dropWorld = state.viewport.screenToWorld(x, y);
+    WorkspaceView* wsView = (area && GTK_IS_WIDGET(area))
+                                ? static_cast<WorkspaceView*>(g_object_get_data(
+                                      G_OBJECT(area), "workspace-view-instance"))
+                                : nullptr;
 
+    // 1. Internal excerpt payload
     std::optional<FluidCore::ExcerptDropPayload> payloadOpt =
         FluidCore::deserializeExcerptPayload(reinterpret_cast<const uint8_t*>(rawData), len);
 
+    // 2. Dragged file URIs from Windows Explorer / Desktop / Browser
+    if (!payloadOpt.has_value()) {
+        gchar** uris = gtk_selection_data_get_uris(data);
+        if (uris) {
+            std::string assetsDir = WorkspaceInteraction::getAssetsImagesDirectory(state.projectBundlePath);
+            std::error_code ec;
+            std::filesystem::create_directories(assetsDir, ec);
+
+            int droppedCount = 0;
+            for (int i = 0; uris[i] != nullptr; ++i) {
+                gchar* localFilename = g_filename_from_uri(uris[i], nullptr, nullptr);
+                if (!localFilename)
+                    continue;
+
+                std::string filePath(localFilename);
+                g_free(localFilename);
+
+                std::filesystem::path p(filePath);
+                std::string ext = p.extension().string();
+                std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return std::tolower(c); });
+
+                if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp" ||
+                    ext == ".webp" || ext == ".gif" || ext == ".tiff" || ext == ".ico") {
+                    GError* gerr = nullptr;
+                    GdkPixbuf* pixbuf = gdk_pixbuf_new_from_file(filePath.c_str(), &gerr);
+                    if (pixbuf) {
+                        std::string uniqueName = WorkspaceInteraction::allocateUniqueImageFilename(assetsDir, "image");
+                        std::filesystem::path target = std::filesystem::path(assetsDir) / uniqueName;
+                        gboolean saved = gdk_pixbuf_save(pixbuf, target.string().c_str(), "png", nullptr, NULL);
+                        if (saved) {
+                            int imgW = gdk_pixbuf_get_width(pixbuf);
+                            int imgH = gdk_pixbuf_get_height(pixbuf);
+
+                            double cardW = 320.0;
+                            double headerH = 28.0;
+                            double cardH = (imgW > 0) ? (headerH + 16.0 + (cardW - 32.0) * ((double)imgH / imgW)) : 240.0;
+                            cardH = std::clamp(cardH, 120.0, 800.0);
+
+                            double offsetX = droppedCount * 24.0;
+                            double offsetY = droppedCount * 24.0;
+                            FluidCore::Rectangle bounds{dropWorld.x + offsetX, dropWorld.y + offsetY, cardW, cardH};
+
+                            static std::atomic<uint64_t> s_imgDropSeq{0};
+                            uint64_t ts = static_cast<uint64_t>(g_get_real_time());
+                            std::string cardId = "card-img-" + std::to_string(ts) + "-" + std::to_string(++s_imgDropSeq);
+
+                            std::string sourceDocId = "assets/images/" + uniqueName;
+                            auto card = std::make_unique<FluidCore::ExcerptCardNode>(
+                                cardId, bounds, sourceDocId, 0, FluidCore::Rectangle{0, 0, 1, 1},
+                                p.filename().string(), true, FluidCore::Color{220, 225, 235, 255}, ts);
+
+                            auto* engine = dynamic_cast<FluidCore::FluidCoreEngine*>(&api);
+                            if (wsView && engine) {
+                                wsView->undoStack().pushAndExecute(std::make_unique<FluidCore::InsertNodeCommand>(
+                                    engine->workspaceModel(), std::move(card)));
+                            } else {
+                                api.insertNode(std::move(card));
+                            }
+                            droppedCount++;
+                        }
+                        g_object_unref(pixbuf);
+                    }
+                }
+            }
+            g_strfreev(uris);
+
+            if (droppedCount > 0) {
+                if (area && GTK_IS_WIDGET(area)) {
+                    gtk_widget_queue_draw(area);
+                }
+                gtk_drag_finish(context, TRUE, FALSE, time);
+                return;
+            }
+        }
+    }
+
+    // 3. Raw pixbuf drop
+    if (!payloadOpt.has_value()) {
+        GdkPixbuf* pixbuf = gtk_selection_data_get_pixbuf(data);
+        if (pixbuf) {
+            std::string assetsDir = WorkspaceInteraction::getAssetsImagesDirectory(state.projectBundlePath);
+            std::error_code ec;
+            std::filesystem::create_directories(assetsDir, ec);
+
+            std::string uniqueName = WorkspaceInteraction::allocateUniqueImageFilename(assetsDir, "image");
+            std::filesystem::path target = std::filesystem::path(assetsDir) / uniqueName;
+            gboolean saved = gdk_pixbuf_save(pixbuf, target.string().c_str(), "png", nullptr, NULL);
+            if (saved) {
+                int imgW = gdk_pixbuf_get_width(pixbuf);
+                int imgH = gdk_pixbuf_get_height(pixbuf);
+
+                double cardW = 320.0;
+                double headerH = 28.0;
+                double cardH = (imgW > 0) ? (headerH + 16.0 + (cardW - 32.0) * ((double)imgH / imgW)) : 240.0;
+                cardH = std::clamp(cardH, 120.0, 800.0);
+
+                FluidCore::Rectangle bounds{dropWorld.x, dropWorld.y, cardW, cardH};
+
+                static std::atomic<uint64_t> s_imgDropSeq{0};
+                uint64_t ts = static_cast<uint64_t>(g_get_real_time());
+                std::string cardId = "card-img-" + std::to_string(ts) + "-" + std::to_string(++s_imgDropSeq);
+
+                std::string sourceDocId = "assets/images/" + uniqueName;
+                auto card = std::make_unique<FluidCore::ExcerptCardNode>(
+                    cardId, bounds, sourceDocId, 0, FluidCore::Rectangle{0, 0, 1, 1},
+                    uniqueName, true, FluidCore::Color{220, 225, 235, 255}, ts);
+
+                auto* engine = dynamic_cast<FluidCore::FluidCoreEngine*>(&api);
+                if (wsView && engine) {
+                    wsView->undoStack().pushAndExecute(std::make_unique<FluidCore::InsertNodeCommand>(
+                        engine->workspaceModel(), std::move(card)));
+                } else {
+                    api.insertNode(std::move(card));
+                }
+                if (area && GTK_IS_WIDGET(area)) {
+                    gtk_widget_queue_draw(area);
+                }
+                g_object_unref(pixbuf);
+                gtk_drag_finish(context, TRUE, FALSE, time);
+                return;
+            }
+            g_object_unref(pixbuf);
+        }
+    }
+
+    // 4. Plain text drop fallback
     if (!payloadOpt.has_value()) {
         guchar* textData = gtk_selection_data_get_text(data);
         if (textData) {

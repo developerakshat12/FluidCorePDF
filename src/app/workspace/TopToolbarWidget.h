@@ -91,6 +91,8 @@ class TopToolbarWidget {
     GtkWidget* m_searchBtn = nullptr;
     GtkWidget* m_exportBtn = nullptr;
 
+    bool m_updatingMinimapState = false;
+
     // Callbacks
     std::function<void()> m_onUndo;
     std::function<void()> m_onRedo;

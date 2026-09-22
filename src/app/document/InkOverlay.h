@@ -154,7 +154,7 @@ class InkOverlay {
     double m_pressScreenY = 0.0;
     std::size_t m_dragSourcePageIndex = 0;
 
-    std::string m_currentTool = "pen";
+    std::string m_currentTool = "select";
     std::uint32_t m_currentColor = 0x000000;
     double m_currentWidth = 2.0;
 

@@ -312,11 +312,12 @@ bool FluidCoreEngine::saveProjectWithError(std::string* error) {
             registeredDocIds.insert(doc.docId);
         }
 
-        // Self-healing check: ensure any ExcerptCardNode in m_model whose sourceDocId
-        // is not yet in docs gets an automatic fallback DocumentRecord registered,
+        // Self-healing check: ensure any ExcerptCardNode in m_model (including nested in stacks)
+        // whose sourceDocId is not yet in docs gets an automatic fallback DocumentRecord registered,
         // preventing fatal SQLite FOREIGN KEY constraint violations.
-        for (const std::string& nId : m_model.allNodeIds()) {
-            const auto* node = m_model.find(nId);
+        auto ensureDocRegistered = [&](auto& self, const WorkspaceNode* node) -> void {
+            if (!node)
+                return;
             if (const auto* card = dynamic_cast<const ExcerptCardNode*>(node)) {
                 const std::string& cardDocId = card->sourceDocId();
                 if (!cardDocId.empty() &&
@@ -338,7 +339,15 @@ bool FluidCoreEngine::saveProjectWithError(std::string* error) {
                     docs.push_back(fallbackDoc);
                     registeredDocIds.insert(cardDocId);
                 }
+            } else if (const auto* stack = dynamic_cast<const CardStackNode*>(node)) {
+                for (const auto& child : stack->children()) {
+                    self(self, child.get());
+                }
             }
+        };
+
+        for (const std::string& nId : m_model.allNodeIds()) {
+            ensureDocRegistered(ensureDocRegistered, m_model.find(nId));
         }
 
         return m_store.saveProject(m_model, m_graph, docs, error);

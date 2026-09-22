@@ -183,6 +183,7 @@ void DocumentPane::closeDocument() {
                          MemoryTelemetry::formatMB(afterDocUnrefPriv) + " (" + docSign +
                          MemoryTelemetry::formatMB(absDocDelta) + ")");
     m_pdfPath.clear();
+    m_companionPath.clear();
     m_layoutWidth = 0.0;
     m_layoutHeight = 0.0;
     m_rawDocHeight = 0.0;
@@ -190,7 +191,20 @@ void DocumentPane::closeDocument() {
 }
 
 void DocumentPane::repointCompanionPath(const std::string& newPdfPath) {
-    m_pdfPath = newPdfPath;
+    m_companionPath = newPdfPath;
+}
+
+bool DocumentPane::loadCompanionAnnotations(const std::string& companionPath) {
+    m_companionPath = companionPath;
+    if (companionPath.empty()) {
+        return true;
+    }
+    std::string err;
+    bool ok = m_annotationStore.loadAnnotations(companionPath, &err);
+    if (m_area && GTK_IS_WIDGET(m_area)) {
+        gtk_widget_queue_draw(m_area);
+    }
+    return ok;
 }
 
 bool DocumentPane::loadDocument(const std::string& pdfPath, const std::string& docId,
@@ -1268,10 +1282,11 @@ void DocumentPane::setStrokeWidth(double width) {
 }
 
 bool DocumentPane::saveAnnotations() {
-    if (m_pdfPath.empty()) {
-        return true; // No active PDF document; saving annotations is a no-op success
+    const std::string target = !m_companionPath.empty() ? m_companionPath : m_pdfPath;
+    if (target.empty()) {
+        return true; // No active PDF document or companion; saving annotations is a no-op success
     }
-    return m_annotationStore.saveAnnotations(m_pdfPath);
+    return m_annotationStore.saveAnnotations(target);
 }
 
 bool DocumentPane::undo() {

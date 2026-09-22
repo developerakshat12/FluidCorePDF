@@ -11,9 +11,22 @@ PdfDocumentService::~PdfDocumentService() {
     clear();
 }
 
+namespace {
+std::string normalizeForMatch(const std::string& s) {
+    std::filesystem::path p(s);
+    std::string fn = p.filename().string();
+    std::transform(fn.begin(), fn.end(), fn.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    return fn;
+}
+} // namespace
+
 PdfDocumentService::DocEntry* PdfDocumentService::resolveEntryLocked(const std::string& docId) {
-    if (docId.empty()) {
+    if (m_documents.empty()) {
         return nullptr;
+    }
+    if (docId.empty()) {
+        return &m_documents.begin()->second;
     }
     // 1. Direct match
     auto it = m_documents.find(docId);
@@ -28,19 +41,20 @@ PdfDocumentService::DocEntry* PdfDocumentService::resolveEntryLocked(const std::
         }
     }
 
-    // 3. Match by filename
-    std::filesystem::path targetP(docId);
-    std::string targetFilename = targetP.filename().string();
-    if (!targetFilename.empty()) {
+    // 3. Match by normalized filename
+    std::string targetNorm = normalizeForMatch(docId);
+    if (!targetNorm.empty()) {
         for (auto& [id, entry] : m_documents) {
-            if (std::filesystem::path(entry.filePath).filename().string() == targetFilename ||
-                std::filesystem::path(entry.docId).filename().string() == targetFilename) {
+            if (normalizeForMatch(entry.filePath) == targetNorm ||
+                normalizeForMatch(entry.docId) == targetNorm ||
+                normalizeForMatch(id) == targetNorm) {
                 return &entry;
             }
         }
     }
 
     // 4. Auto-register if docId is an existing file on disk
+    std::filesystem::path targetP(docId);
     std::error_code ec;
     if (std::filesystem::exists(targetP, ec) && !std::filesystem::is_directory(targetP, ec)) {
         DocEntry newEntry;
@@ -51,13 +65,28 @@ PdfDocumentService::DocEntry* PdfDocumentService::resolveEntryLocked(const std::
         return &insertedIt->second;
     }
 
+    // 5. If only 1 document is open in project, fallback to it
+    if (m_documents.size() == 1) {
+        return &m_documents.begin()->second;
+    }
+
+    // 6. Fallback to entry with active mainDoc if available
+    for (auto& [id, entry] : m_documents) {
+        if (entry.mainDoc) {
+            return &entry;
+        }
+    }
+
     return nullptr;
 }
 
 const PdfDocumentService::DocEntry*
 PdfDocumentService::resolveEntryLocked(const std::string& docId) const {
-    if (docId.empty()) {
+    if (m_documents.empty()) {
         return nullptr;
+    }
+    if (docId.empty()) {
+        return &m_documents.begin()->second;
     }
     auto it = m_documents.find(docId);
     if (it != m_documents.end()) {
@@ -68,14 +97,22 @@ PdfDocumentService::resolveEntryLocked(const std::string& docId) const {
             return &entry;
         }
     }
-    std::filesystem::path targetP(docId);
-    std::string targetFilename = targetP.filename().string();
-    if (!targetFilename.empty()) {
+    std::string targetNorm = normalizeForMatch(docId);
+    if (!targetNorm.empty()) {
         for (const auto& [id, entry] : m_documents) {
-            if (std::filesystem::path(entry.filePath).filename().string() == targetFilename ||
-                std::filesystem::path(entry.docId).filename().string() == targetFilename) {
+            if (normalizeForMatch(entry.filePath) == targetNorm ||
+                normalizeForMatch(entry.docId) == targetNorm ||
+                normalizeForMatch(id) == targetNorm) {
                 return &entry;
             }
+        }
+    }
+    if (m_documents.size() == 1) {
+        return &m_documents.begin()->second;
+    }
+    for (const auto& [id, entry] : m_documents) {
+        if (entry.mainDoc) {
+            return &entry;
         }
     }
     return nullptr;
@@ -186,13 +223,24 @@ PopplerPagePtr PdfDocumentService::getBackgroundPage(const std::string& docId, s
         return nullptr;
     }
 
-    if (!entry->backgroundDoc) {
+    PopplerDocument* docToUse = entry->backgroundDoc ? entry->backgroundDoc.get() : entry->mainDoc;
+    if (!docToUse) {
+        for (const auto& [id, otherEntry] : m_documents) {
+            if (otherEntry.mainDoc) {
+                docToUse = otherEntry.mainDoc;
+                break;
+            }
+        }
+    }
+    if (!docToUse) {
         GError* error = nullptr;
         char* uri = nullptr;
         if (filePath.rfind("file://", 0) == 0) {
             uri = g_strdup(filePath.c_str());
         } else {
-            uri = g_filename_to_uri(filePath.c_str(), nullptr, &error);
+            std::filesystem::path fp(filePath);
+            std::string normPath = fp.lexically_normal().string();
+            uri = g_filename_to_uri(normPath.c_str(), nullptr, &error);
         }
 
         if (uri) {
@@ -200,25 +248,28 @@ PopplerPagePtr PdfDocumentService::getBackgroundPage(const std::string& docId, s
             g_free(uri);
             if (bgDoc) {
                 entry->backgroundDoc.reset(bgDoc);
+                docToUse = bgDoc;
             } else if (error) {
+                std::cerr << "[PdfDocumentService] Failed to load bgDoc: " << error->message << "\n";
                 g_error_free(error);
             }
         } else if (error) {
+            std::cerr << "[PdfDocumentService] Failed to get URI for '" << filePath << "': " << error->message << "\n";
             g_error_free(error);
         }
     }
 
-    if (!entry->backgroundDoc) {
+    if (!docToUse) {
         return nullptr;
     }
 
-    int numPages = poppler_document_get_n_pages(entry->backgroundDoc.get());
+    int numPages = poppler_document_get_n_pages(docToUse);
     if (static_cast<int>(pageNo) >= numPages) {
         return nullptr;
     }
 
     PopplerPage* page =
-        poppler_document_get_page(entry->backgroundDoc.get(), static_cast<int>(pageNo));
+        poppler_document_get_page(docToUse, static_cast<int>(pageNo));
     return PopplerPagePtr(page);
 }
 
@@ -250,13 +301,24 @@ CairoSurfaceHandle PdfDocumentService::renderBackgroundCrop(
         return CairoSurfaceHandle{};
     }
 
-    if (!entry->backgroundDoc) {
+    PopplerDocument* docToUse = entry->backgroundDoc ? entry->backgroundDoc.get() : entry->mainDoc;
+    if (!docToUse) {
+        for (const auto& [id, otherEntry] : m_documents) {
+            if (otherEntry.mainDoc) {
+                docToUse = otherEntry.mainDoc;
+                break;
+            }
+        }
+    }
+    if (!docToUse) {
         GError* error = nullptr;
         char* uri = nullptr;
         if (filePath.rfind("file://", 0) == 0) {
             uri = g_strdup(filePath.c_str());
         } else {
-            uri = g_filename_to_uri(filePath.c_str(), nullptr, &error);
+            std::filesystem::path fp(filePath);
+            std::string normPath = fp.lexically_normal().string();
+            uri = g_filename_to_uri(normPath.c_str(), nullptr, &error);
         }
 
         if (uri) {
@@ -264,25 +326,28 @@ CairoSurfaceHandle PdfDocumentService::renderBackgroundCrop(
             g_free(uri);
             if (bgDoc) {
                 entry->backgroundDoc.reset(bgDoc);
+                docToUse = bgDoc;
             } else if (error) {
+                std::cerr << "[PdfDocumentService] Failed to load bgDoc: " << error->message << "\n";
                 g_error_free(error);
             }
         } else if (error) {
+            std::cerr << "[PdfDocumentService] Failed to get URI for '" << filePath << "': " << error->message << "\n";
             g_error_free(error);
         }
     }
 
-    if (!entry->backgroundDoc) {
+    if (!docToUse) {
         return CairoSurfaceHandle{};
     }
 
-    int numPages = poppler_document_get_n_pages(entry->backgroundDoc.get());
+    int numPages = poppler_document_get_n_pages(docToUse);
     if (static_cast<int>(pageNo) >= numPages) {
         return CairoSurfaceHandle{};
     }
 
     PopplerPage* page =
-        poppler_document_get_page(entry->backgroundDoc.get(), static_cast<int>(pageNo));
+        poppler_document_get_page(docToUse, static_cast<int>(pageNo));
     if (!page) {
         return CairoSurfaceHandle{};
     }

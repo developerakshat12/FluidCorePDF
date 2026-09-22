@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(fluidcore-platform
-    VERSION 1.1.3
+    VERSION 1.1.4
     DESCRIPTION "Offline-first fluid document synthesis platform (libfluidcore + GTK frontend)"
     LANGUAGES CXX)
 

@@ -307,7 +307,8 @@ bool ProjectStore::initSchema(std::string* error) {
             page_count INTEGER NOT NULL,
             file_size_bytes INTEGER NOT NULL,
             created_at INTEGER NOT NULL,
-            last_viewed_page INTEGER NOT NULL DEFAULT 0
+            last_viewed_page INTEGER NOT NULL DEFAULT 0,
+            external_path TEXT DEFAULT ''
         );
 
         CREATE TABLE IF NOT EXISTS workspace_nodes (
@@ -437,6 +438,24 @@ bool ProjectStore::initSchema(std::string* error) {
         sqlite3_exec(
             m_db, "ALTER TABLE documents ADD COLUMN last_viewed_page INTEGER NOT NULL DEFAULT 0;",
             nullptr, nullptr, nullptr);
+    }
+
+    // Additive schema migration: ensure external_path exists on pre-existing documents table
+    bool hasExternalPathCol = false;
+    SqliteStatement pragmaDocs2(m_db, "PRAGMA table_info(documents);");
+    if (pragmaDocs2.isValid()) {
+        while (pragmaDocs2.step()) {
+            const char* colName =
+                reinterpret_cast<const char*>(sqlite3_column_text(pragmaDocs2.get(), 1));
+            if (colName && std::string(colName) == "external_path") {
+                hasExternalPathCol = true;
+                break;
+            }
+        }
+    }
+    if (!hasExternalPathCol) {
+        sqlite3_exec(m_db, "ALTER TABLE documents ADD COLUMN external_path TEXT DEFAULT '';",
+                     nullptr, nullptr, nullptr);
     }
 
     return true;
@@ -610,15 +629,16 @@ bool ProjectStore::registerDocument(const DocumentRecord& doc, std::string* erro
 
     SqliteStatement stmt(m_db,
                          "INSERT INTO documents (doc_id, project_id, filename, file_path_relative, "
-                         "file_sha256, page_count, file_size_bytes, created_at, last_viewed_page) "
-                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                         "file_sha256, page_count, file_size_bytes, created_at, last_viewed_page, external_path) "
+                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                          "ON CONFLICT(doc_id) DO UPDATE SET "
                          "filename = excluded.filename, "
                          "file_path_relative = excluded.file_path_relative, "
                          "file_sha256 = excluded.file_sha256, "
                          "page_count = excluded.page_count, "
                          "file_size_bytes = excluded.file_size_bytes, "
-                         "last_viewed_page = excluded.last_viewed_page;");
+                         "last_viewed_page = excluded.last_viewed_page, "
+                         "external_path = excluded.external_path;");
 
     if (!stmt.isValid()) {
         if (error)
@@ -638,6 +658,7 @@ bool ProjectStore::registerDocument(const DocumentRecord& doc, std::string* erro
         stmt.get(), 8,
         static_cast<sqlite3_int64>(doc.createdAt ? doc.createdAt : currentTimestampMs()));
     sqlite3_bind_int64(stmt.get(), 9, static_cast<sqlite3_int64>(doc.lastViewedPage));
+    sqlite3_bind_text(stmt.get(), 10, doc.externalPath.c_str(), -1, SQLITE_STATIC);
 
     int rc = stmt.execute();
     if (rc != SQLITE_DONE) {
@@ -688,7 +709,7 @@ std::vector<DocumentRecord> ProjectStore::listDocuments() const {
 
     SqliteStatement stmt(
         m_db, "SELECT doc_id, filename, file_path_relative, file_sha256, page_count, "
-              "file_size_bytes, created_at, last_viewed_page FROM documents WHERE project_id = ?;");
+              "file_size_bytes, created_at, last_viewed_page, external_path FROM documents WHERE project_id = ?;");
     if (!stmt.isValid())
         return list;
 
@@ -711,6 +732,9 @@ std::vector<DocumentRecord> ProjectStore::listDocuments() const {
         rec.fileSizeBytes = static_cast<size_t>(sqlite3_column_int64(stmt.get(), 5));
         rec.createdAt = static_cast<uint64_t>(sqlite3_column_int64(stmt.get(), 6));
         rec.lastViewedPage = static_cast<size_t>(sqlite3_column_int64(stmt.get(), 7));
+        const char* extPath = reinterpret_cast<const char*>(sqlite3_column_text(stmt.get(), 8));
+        if (extPath)
+            rec.externalPath = extPath;
         list.push_back(std::move(rec));
     }
     return list;
@@ -722,7 +746,7 @@ std::optional<DocumentRecord> ProjectStore::getDocument(const std::string& docId
 
     SqliteStatement stmt(
         m_db, "SELECT doc_id, filename, file_path_relative, file_sha256, page_count, "
-              "file_size_bytes, created_at, last_viewed_page FROM documents WHERE doc_id = ?;");
+              "file_size_bytes, created_at, last_viewed_page, external_path FROM documents WHERE doc_id = ?;");
     if (!stmt.isValid())
         return std::nullopt;
 
@@ -745,6 +769,9 @@ std::optional<DocumentRecord> ProjectStore::getDocument(const std::string& docId
         rec.fileSizeBytes = static_cast<size_t>(sqlite3_column_int64(stmt.get(), 5));
         rec.createdAt = static_cast<uint64_t>(sqlite3_column_int64(stmt.get(), 6));
         rec.lastViewedPage = static_cast<size_t>(sqlite3_column_int64(stmt.get(), 7));
+        const char* extPath = reinterpret_cast<const char*>(sqlite3_column_text(stmt.get(), 8));
+        if (extPath)
+            rec.externalPath = extPath;
         return rec;
     }
     return std::nullopt;
@@ -752,16 +779,18 @@ std::optional<DocumentRecord> ProjectStore::getDocument(const std::string& docId
 
 namespace {
 
-void serializeNodeRecursive(sqlite3* db, const std::string& projectId, const WorkspaceNode* node,
+template <typename ExecFn>
+bool serializeNodeRecursive(sqlite3* db, const std::string& projectId, const WorkspaceNode* node,
                             const std::string& parentStackId, int zIndex,
                             SqliteStatement& insertNodeStmt, SqliteStatement& insertAnchorStmt,
                             SqliteStatement& insertTagStmt, SqliteStatement& insertEntityTagStmt,
                             SqliteStatement& insertFtsStmt, SqliteStatement& deleteFtsStmt,
                             SqliteStatement& insertInkStrokeStmt,
                             std::unordered_set<std::string>& currentModelNodeIds,
-                            std::unordered_set<std::string>& currentModelStrokeIds) {
+                            std::unordered_set<std::string>& currentModelStrokeIds,
+                            const ExecFn& executeOrRollback) {
     if (!node)
-        return;
+        return true;
 
     const std::string& nodeId = node->id();
     Rectangle bounds = node->bounds();
@@ -796,7 +825,8 @@ void serializeNodeRecursive(sqlite3* db, const std::string& projectId, const Wor
                            static_cast<sqlite3_int64>(
                                card->creationTimestamp() ? card->creationTimestamp() : now));
         sqlite3_bind_int64(insertNodeStmt.get(), 14, static_cast<sqlite3_int64>(now));
-        insertNodeStmt.execute();
+        if (!executeOrRollback(insertNodeStmt, "insertNode (ExcerptCard)"))
+            return false;
 
         // Source Anchor
         insertAnchorStmt.reset();
@@ -819,7 +849,8 @@ void serializeNodeRecursive(sqlite3* db, const std::string& projectId, const Wor
             sqlite3_bind_null(insertAnchorStmt.get(), 9);
         }
         sqlite3_bind_null(insertAnchorStmt.get(), 10);
-        insertAnchorStmt.execute();
+        if (!executeOrRollback(insertAnchorStmt, "insertAnchor"))
+            return false;
 
         // Tags
         for (const std::string& tag : card->tags()) {
@@ -829,19 +860,22 @@ void serializeNodeRecursive(sqlite3* db, const std::string& projectId, const Wor
             sqlite3_bind_text(insertTagStmt.get(), 2, projectId.c_str(), -1, SQLITE_STATIC);
             sqlite3_bind_text(insertTagStmt.get(), 3, tag.c_str(), -1, SQLITE_STATIC);
             sqlite3_bind_int(insertTagStmt.get(), 4, 0);
-            insertTagStmt.execute();
+            if (!executeOrRollback(insertTagStmt, "insertTag"))
+                return false;
 
             insertEntityTagStmt.reset();
             sqlite3_bind_text(insertEntityTagStmt.get(), 1, tagId.c_str(), -1, SQLITE_STATIC);
             sqlite3_bind_text(insertEntityTagStmt.get(), 2, nodeId.c_str(), -1, SQLITE_STATIC);
             sqlite3_bind_text(insertEntityTagStmt.get(), 3, "TEXT_EXCERPT", -1, SQLITE_STATIC);
-            insertEntityTagStmt.execute();
+            if (!executeOrRollback(insertEntityTagStmt, "insertEntityTag"))
+                return false;
         }
 
         // FTS Index
         deleteFtsStmt.reset();
         sqlite3_bind_text(deleteFtsStmt.get(), 1, nodeId.c_str(), -1, SQLITE_STATIC);
-        deleteFtsStmt.execute();
+        if (!executeOrRollback(deleteFtsStmt, "deleteFts"))
+            return false;
         if (!card->textSnippet().empty()) {
             insertFtsStmt.reset();
             sqlite3_bind_text(insertFtsStmt.get(), 1, nodeId.c_str(), -1, SQLITE_STATIC);
@@ -850,7 +884,8 @@ void serializeNodeRecursive(sqlite3* db, const std::string& projectId, const Wor
                                static_cast<sqlite3_int64>(card->sourcePageNo()));
             sqlite3_bind_text(insertFtsStmt.get(), 4, card->textSnippet().c_str(), -1,
                               SQLITE_STATIC);
-            insertFtsStmt.execute();
+            if (!executeOrRollback(insertFtsStmt, "insertFts"))
+                return false;
         }
     } else if (const auto* stack = dynamic_cast<const CardStackNode*>(node)) {
         currentModelNodeIds.insert(nodeId);
@@ -877,7 +912,8 @@ void serializeNodeRecursive(sqlite3* db, const std::string& projectId, const Wor
         sqlite3_bind_int64(insertNodeStmt.get(), 12, 4294967295ULL);
         sqlite3_bind_int64(insertNodeStmt.get(), 13, static_cast<sqlite3_int64>(now));
         sqlite3_bind_int64(insertNodeStmt.get(), 14, static_cast<sqlite3_int64>(now));
-        insertNodeStmt.execute();
+        if (!executeOrRollback(insertNodeStmt, "insertNode (Stack)"))
+            return false;
 
         // Stack Tags
         for (const std::string& tag : stack->tags()) {
@@ -887,35 +923,42 @@ void serializeNodeRecursive(sqlite3* db, const std::string& projectId, const Wor
             sqlite3_bind_text(insertTagStmt.get(), 2, projectId.c_str(), -1, SQLITE_STATIC);
             sqlite3_bind_text(insertTagStmt.get(), 3, tag.c_str(), -1, SQLITE_STATIC);
             sqlite3_bind_int(insertTagStmt.get(), 4, 0);
-            insertTagStmt.execute();
+            if (!executeOrRollback(insertTagStmt, "insertTag (Stack)"))
+                return false;
 
             insertEntityTagStmt.reset();
             sqlite3_bind_text(insertEntityTagStmt.get(), 1, tagId.c_str(), -1, SQLITE_STATIC);
             sqlite3_bind_text(insertEntityTagStmt.get(), 2, nodeId.c_str(), -1, SQLITE_STATIC);
             sqlite3_bind_text(insertEntityTagStmt.get(), 3, "STACK_HEADER", -1, SQLITE_STATIC);
-            insertEntityTagStmt.execute();
+            if (!executeOrRollback(insertEntityTagStmt, "insertEntityTag (Stack)"))
+                return false;
         }
 
         // Stack FTS
         deleteFtsStmt.reset();
         sqlite3_bind_text(deleteFtsStmt.get(), 1, nodeId.c_str(), -1, SQLITE_STATIC);
-        deleteFtsStmt.execute();
+        if (!executeOrRollback(deleteFtsStmt, "deleteFts (Stack)"))
+            return false;
         if (!stack->title().empty()) {
             insertFtsStmt.reset();
             sqlite3_bind_text(insertFtsStmt.get(), 1, nodeId.c_str(), -1, SQLITE_STATIC);
             sqlite3_bind_text(insertFtsStmt.get(), 2, "STACK_HEADER", -1, SQLITE_STATIC);
             sqlite3_bind_null(insertFtsStmt.get(), 3);
             sqlite3_bind_text(insertFtsStmt.get(), 4, stack->title().c_str(), -1, SQLITE_STATIC);
-            insertFtsStmt.execute();
+            if (!executeOrRollback(insertFtsStmt, "insertFts (Stack)"))
+                return false;
         }
 
         // Recurse on stack children
         int childZ = zIndex + 1;
         for (const auto& child : stack->children()) {
-            serializeNodeRecursive(db, projectId, child.get(), nodeId, childZ++, insertNodeStmt,
-                                   insertAnchorStmt, insertTagStmt, insertEntityTagStmt,
-                                   insertFtsStmt, deleteFtsStmt, insertInkStrokeStmt,
-                                   currentModelNodeIds, currentModelStrokeIds);
+            if (!serializeNodeRecursive(db, projectId, child.get(), nodeId, childZ++, insertNodeStmt,
+                                       insertAnchorStmt, insertTagStmt, insertEntityTagStmt,
+                                       insertFtsStmt, deleteFtsStmt, insertInkStrokeStmt,
+                                       currentModelNodeIds, currentModelStrokeIds,
+                                       executeOrRollback)) {
+                return false;
+            }
         }
     } else if (const auto* strokeNode = dynamic_cast<const CanvasStrokeNode*>(node)) {
         currentModelStrokeIds.insert(nodeId);
@@ -946,11 +989,13 @@ void serializeNodeRecursive(sqlite3* db, const std::string& projectId, const Wor
         sqlite3_bind_double(insertInkStrokeStmt.get(), 9, stroke.width);
         sqlite3_bind_int64(insertInkStrokeStmt.get(), 10,
                            static_cast<sqlite3_int64>(stroke.timestamp ? stroke.timestamp : now));
-        insertInkStrokeStmt.execute();
+        if (!executeOrRollback(insertInkStrokeStmt, "insertInkStroke"))
+            return false;
     } else {
         std::cerr << "[ProjectStore] Warning: Unhandled WorkspaceNode subclass for node_id '"
                   << nodeId << "'. Node not serialized.\n";
     }
+    return true;
 }
 
 } // namespace
@@ -972,6 +1017,18 @@ bool ProjectStore::saveProject(const WorkspaceModel& model, const GraphTopology&
         return false;
     }
 
+    auto executeOrRollback = [&](SqliteStatement& stmt, const char* opName) -> bool {
+        int rc = stmt.execute();
+        if (rc != SQLITE_DONE) {
+            if (error) {
+                *error = std::string(opName) + " failed: " + sqlite3_errmsg(m_db);
+            }
+            sqlite3_exec(m_db, "ROLLBACK;", nullptr, nullptr, nullptr);
+            return false;
+        }
+        return true;
+    };
+
     m_metadata.updatedAt = currentTimestampMs();
 
     // 1. Update project metadata
@@ -985,12 +1042,17 @@ bool ProjectStore::saveProject(const WorkspaceModel& model, const GraphTopology&
         sqlite3_bind_int(updateProj.get(), 3, static_cast<int>(m_metadata.schemaVersion));
         sqlite3_bind_int64(updateProj.get(), 4, static_cast<sqlite3_int64>(m_metadata.createdAt));
         sqlite3_bind_int64(updateProj.get(), 5, static_cast<sqlite3_int64>(m_metadata.updatedAt));
-        updateProj.execute();
+        if (!executeOrRollback(updateProj, "updateProject")) {
+            return false;
+        }
     }
 
     // 2. Documents
     for (const auto& doc : docs) {
-        registerDocument(doc, nullptr);
+        if (!registerDocument(doc, error)) {
+            sqlite3_exec(m_db, "ROLLBACK;", nullptr, nullptr, nullptr);
+            return false;
+        }
     }
 
     // 3. Serialize workspace nodes with differential upserts
@@ -1077,10 +1139,13 @@ bool ProjectStore::saveProject(const WorkspaceModel& model, const GraphTopology&
     for (const std::string& nodeId : model.allNodeIds()) {
         const WorkspaceNode* node = model.find(nodeId);
         if (node) {
-            serializeNodeRecursive(m_db, m_metadata.projectId, node, "", rootZ++, insertNodeStmt,
-                                   insertAnchorStmt, insertTagStmt, insertEntityTagStmt,
-                                   insertFtsStmt, deleteFtsStmt, insertInkStrokeStmt,
-                                   currentModelNodeIds, currentModelStrokeIds);
+            if (!serializeNodeRecursive(m_db, m_metadata.projectId, node, "", rootZ++, insertNodeStmt,
+                                       insertAnchorStmt, insertTagStmt, insertEntityTagStmt,
+                                       insertFtsStmt, deleteFtsStmt, insertInkStrokeStmt,
+                                       currentModelNodeIds, currentModelStrokeIds,
+                                       executeOrRollback)) {
+                return false;
+            }
         }
     }
 
@@ -1103,11 +1168,15 @@ bool ProjectStore::saveProject(const WorkspaceModel& model, const GraphTopology&
             for (const auto& delId : nodesToDelete) {
                 deleteNodeStmt.reset();
                 sqlite3_bind_text(deleteNodeStmt.get(), 1, delId.c_str(), -1, SQLITE_STATIC);
-                deleteNodeStmt.execute();
+                if (!executeOrRollback(deleteNodeStmt, "deleteNode")) {
+                    return false;
+                }
 
                 deleteFtsStmt.reset();
                 sqlite3_bind_text(deleteFtsStmt.get(), 1, delId.c_str(), -1, SQLITE_STATIC);
-                deleteFtsStmt.execute();
+                if (!executeOrRollback(deleteFtsStmt, "deleteFts")) {
+                    return false;
+                }
             }
         }
     }
@@ -1166,7 +1235,9 @@ bool ProjectStore::saveProject(const WorkspaceModel& model, const GraphTopology&
             }
             sqlite3_bind_int64(insertEdgeStmt.get(), 12,
                                static_cast<sqlite3_int64>(m_metadata.updatedAt));
-            insertEdgeStmt.execute();
+            if (!executeOrRollback(insertEdgeStmt, "insertEdge")) {
+                return false;
+            }
         }
     }
 
@@ -1189,7 +1260,9 @@ bool ProjectStore::saveProject(const WorkspaceModel& model, const GraphTopology&
             for (const auto& delId : edgesToDelete) {
                 deleteEdgeStmt.reset();
                 sqlite3_bind_text(deleteEdgeStmt.get(), 1, delId.c_str(), -1, SQLITE_STATIC);
-                deleteEdgeStmt.execute();
+                if (!executeOrRollback(deleteEdgeStmt, "deleteEdge")) {
+                    return false;
+                }
             }
         }
     }
@@ -1214,7 +1287,9 @@ bool ProjectStore::saveProject(const WorkspaceModel& model, const GraphTopology&
             for (const auto& delId : strokesToDelete) {
                 deleteStrokeStmt.reset();
                 sqlite3_bind_text(deleteStrokeStmt.get(), 1, delId.c_str(), -1, SQLITE_STATIC);
-                deleteStrokeStmt.execute();
+                if (!executeOrRollback(deleteStrokeStmt, "deleteStroke")) {
+                    return false;
+                }
             }
         }
     }
@@ -1224,6 +1299,7 @@ bool ProjectStore::saveProject(const WorkspaceModel& model, const GraphTopology&
             *error = (errMsg ? std::string(errMsg) : "Failed to commit transaction");
         if (errMsg)
             sqlite3_free(errMsg);
+        sqlite3_exec(m_db, "ROLLBACK;", nullptr, nullptr, nullptr);
         return false;
     }
 

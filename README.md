@@ -1,7 +1,7 @@
 # FluidCore Platform
 
 [![CI](https://github.com/developerakshat12/FluidCorePDF/actions/workflows/ci.yml/badge.svg)](https://github.com/developerakshat12/FluidCorePDF/actions/workflows/ci.yml)
-[![Release: v1.1.3](https://img.shields.io/badge/Release-v1.1.3-brightgreen.svg)](https://github.com/developerakshat12/FluidCorePDF/releases)
+[![Release: v1.1.4](https://img.shields.io/badge/Release-v1.1.4-brightgreen.svg)](https://github.com/developerakshat12/FluidCorePDF/releases)
 [![License: GPL-2.0-or-later](https://img.shields.io/badge/License-GPL%202.0%2B-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2011%20Native%20%7C%20Linux-brightgreen.svg)]()
 [![Offline First](https://img.shields.io/badge/Network-Air--Gapped%20%2F%20Zero%20Telemetry-success.svg)]()
@@ -24,16 +24,18 @@ An **open-source, offline-first fluid document synthesis platform** designed for
 
 ---
 
-## 🚀 Official Release (v1.1.3)
+## 🚀 Official Release (v1.1.4)
 
-FluidCore **v1.1.3** is now officially released! Available for both **Windows 11 (Native)** and **Linux (Ubuntu, Debian, Fedora, Arch)** with verified zero-network air-gapped compliance, SQLite WAL atomic persistence, and sustained 50-document scalability.
+FluidCore **v1.1.4** is now officially released! Available for both **Windows 11 (Native)** and **Linux (Ubuntu, Debian, Fedora, Arch)** with verified zero-network air-gapped compliance, SQLite WAL atomic persistence, and sustained 50-document scalability.
 
-### What's New in v1.1.3:
-- **Interactive Excerpt Card Resizing**: Drag handles on cards with strict aspect ratio preservation for visual PDF crop cards, live image scaling, and full Undo/Redo support.
-- **Silky-Smooth Canvas Pen Inking**: Centripetal Catmull-Rom Bézier spline smoothing with 4-subdivision pressure interpolation and curvature-adaptive deadzone scaling down to $0.15$ px.
-- **Layer Stacking**: Highlighter strokes always sit cleanly beneath pen strokes across both document reader and canvas views.
-- **PDF Page Persistence**: Projects remember and automatically restore the active PDF reading page across saves and reloads.
-- **Memory Leak Remediation**: Win32 CriticalSection and winpthread mutex cleanup, ephemeral worker Poppler document management, and mimalloc heap slack optimization.
+### What's New in v1.1.4:
+- **Temporary Spacebar Minimap Peeking**: Hold `Spacebar` to temporarily reveal and peek the minimap radar overlay at any time; releasing restores the canvas view with zero workflow disruption.
+- **Native Clipboard Image Pasting (`Ctrl+V`)**: Directly paste screenshots and copied images into the canvas as aspect-ratio-locked excerpt cards with full Undo/Redo integration.
+- **Drag-and-Drop Raster Images**: Drop image files (PNG, JPG, WEBP, BMP, etc.) onto the canvas to ingest them directly into project assets.
+- **External PDF Path Persistence**: Projects reliably record and restore external PDF document paths (`external_path`), preventing document detachment across workspaces.
+- **R*-Tree Spatial Index Geometric Robustness**: Inclusive boundary intersection ($\le$), degenerate zero-size point handling, deep-split recursive bounds tightening, and root collapse fixes.
+- **Atomic SQLite Rollback Protection**: Project saves enforce strict transaction rollbacks on failure, guaranteeing zero partial or corrupted commits.
+- **Interaction Polish & Single-Click Inking Clutter Guard**: Filters out accidental micro-taps and single-clicks (< 1.0 px), adds `Ctrl+M` minimap toggle, `Alt+1`..`Alt+6` / `F1`..`F6` tool accelerators, and unified `Delete`/`Backspace` removal.
 
 ### Downloads
 
@@ -41,8 +43,8 @@ FluidCore **v1.1.3** is now officially released! Available for both **Windows 11
 | :--- | :--- | :--- | :--- |
 | **Windows** | **Native Installer** | `FluidCore-Setup-x64.exe` | **Recommended for Windows.** Inno Setup 64-bit installer with Start Menu integration, desktop shortcut, uninstaller, and `.ltproj` project bundle file associations. |
 | **Windows** | **Portable Zip** | `fluidcore-windows-x64.zip` | Standalone portable archive containing all required UCRT64 runtime DLLs, GLib schemas, GDK-Pixbuf loaders, and Adwaita icons. Run anywhere without admin privileges or external dependencies. |
-| **Linux** | **AppImage Bundle** | `FluidCore-1.1.3-x86_64.AppImage` | **Recommended for Linux.** Standalone portable executable with bundled dependencies, desktop integration, and Wayland/X11 support. Make executable (`chmod +x`) and run anywhere. |
-| **Linux** | **Debian Package** | `fluidcore_1.1.3_amd64.deb` | Native Debian/Ubuntu package (`apt install ./fluidcore_1.1.3_amd64.deb`) with system dependency management, FreeDesktop application menu entry, and MIME type associations. |
+| **Linux** | **AppImage Bundle** | `FluidCore-1.1.4-x86_64.AppImage` | **Recommended for Linux.** Standalone portable executable with bundled dependencies, desktop integration, and Wayland/X11 support. Make executable (`chmod +x`) and run anywhere. |
+| **Linux** | **Debian Package** | `fluidcore_1.1.4_amd64.deb` | Native Debian/Ubuntu package (`apt install ./fluidcore_1.1.4_amd64.deb`) with system dependency management, FreeDesktop application menu entry, and MIME type associations. |
 | **Linux** | **Flatpak Manifest** | `ops/flatpak/org.fluidcore.platform.yml` | Sandboxed distribution manifest for Flathub with zero-network isolation (`--unshare=network`) and host filesystem portal access. |
 
 ---
@@ -105,13 +107,13 @@ FluidCore provides full keyboard and mouse equivalents for all touch gestures:
 ### Active Tools
 | Shortcut | Tool | Description |
 | :--- | :--- | :--- |
-| `S` | **Select / Move** | Select, drag, and reorder cards and stacks on the canvas |
-| `P` | **Pen** | Draw stabilized freehand vector ink annotations |
-| `H` | **Highlighter** | Translucent vector highlight overlay |
-| `E` | **Eraser** | Accurate two-phase whole-stroke eraser with live hover preview |
-| `C` | **Crop** | Marquee region drag-and-drop crop directly onto the canvas |
-| `<Alt>6` / `F6` / `A` / `L` | **Connector** | Draw relational Bezier link edges between cards |
-| `Esc` | **Reset Tool** | Reset to select/pointer mode and cancel current interaction |
+| `S` / `<Alt>4` / `F4` | **Select / Move** | Select, drag, and reorder cards and stacks on the canvas |
+| `P` / `B` / `<Alt>1` / `F1` | **Pen** | Draw stabilized freehand vector ink annotations |
+| `H` / `<Alt>2` / `F2` | **Highlighter** | Translucent vector highlight overlay |
+| `E` / `<Alt>3` / `F3` | **Eraser** | Accurate two-phase whole-stroke eraser with live hover preview |
+| `C` / `<Alt>5` / `F5` | **Crop** | Marquee region drag-and-drop crop directly onto the canvas |
+| `A` / `L` / `<Alt>6` / `F6` | **Connector** | Draw relational Bezier link edges between cards |
+| `Esc` | **Reset Tool** | Reset to select/pointer mode, clear text/crop selections, and cancel current interaction |
 
 ### Reading & Squeeze
 | Shortcut | Action |
@@ -121,12 +123,16 @@ FluidCore provides full keyboard and mouse equivalents for all touch gestures:
 | `Ctrl + F` / `Ctrl + Shift + S` | Search document / Search-driven accordion squeeze |
 | `Ctrl + Shift + H` | Highlight-driven accordion squeeze |
 
-### Canvas Navigation
+### Canvas Navigation & Content Ingestion
 | Shortcut | Action |
 | :--- | :--- |
+| **`Space` (Hold)** | **Temporarily open/peek minimap** radar overlay while held; dismisses on release |
 | `Space + Drag` / Middle Drag | Pan infinite canvas |
-| `Ctrl + +` / `Ctrl + =` | Zoom in (up to 1000%) |
-| `Ctrl + -` | Zoom out (down to 5%) |
+| `Ctrl + M` | Toggle persistent minimap radar overlay on/off |
+| `Ctrl + V` | **Paste image from clipboard** directly into canvas as an aspect-ratio-locked excerpt card |
+| **Drag & Drop** | Drop raster image files (PNG, JPG, WEBP, BMP, etc.) directly onto canvas to embed |
+| `Ctrl + +` / `Ctrl + =` / Keypad `+` | Zoom in (up to 1000%) |
+| `Ctrl + -` / Keypad `-` | Zoom out (down to 5%) |
 | `Ctrl + 0` | Reset camera zoom to 100% |
 | `Delete` / `Backspace` | Delete selected card, stack, or relational ink connector |
 
@@ -135,7 +141,7 @@ FluidCore provides full keyboard and mouse equivalents for all touch gestures:
 | :--- | :--- |
 | `Ctrl + N` | Create new `.ltproj` project |
 | `Ctrl + O` | Open existing `.ltproj` project bundle |
-| `Ctrl + S` | Save current project state |
+| `Ctrl + S` | Save current project state (atomic SQLite commit with rollback protection) |
 | `Ctrl + Shift + S` | Save As new project bundle |
 | `Ctrl + E` | Open multi-format export dialog (Flattened PDF / Markdown) |
 | `Ctrl + C` | Copy selected text (preserves reading order & page metadata) |

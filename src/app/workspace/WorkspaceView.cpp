@@ -15,7 +15,12 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cmath>
+#include <filesystem>
+#include <iomanip>
+#include <iostream>
+#include <sstream>
 
 namespace FluidCoreApp {
 
@@ -130,7 +135,10 @@ WorkspaceView::WorkspaceView(FluidCore::FluidCoreAPI& api) : m_api(api) {
     // Setup GTK Drag and Drop Destination
     static const GtkTargetEntry dropTargets[] = {
         {const_cast<gchar*>("application/x-fluid-excerpt"), GTK_TARGET_SAME_APP, 0},
-        {const_cast<gchar*>("text/plain"), 0, 1}};
+        {const_cast<gchar*>("text/uri-list"), 0, 1},
+        {const_cast<gchar*>("image/png"), 0, 2},
+        {const_cast<gchar*>("image/jpeg"), 0, 3},
+        {const_cast<gchar*>("text/plain"), 0, 4}};
     gtk_drag_dest_set(m_area, GTK_DEST_DEFAULT_ALL, dropTargets, G_N_ELEMENTS(dropTargets),
                       GDK_ACTION_COPY);
 
@@ -549,6 +557,14 @@ void WorkspaceView::setSpacePressed(bool pressed) {
     if (m_state.isSpacePressed == pressed)
         return;
     m_state.isSpacePressed = pressed;
+
+    // Quick peek minimap if minimap toggle is currently off
+    if (!m_state.showMinimap) {
+        m_state.isSpacePeekingMinimap = pressed;
+    } else {
+        m_state.isSpacePeekingMinimap = false;
+    }
+
     if (m_area && GTK_IS_WIDGET(m_area)) {
         GdkWindow* win = gtk_widget_get_window(m_area);
         if (win) {
@@ -562,6 +578,7 @@ void WorkspaceView::setSpacePressed(bool pressed) {
                 gdk_window_set_cursor(win, nullptr);
             }
         }
+        gtk_widget_queue_draw(m_area);
     }
 }
 
@@ -594,9 +611,51 @@ void WorkspaceView::resetView() {
 void WorkspaceView::setMinimapVisible(bool visible) {
     if (m_state.showMinimap != visible) {
         m_state.showMinimap = visible;
+        m_state.isSpacePeekingMinimap = false;
+        if (m_onMinimapVisibilityChanged) {
+            m_onMinimapVisibilityChanged(visible);
+        }
         if (m_area && GTK_IS_WIDGET(m_area)) {
             gtk_widget_queue_draw(m_area);
         }
+    }
+}
+
+void WorkspaceView::deleteSelected() {
+    auto* engine = dynamic_cast<FluidCore::FluidCoreEngine*>(&m_api);
+
+    if (m_state.selectedEdgeId.has_value()) {
+        if (engine) {
+            m_undoStack.pushAndExecute(std::make_unique<FluidCore::RemoveEdgeCommand>(
+                engine->graphTopology(), *m_state.selectedEdgeId));
+        } else {
+            m_api.removeEdge(*m_state.selectedEdgeId);
+        }
+        m_state.selectedEdgeId.reset();
+        if (m_area && GTK_IS_WIDGET(m_area)) {
+            gtk_widget_queue_draw(m_area);
+        }
+        return;
+    }
+
+    if (m_state.selectedNodeId.has_value()) {
+        if (engine) {
+            m_undoStack.beginMacro("Delete Node");
+            for (const auto& edgeId : m_api.getConnectedEdges(*m_state.selectedNodeId)) {
+                m_undoStack.pushAndExecute(std::make_unique<FluidCore::RemoveEdgeCommand>(
+                    engine->graphTopology(), edgeId));
+            }
+            m_undoStack.pushAndExecute(std::make_unique<FluidCore::RemoveNodeCommand>(
+                engine->workspaceModel(), *m_state.selectedNodeId));
+            m_undoStack.endMacro();
+        } else {
+            m_api.removeNode(*m_state.selectedNodeId);
+        }
+        m_state.selectedNodeId.reset();
+        if (m_area && GTK_IS_WIDGET(m_area)) {
+            gtk_widget_queue_draw(m_area);
+        }
+        return;
     }
 }
 
@@ -1501,7 +1560,20 @@ gboolean WorkspaceView::onButtonRelease(GdkEventButton* event) {
                     static_cast<float>(sample.pressure));
             }
 
-            if (!m_state.inking.activeStroke.points.empty()) {
+            bool isTrivialClick = false;
+            if (m_state.inking.activeStroke.points.size() <= 1) {
+                isTrivialClick = true;
+            } else if (m_state.inking.activeStroke.points.size() == 2) {
+                double dx = m_state.inking.activeStroke.points[1].x -
+                            m_state.inking.activeStroke.points[0].x;
+                double dy = m_state.inking.activeStroke.points[1].y -
+                            m_state.inking.activeStroke.points[0].y;
+                if (dx * dx + dy * dy < 1.0) {
+                    isTrivialClick = true;
+                }
+            }
+
+            if (!isTrivialClick && !m_state.inking.activeStroke.points.empty()) {
                 bool convertedToConnector = false;
                 auto* engine = dynamic_cast<FluidCore::FluidCoreEngine*>(&m_api);
 
@@ -1975,6 +2047,22 @@ gboolean WorkspaceView::onKeyPress(GdkEventKey* event) {
         }
         break;
     }
+    case GDK_KEY_v:
+    case GDK_KEY_V: {
+        if (event->state & GDK_CONTROL_MASK) {
+            GtkWidget* toplevel = gtk_widget_get_toplevel(m_area);
+            if (toplevel && GTK_IS_WINDOW(toplevel)) {
+                GtkWidget* focusWidget = gtk_window_get_focus(GTK_WINDOW(toplevel));
+                if (focusWidget && GTK_IS_ENTRY(focusWidget)) {
+                    return FALSE;
+                }
+            }
+            if (pasteImageFromClipboard()) {
+                return TRUE;
+            }
+        }
+        break;
+    }
     case GDK_KEY_space:
         setSpacePressed(true);
         return TRUE;
@@ -2006,39 +2094,8 @@ gboolean WorkspaceView::onKeyPress(GdkEventKey* event) {
             }
         }
 
-        auto* engine = dynamic_cast<FluidCore::FluidCoreEngine*>(&m_api);
-
-        if (m_state.selectedEdgeId.has_value()) {
-            if (engine) {
-                m_undoStack.pushAndExecute(std::make_unique<FluidCore::RemoveEdgeCommand>(
-                    engine->graphTopology(), *m_state.selectedEdgeId));
-            } else {
-                m_api.removeEdge(*m_state.selectedEdgeId);
-            }
-            m_state.selectedEdgeId.reset();
-            if (m_area && GTK_IS_WIDGET(m_area)) {
-                gtk_widget_queue_draw(m_area);
-            }
-            return TRUE;
-        }
-
-        if (m_state.selectedNodeId.has_value()) {
-            if (engine) {
-                m_undoStack.beginMacro("Delete Node");
-                for (const auto& edgeId : m_api.getConnectedEdges(*m_state.selectedNodeId)) {
-                    m_undoStack.pushAndExecute(std::make_unique<FluidCore::RemoveEdgeCommand>(
-                        engine->graphTopology(), edgeId));
-                }
-                m_undoStack.pushAndExecute(std::make_unique<FluidCore::RemoveNodeCommand>(
-                    engine->workspaceModel(), *m_state.selectedNodeId));
-                m_undoStack.endMacro();
-            } else {
-                m_api.removeNode(*m_state.selectedNodeId);
-            }
-            m_state.selectedNodeId.reset();
-            if (m_area && GTK_IS_WIDGET(m_area)) {
-                gtk_widget_queue_draw(m_area);
-            }
+        if (hasSelectedNode() || hasSelectedEdge()) {
+            deleteSelected();
             return TRUE;
         }
         break;
@@ -2265,6 +2322,89 @@ void WorkspaceView::cancelActiveTouches(const std::vector<uint32_t>& /*touchIds*
     if (m_area && GTK_IS_WIDGET(m_area)) {
         gtk_widget_queue_draw(m_area);
     }
+}
+
+std::string WorkspaceView::getAssetsImagesDirectory() const {
+    return WorkspaceInteraction::getAssetsImagesDirectory(m_state.projectBundlePath.empty() ? m_api.projectPath() : m_state.projectBundlePath);
+}
+
+std::string WorkspaceView::allocateUniqueImageFilename(const std::string& prefix) const {
+    return WorkspaceInteraction::allocateUniqueImageFilename(getAssetsImagesDirectory(), prefix);
+}
+
+bool WorkspaceView::pasteImageFromClipboard() {
+    GtkClipboard* clip = gtk_clipboard_get(GDK_SELECTION_CLIPBOARD);
+    if (!clip)
+        return false;
+
+    gboolean hasImage = gtk_clipboard_wait_is_image_available(clip);
+    gboolean hasText = gtk_clipboard_wait_is_text_available(clip);
+    if (!hasImage || hasText) {
+        return false; // Strict image-only requirement
+    }
+
+    GdkPixbuf* pixbuf = gtk_clipboard_wait_for_image(clip);
+    if (!pixbuf)
+        return false;
+
+    std::string assetsDir = getAssetsImagesDirectory();
+    std::string filename = allocateUniqueImageFilename("screenshot");
+    std::filesystem::path fullPath = std::filesystem::path(assetsDir) / filename;
+
+    std::error_code ec;
+    std::filesystem::create_directories(assetsDir, ec);
+
+    GError* gerr = nullptr;
+    gboolean saved = gdk_pixbuf_save(pixbuf, fullPath.string().c_str(), "png", &gerr, NULL);
+    if (!saved) {
+        if (gerr) {
+            std::cerr << "[WorkspaceView] Failed to save pasted image: " << gerr->message << "\n";
+            g_error_free(gerr);
+        }
+        g_object_unref(pixbuf);
+        return false;
+    }
+
+    int imgW = gdk_pixbuf_get_width(pixbuf);
+    int imgH = gdk_pixbuf_get_height(pixbuf);
+    g_object_unref(pixbuf);
+
+    // Place card centered in current workspace viewport
+    GtkAllocation alloc;
+    gtk_widget_get_allocation(m_area, &alloc);
+    double centerX = (alloc.width > 0) ? (alloc.width / 2.0) : 400.0;
+    double centerY = (alloc.height > 0) ? (alloc.height / 2.0) : 300.0;
+    FluidCore::Point worldCenter = screenToWorld(centerX, centerY);
+
+    double cardW = 320.0;
+    double headerH = 28.0;
+    double cardH = (imgW > 0) ? (headerH + 16.0 + (cardW - 32.0) * ((double)imgH / imgW)) : 240.0;
+    cardH = std::clamp(cardH, 120.0, 800.0);
+
+    FluidCore::Rectangle bounds{worldCenter.x - cardW / 2.0, worldCenter.y - cardH / 2.0, cardW, cardH};
+
+    static std::atomic<uint64_t> s_imgSeq{0};
+    uint64_t ts = static_cast<uint64_t>(g_get_real_time());
+    std::string cardId = "card-img-" + std::to_string(ts) + "-" + std::to_string(++s_imgSeq);
+
+    std::string sourceDocId = "assets/images/" + filename;
+    auto card = std::make_unique<FluidCore::ExcerptCardNode>(
+        cardId, bounds, sourceDocId, 0, FluidCore::Rectangle{0, 0, 1, 1}, filename, true,
+        FluidCore::Color{220, 225, 235, 255}, ts);
+
+    auto* engine = dynamic_cast<FluidCore::FluidCoreEngine*>(&m_api);
+    if (engine) {
+        m_undoStack.pushAndExecute(std::make_unique<FluidCore::InsertNodeCommand>(
+            engine->workspaceModel(), std::move(card)));
+    } else {
+        m_api.insertNode(std::move(card));
+    }
+
+    m_state.selectedNodeId = cardId;
+    if (m_area && GTK_IS_WIDGET(m_area)) {
+        gtk_widget_queue_draw(m_area);
+    }
+    return true;
 }
 
 } // namespace FluidCoreApp

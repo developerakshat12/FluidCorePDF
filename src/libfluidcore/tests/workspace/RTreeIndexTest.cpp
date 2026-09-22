@@ -40,8 +40,8 @@ oracleQuery(const std::vector<std::pair<RTreeIndex::Handle, Rectangle>>& live,
             const Rectangle& region) {
     std::vector<RTreeIndex::Handle> out;
     for (const auto& [handle, rect] : live) {
-        if (rect.x < region.x + region.w && region.x < rect.x + rect.w &&
-            rect.y < region.y + region.h && region.y < rect.y + rect.h) {
+        if (rect.x <= region.x + region.w && region.x <= rect.x + rect.w &&
+            rect.y <= region.y + region.h && region.y <= rect.y + rect.h) {
             out.push_back(handle);
         }
     }
@@ -66,8 +66,8 @@ int testHitAndMiss() {
                       "far viewport finds nothing");
     failures += check(sameHandles(index.query({0.0, 0.0, 1000.0, 1000.0}), {a, b}),
                       "wide viewport finds both");
-    failures += check(sameHandles(index.query({30.0, 30.0, 70.0, 70.0}), {}),
-                      "touching edges do not count as overlap");
+    failures += check(sameHandles(index.query({30.0, 30.0, 70.0, 70.0}), {a, b}),
+                      "touching edges count as overlap with inclusive bounds");
     return failures;
 }
 
@@ -95,6 +95,87 @@ int testRemoveAndUpdate() {
                       "updated entry appears at its new location");
     index.update(9999, {0.0, 0.0, 1.0, 1.0}); // must be a silent no-op
     failures += check(index.size() == 2, "update of unknown handle changes nothing");
+    return failures;
+}
+
+int testDeepSplitBoundsPropagation() {
+    int failures = 0;
+    RTreeIndex index;
+    std::vector<std::pair<RTreeIndex::Handle, Rectangle>> live;
+
+    // Insert 60 elements to force multiple recursive node splits and parent tightens
+    for (int i = 0; i < 60; ++i) {
+        Rectangle r{static_cast<double>(i * 30), static_cast<double>(i * 30), 20.0, 20.0};
+        RTreeIndex::Handle h = index.insert(r);
+        live.emplace_back(h, r);
+    }
+    failures += check(index.size() == 60, "deep split inserted 60 items");
+
+    // Small zoomed-in viewport querying a specific child element
+    for (int i = 0; i < 60; i += 5) {
+        Rectangle probe{static_cast<double>(i * 30 + 5), static_cast<double>(i * 30 + 5), 5.0,
+                        5.0};
+        auto found = index.query(probe);
+        auto expected = oracleQuery(live, probe);
+        failures += check(sameHandles(found, expected),
+                          "child node viewport query succeeds after tree splits");
+    }
+    return failures;
+}
+
+int testInclusiveAndDegenerateBounds() {
+    int failures = 0;
+    RTreeIndex index;
+
+    // Contact on exact edge
+    RTreeIndex::Handle h1 = index.insert({0.0, 0.0, 10.0, 10.0});
+    RTreeIndex::Handle h2 = index.insert({10.0, 0.0, 10.0, 10.0});
+
+    // Probe landing on x=10 boundary line
+    auto onBoundary = index.query({10.0, 2.0, 0.0, 0.0});
+    failures += check(sameHandles(onBoundary, {h1, h2}),
+                      "zero-size probe on shared boundary hits both touching boxes");
+
+    // Degenerate zero-size point stroke/rect
+    RTreeIndex::Handle hPoint = index.insert({50.0, 50.0, 0.0, 0.0});
+    failures += check(sameHandles(index.query({50.0, 50.0, 0.0, 0.0}), {hPoint}),
+                      "zero-size query hits zero-size point entry");
+    failures += check(sameHandles(index.query({49.0, 49.0, 2.0, 2.0}), {hPoint}),
+                      "area query containing zero-size point hits");
+    failures += check(sameHandles(index.query({50.01, 50.01, 1.0, 1.0}), {}),
+                      "disjoint query misses zero-size point");
+
+    return failures;
+}
+
+int testEmptyRootCollapseAndReinsert() {
+    int failures = 0;
+    RTreeIndex index;
+
+    std::vector<RTreeIndex::Handle> handles;
+    for (int i = 0; i < 20; ++i) {
+        handles.push_back(index.insert({static_cast<double>(i * 10), 0.0, 5.0, 5.0}));
+    }
+
+    // Update entries
+    for (auto h : handles) {
+        index.update(h, {100.0, 100.0, 5.0, 5.0});
+    }
+
+    // Remove all entries
+    for (auto h : handles) {
+        failures += check(index.remove(h), "entry removes cleanly");
+    }
+    failures += check(index.empty(), "index is empty after removing all");
+    failures += check(index.query({0.0, 0.0, 200.0, 200.0}).empty(),
+                      "query on collapsed empty root returns empty");
+
+    // Reinsert on collapsed empty root
+    RTreeIndex::Handle newH = index.insert({10.0, 10.0, 20.0, 20.0});
+    failures += check(newH != RTreeIndex::kInvalidHandle, "insert into collapsed root succeeds");
+    failures += check(sameHandles(index.query({0.0, 0.0, 50.0, 50.0}), {newH}),
+                      "query on reinserted entry finds new handle");
+
     return failures;
 }
 
@@ -157,6 +238,9 @@ int main() {
     int failures = 0;
     failures += testHitAndMiss();
     failures += testRemoveAndUpdate();
+    failures += testDeepSplitBoundsPropagation();
+    failures += testInclusiveAndDegenerateBounds();
+    failures += testEmptyRootCollapseAndReinsert();
     failures += testOracleStress();
 
     if (failures == 0) {
