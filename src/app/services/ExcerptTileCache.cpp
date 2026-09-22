@@ -79,11 +79,11 @@ ExcerptTileCache::~ExcerptTileCache() {
     if (m_alive) {
         *m_alive = false;
     }
-    clear();
     if (m_threadPool) {
         g_thread_pool_free(m_threadPool, TRUE, TRUE);
         m_threadPool = nullptr;
     }
+    clear();
 }
 
 CairoSurfaceHandle ExcerptTileCache::get(const CropCacheKey& key) {
