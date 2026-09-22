@@ -149,6 +149,18 @@ if (Test-Path $PixbufSrc) {
     $PixbufDest = Join-Path $FullOutputDir "lib\gdk-pixbuf-2.0"
     New-Item -ItemType Directory -Force -Path $PixbufDest | Out-Null
     Copy-Item "$PixbufSrc\*" -Destination $PixbufDest -Recurse -Force
+
+    # Ensure loaders.cache is present and relative for standalone execution
+    $QueryLoaders = "$UcrtBin\gdk-pixbuf-query-loaders.exe"
+    if (Test-Path $QueryLoaders) {
+        $LoadersCache = Join-Path $PixbufDest "2.10.0\loaders.cache"
+        $LoaderDlls = Get-ChildItem -Path (Join-Path $PixbufDest "2.10.0\loaders") -Filter "*.dll" | ForEach-Object { $_.FullName }
+        if ($LoaderDlls.Count -gt 0) {
+            Push-Location $FullOutputDir
+            & $QueryLoaders (Get-ChildItem -Path "lib\gdk-pixbuf-2.0\2.10.0\loaders\*.dll" | ForEach-Object { $_.FullName }) | Out-File -FilePath $LoadersCache -Encoding ASCII
+            Pop-Location
+        }
+    }
 }
 
 # Bundle Fontconfig configuration
