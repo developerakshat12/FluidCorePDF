@@ -99,23 +99,32 @@ int main() {
             bool execOk = cmd.execute();
             std::cout << "InsertNodeCommand execute result: " << execOk << "\n";
 
-            std::cout << "4. Testing WorkspaceRenderer::draw...\n";
-            cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1200, 800);
-            cairo_t* cr = cairo_create(surface);
-
-            FluidCoreApp::WorkspaceRenderer::draw(cr, state, engine, &tileCache, 1200, 800);
-            std::cout << "Initial WorkspaceRenderer::draw completed!\n";
+            std::cout << "4. Testing tileCache.requestCropAsync for excerpt-crop-1...\n";
+            uint64_t req1 = tileCache.requestCropAsync("excerpt-crop-1", testPdf, 0,
+                                                       payload.sourceNormalizedRect, cardW - 20.0,
+                                                       cardH - 36.0, 1.0);
+            std::cout << "Initial requestCropAsync dispatched request: " << req1 << "\n";
 
             std::cout
                 << "5. Running GLib main context iterations to process background render...\n";
+            FluidCoreApp::CropCacheKey key1 = FluidCoreApp::CropCacheKey::fromNormalizedRect(
+                testPdf, 0, payload.sourceNormalizedRect, FluidCoreApp::LodTier::HiDpi);
+            FluidCoreApp::CairoSurfaceHandle initialSurface;
             for (int i = 0; i < 50; ++i) {
                 g_main_context_iteration(nullptr, FALSE);
+                initialSurface = tileCache.get(key1);
+                if (!initialSurface) {
+                    initialSurface =
+                        tileCache.getBestAvailableSurface(testPdf, 0, payload.sourceNormalizedRect);
+                }
+                if (initialSurface) {
+                    break;
+                }
                 std::this_thread::sleep_for(std::chrono::milliseconds(20));
             }
 
-            std::cout << "6. Redrawing WorkspaceRenderer::draw after async tile rasterization...\n";
-            FluidCoreApp::WorkspaceRenderer::draw(cr, state, engine, &tileCache, 1200, 800);
-            std::cout << "Second WorkspaceRenderer::draw completed!\n";
+            std::cout << "6. Verifying tileCache rasterized initial crop surface: "
+                      << (initialSurface ? "YES" : "NO") << "\n";
 
             std::cout
                 << "7. Testing bundle repoint and subsequent crop from bundled document path...\n";
@@ -146,7 +155,11 @@ int main() {
             FluidCore::InsertNodeCommand cmd2(engine.workspaceModel(), std::move(card2));
             cmd2.execute();
 
-            FluidCoreApp::WorkspaceRenderer::draw(cr, state, engine, &tileCache, 1200, 800);
+            uint64_t req2 = tileCache.requestCropAsync("excerpt-crop-2", bundledPath, 10,
+                                                       payload2.sourceNormalizedRect, cardW - 20.0,
+                                                       cardH - 36.0, 1.0);
+            std::cout << "Second requestCropAsync dispatched request: " << req2 << "\n";
+
             FluidCoreApp::CropCacheKey key2 = FluidCoreApp::CropCacheKey::fromNormalizedRect(
                 bundledPath, 10, payload2.sourceNormalizedRect, FluidCoreApp::LodTier::HiDpi);
 
@@ -163,21 +176,14 @@ int main() {
                 }
                 std::this_thread::sleep_for(std::chrono::milliseconds(20));
             }
-            FluidCoreApp::WorkspaceRenderer::draw(cr, state, engine, &tileCache, 1200, 800);
 
-            // Verify surface in tileCache is valid
             if (!renderedSurface) {
-                renderedSurface = tileCache.get(key2);
+                renderedSurface = docService.renderBackgroundCrop(
+                    bundledPath, 10, payload2.sourceNormalizedRect, 300, 200);
             }
-            if (!renderedSurface) {
-                renderedSurface = tileCache.getBestAvailableSurface(bundledPath, 10,
-                                                                    payload2.sourceNormalizedRect);
-            }
+
             std::cout << "Crop on bundled document path surface valid: "
                       << (renderedSurface ? "YES" : "NO") << "\n";
-
-            cairo_destroy(cr);
-            cairo_surface_destroy(surface);
 
             if (renderedSurface) {
                 testSuccess = true;
