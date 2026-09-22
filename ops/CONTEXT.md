@@ -29,6 +29,12 @@ ops/
 1. Perf-gated PRs attach `benchmarks/bench-<area>.md` with machine specs + numbers vs. budget
 2. Release checklist per milestone exit lives here once M0 lands
 3. Offline guarantee: CI syscall audit must show zero runtime network access
+4. **Windows Release Packaging & CI Checklist**:
+   - Both `.github/workflows/ci.yml` and `.github/workflows/release.yml` MUST install:
+     `mingw-w64-ucrt-x86_64-librsvg`, `mingw-w64-ucrt-x86_64-adwaita-icon-theme`, `mingw-w64-ucrt-x86_64-hicolor-icon-theme`, and `mingw-w64-ucrt-x86_64-gtk-update-icon-cache`.
+   - `package-windows.ps1` must execute `gdk-pixbuf-query-loaders.exe` with relative paths so `loaders.cache` correctly maps `pixbufloader_svg.dll`.
+   - `src/app/main.cpp` must resolve the application directory via `GetModuleFileNameW(NULL, ...)` to ensure `GSETTINGS_SCHEMA_DIR`, `FONTCONFIG_PATH`, and `GDK_PIXBUF_MODULE_FILE` point to bundled resources.
 
 ## Avoid
 - Merging a regression past budget without an ADR documenting the trade-off
+- Changing `package-windows.ps1` dependencies without updating `.github/workflows/release.yml` and `.github/workflows/ci.yml` simultaneously.
