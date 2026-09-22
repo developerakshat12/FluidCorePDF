@@ -14,7 +14,7 @@
 #include <cairo-pdf.h>
 #include <chrono>
 #include <filesystem>
-#include <gtk/gtk.h>
+#include <glib.h>
 #include <iostream>
 #include <memory>
 #include <thread>
@@ -45,9 +45,10 @@ std::string createSyntheticPdf(const std::string& filePath, int numPages = 15) {
 
 } // namespace
 
-int main(int argc, char** argv) {
+int main() {
     try {
-        gtk_init_check(&argc, &argv);
+        std::cout << std::unitbuf;
+        std::cerr << std::unitbuf;
         std::cout << "Starting CropDragCrashTest...\n";
 
         const auto tempDir = std::filesystem::temp_directory_path() / "crop_drag_crash_test";

@@ -120,6 +120,7 @@ PdfDocumentService::resolveEntryLocked(const std::string& docId) const {
 
 void PdfDocumentService::registerMainDocument(const std::string& docId, PopplerDocument* doc,
                                               const std::string& filePath) {
+    std::lock_guard<std::mutex> popplerLock(globalPopplerMutex());
     std::lock_guard<std::mutex> lock(m_registryMutex);
     m_cancelledDocIds.erase(docId);
 
@@ -131,6 +132,7 @@ void PdfDocumentService::registerMainDocument(const std::string& docId, PopplerD
 }
 
 void PdfDocumentService::unregisterDocument(const std::string& docId) {
+    std::lock_guard<std::mutex> popplerLock(globalPopplerMutex());
     std::lock_guard<std::mutex> lock(m_registryMutex);
     m_cancelledDocIds.insert(docId);
     m_documents.erase(docId);
@@ -165,6 +167,7 @@ std::vector<std::pair<std::string, std::string>> PdfDocumentService::allDocument
 }
 
 bool PdfDocumentService::repointDocumentPath(const std::string& docId, const std::string& newPath) {
+    std::lock_guard<std::mutex> popplerLock(globalPopplerMutex());
     std::lock_guard<std::mutex> lock(m_registryMutex);
     auto* entry = resolveEntryLocked(docId);
     if (entry) {
