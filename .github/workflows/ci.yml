@@ -143,6 +143,11 @@ jobs:
             mingw-w64-ucrt-x86_64-librsvg
             mingw-w64-ucrt-x86_64-adwaita-icon-theme
             mingw-w64-ucrt-x86_64-hicolor-icon-theme
+      - name: Pin Cairo to stable 1.18.4-4 (workaround upstream 1.18.6 COLRv1 assert crash)
+        shell: msys2 {0}
+        run: |
+          curl -sSL --retry 3 "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-cairo-1.18.4-4-any.pkg.tar.zst" -o /tmp/cairo.pkg.tar.zst
+          pacman -U --noconfirm /tmp/cairo.pkg.tar.zst
       - name: Configure
         shell: msys2 {0}
         run: |

@@ -220,6 +220,16 @@ if (-not (Test-Path (Join-Path $FullOutputDir "share\glib-2.0\schemas"))) {
     Write-Error "Packaging verification failed: GLib schemas missing in $FullOutputDir!"
 }
 
+# Cairo 1.18.6 regression guard (Windows DirectWrite COLRv1 font assert abort)
+$CairoDll = Join-Path $FullOutputDir "libcairo-2.dll"
+if (Test-Path $CairoDll) {
+    $CairoBytes = [System.IO.File]::ReadAllBytes($CairoDll)
+    $CairoAscii = [System.Text.Encoding]::ASCII.GetString($CairoBytes)
+    if ($CairoAscii.Contains("cairo-1.18.6")) {
+        Write-Error "Packaging verification failed: Bundled libcairo-2.dll is from buggy Cairo 1.18.6 with known Windows COLR assert abort! Please downgrade to Cairo 1.18.4-4."
+    }
+}
+
 # Generate standalone launch script
 $BatContent = @"
 @echo off
