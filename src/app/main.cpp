@@ -3737,9 +3737,11 @@ int main(int argc, char** argv) {
     installCrashHandlers();
 #else
     // On Windows, set default paths for bundled resources if not already in environment
-    if (argc > 0 && argv[0]) {
+    {
         std::error_code ec;
-        std::filesystem::path exePath = std::filesystem::absolute(argv[0], ec);
+        wchar_t szPath[MAX_PATH];
+        GetModuleFileNameW(NULL, szPath, MAX_PATH);
+        std::filesystem::path exePath(szPath);
         std::filesystem::path appDir = exePath.parent_path();
 
         if (!g_getenv("GSETTINGS_SCHEMA_DIR")) {
