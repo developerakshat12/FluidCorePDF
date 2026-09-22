@@ -157,7 +157,7 @@ if (Test-Path $PixbufSrc) {
         $LoaderDlls = Get-ChildItem -Path (Join-Path $PixbufDest "2.10.0\loaders") -Filter "*.dll" | ForEach-Object { $_.FullName }
         if ($LoaderDlls.Count -gt 0) {
             Push-Location $FullOutputDir
-            & $QueryLoaders (Get-ChildItem -Path "lib\gdk-pixbuf-2.0\2.10.0\loaders\*.dll" | ForEach-Object { $_.FullName }) | Out-File -FilePath $LoadersCache -Encoding ASCII
+            & $QueryLoaders | Out-File -FilePath $LoadersCache -Encoding ASCII
             Pop-Location
         }
     }
