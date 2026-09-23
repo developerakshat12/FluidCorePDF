@@ -109,8 +109,7 @@ DocumentPane::DocumentPane(const std::string& pdfPath, std::size_t initialPage)
 
     GtkAdjustment* vadj = gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(m_scroller));
     if (vadj) {
-        g_signal_connect(vadj, "value-changed",
-                         G_CALLBACK(+[](GtkAdjustment*, gpointer data) {
+        g_signal_connect(vadj, "value-changed", G_CALLBACK(+[](GtkAdjustment*, gpointer data) {
                              auto* self = static_cast<DocumentPane*>(data);
                              if (!self || !self->m_isScrollbarDragging) {
                                  return;
@@ -1499,12 +1498,12 @@ gboolean DocumentPane::onScroll(GdkEventScroll* event) {
     if (event->direction == GDK_SCROLL_SMOOTH) {
         double deltaX = 0.0, deltaY = 0.0;
         if (gdk_event_get_scroll_deltas(reinterpret_cast<GdkEvent*>(event), &deltaX, &deltaY)) {
-            GtkAdjustment* vadj = m_scroller
-                ? gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(m_scroller))
-                : nullptr;
-            GtkAdjustment* hadj = m_scroller
-                ? gtk_scrolled_window_get_hadjustment(GTK_SCROLLED_WINDOW(m_scroller))
-                : nullptr;
+            GtkAdjustment* vadj =
+                m_scroller ? gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(m_scroller))
+                           : nullptr;
+            GtkAdjustment* hadj =
+                m_scroller ? gtk_scrolled_window_get_hadjustment(GTK_SCROLLED_WINDOW(m_scroller))
+                           : nullptr;
 
             bool handled = false;
             if (deltaY != 0.0 && vadj) {
@@ -1513,7 +1512,8 @@ gboolean DocumentPane::onScroll(GdkEventScroll* event) {
                 double cur = gtk_adjustment_get_value(vadj);
                 double lower = gtk_adjustment_get_lower(vadj);
                 double upper = gtk_adjustment_get_upper(vadj) - page;
-                gtk_adjustment_set_value(vadj, std::clamp(cur + deltaY * step, lower, std::max(lower, upper)));
+                gtk_adjustment_set_value(
+                    vadj, std::clamp(cur + deltaY * step, lower, std::max(lower, upper)));
                 handled = true;
             }
             if (deltaX != 0.0 && hadj) {
@@ -1522,7 +1522,8 @@ gboolean DocumentPane::onScroll(GdkEventScroll* event) {
                 double cur = gtk_adjustment_get_value(hadj);
                 double lower = gtk_adjustment_get_lower(hadj);
                 double upper = gtk_adjustment_get_upper(hadj) - page;
-                gtk_adjustment_set_value(hadj, std::clamp(cur + deltaX * step, lower, std::max(lower, upper)));
+                gtk_adjustment_set_value(
+                    hadj, std::clamp(cur + deltaX * step, lower, std::max(lower, upper)));
                 handled = true;
             }
             if (handled) {

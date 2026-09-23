@@ -99,8 +99,10 @@ int main() {
             bool execOk = cmd.execute();
             std::cout << "InsertNodeCommand execute result: " << execOk << "\n";
 
-            std::cout << "4. Testing WorkspaceRenderer::draw (exercises Pango/Cairo font rasterization pipeline)...\n";
-            cairo_surface_t* drawSurface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1200, 800);
+            std::cout << "4. Testing WorkspaceRenderer::draw (exercises Pango/Cairo font "
+                         "rasterization pipeline)...\n";
+            cairo_surface_t* drawSurface =
+                cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1200, 800);
             cairo_t* drawCr = cairo_create(drawSurface);
             FluidCoreApp::WorkspaceRenderer::draw(drawCr, state, engine, &tileCache, 1200, 800);
             std::cout << "Initial WorkspaceRenderer::draw completed successfully!\n";

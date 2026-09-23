@@ -164,8 +164,8 @@ InkOverlay::InkOverlay(DocumentPane& pane, FluidCore::AnnotationStore& store)
     gtk_widget_add_events(m_widget, GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK |
                                         GDK_POINTER_MOTION_MASK | GDK_ENTER_NOTIFY_MASK |
                                         GDK_LEAVE_NOTIFY_MASK | GDK_PROXIMITY_IN_MASK |
-                                        GDK_PROXIMITY_OUT_MASK | GDK_TOUCH_MASK |
-                                        GDK_SCROLL_MASK | GDK_SMOOTH_SCROLL_MASK);
+                                        GDK_PROXIMITY_OUT_MASK | GDK_TOUCH_MASK | GDK_SCROLL_MASK |
+                                        GDK_SMOOTH_SCROLL_MASK);
 
     g_signal_connect(m_widget, "draw", G_CALLBACK(InkOverlay::drawCallback), this);
     g_signal_connect(m_widget, "button-press-event", G_CALLBACK(InkOverlay::buttonPressCallback),

@@ -578,7 +578,8 @@ void testExternalPathPersistenceAndMigration() {
 
     const char* legacyDDL =
         "CREATE TABLE projects (project_id TEXT PRIMARY KEY NOT NULL, title TEXT NOT NULL, "
-        "created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, schema_version INTEGER NOT NULL DEFAULT 1);"
+        "created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, schema_version INTEGER NOT NULL "
+        "DEFAULT 1);"
         "INSERT INTO projects VALUES ('legacy-proj', 'Legacy', 1000, 1000, 1);"
         "CREATE TABLE documents ("
         "    doc_id TEXT PRIMARY KEY NOT NULL,"
