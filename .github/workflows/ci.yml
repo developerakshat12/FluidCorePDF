@@ -95,8 +95,8 @@ jobs:
         run: ctest --test-dir build --output-on-failure
       - name: Package Linux distributions (.deb & AppImage)
         run: |
-          bash ops/scripts/package-deb.sh --build-dir build --version 1.1.4
-          bash ops/scripts/package-appimage.sh --build-dir build --version 1.1.4
+          bash ops/scripts/package-deb.sh --build-dir build --version 1.1.5
+          bash ops/scripts/package-appimage.sh --build-dir build --version 1.1.5
       - name: Smoke test Linux packages
         run: |
           DEB_PKG=$(ls build/dist/fluidcore_*_amd64.deb | head -n 1)
@@ -161,7 +161,7 @@ jobs:
         shell: msys2 {0}
         run: ctest --test-dir build-win --output-on-failure
       - name: Package Windows standalone distribution & installer
-        run: powershell -ExecutionPolicy Bypass -File ops/scripts/package-windows.ps1 -BuildInstaller -AppVersion 1.1.4 -MsysRoot '${{ steps.msys2.outputs.msys2-location }}'
+        run: powershell -ExecutionPolicy Bypass -File ops/scripts/package-windows.ps1 -BuildInstaller -AppVersion 1.1.5 -MsysRoot '${{ steps.msys2.outputs.msys2-location }}'
       - name: Upload Windows distribution artifacts
         uses: actions/upload-artifact@v4
         with:
