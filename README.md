@@ -1,7 +1,7 @@
 # FluidCore Platform
 
 [![CI](https://github.com/developerakshat12/FluidCorePDF/actions/workflows/ci.yml/badge.svg)](https://github.com/developerakshat12/FluidCorePDF/actions/workflows/ci.yml)
-[![Release: v1.1.4](https://img.shields.io/badge/Release-v1.1.4-brightgreen.svg)](https://github.com/developerakshat12/FluidCorePDF/releases)
+[![Release: v1.1.5](https://img.shields.io/badge/Release-v1.1.5-brightgreen.svg)](https://github.com/developerakshat12/FluidCorePDF/releases)
 [![License: GPL-2.0-or-later](https://img.shields.io/badge/License-GPL%202.0%2B-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2011%20Native%20%7C%20Linux-brightgreen.svg)]()
 [![Offline First](https://img.shields.io/badge/Network-Air--Gapped%20%2F%20Zero%20Telemetry-success.svg)]()
