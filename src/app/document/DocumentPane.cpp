@@ -53,9 +53,14 @@ DocumentPane::DocumentPane(const std::string& pdfPath, std::size_t initialPage)
     : m_pdfPath(pdfPath) {
     m_viewOverlay = gtk_overlay_new();
     m_scroller = gtk_scrolled_window_new(nullptr, nullptr);
+    gtk_widget_add_events(m_scroller, GDK_SCROLL_MASK | GDK_SMOOTH_SCROLL_MASK);
     g_signal_connect(m_scroller, "destroy", G_CALLBACK(+[](GtkWidget*, gpointer data) {
                          auto* self = static_cast<DocumentPane*>(data);
                          if (self) {
+                             if (self->m_scrollDebounceTimerId != 0) {
+                                 g_source_remove(self->m_scrollDebounceTimerId);
+                                 self->m_scrollDebounceTimerId = 0;
+                             }
                              self->m_scroller = nullptr;
                          }
                      }),
@@ -70,6 +75,66 @@ DocumentPane::DocumentPane(const std::string& pdfPath, std::size_t initialPage)
                      this);
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(m_scroller), GTK_POLICY_AUTOMATIC,
                                    GTK_POLICY_AUTOMATIC);
+
+    // Track vertical scrollbar interaction to throttle heavy rendering during rapid dragging
+    GtkWidget* vscrollbar = gtk_scrolled_window_get_vscrollbar(GTK_SCROLLED_WINDOW(m_scroller));
+    if (vscrollbar) {
+        gtk_widget_add_events(vscrollbar, GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK);
+        g_signal_connect(vscrollbar, "button-press-event",
+                         G_CALLBACK(+[](GtkWidget*, GdkEventButton*, gpointer data) -> gboolean {
+                             auto* self = static_cast<DocumentPane*>(data);
+                             if (self) {
+                                 self->m_isScrollbarDragging = true;
+                             }
+                             return FALSE;
+                         }),
+                         this);
+        g_signal_connect(vscrollbar, "button-release-event",
+                         G_CALLBACK(+[](GtkWidget*, GdkEventButton*, gpointer data) -> gboolean {
+                             auto* self = static_cast<DocumentPane*>(data);
+                             if (self) {
+                                 self->m_isScrollbarDragging = false;
+                                 if (self->m_scrollDebounceTimerId != 0) {
+                                     g_source_remove(self->m_scrollDebounceTimerId);
+                                     self->m_scrollDebounceTimerId = 0;
+                                 }
+                                 if (self->m_area && GTK_IS_WIDGET(self->m_area)) {
+                                     gtk_widget_queue_draw(self->m_area);
+                                 }
+                             }
+                             return FALSE;
+                         }),
+                         this);
+    }
+
+    GtkAdjustment* vadj = gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(m_scroller));
+    if (vadj) {
+        g_signal_connect(vadj, "value-changed",
+                         G_CALLBACK(+[](GtkAdjustment*, gpointer data) {
+                             auto* self = static_cast<DocumentPane*>(data);
+                             if (!self || !self->m_isScrollbarDragging) {
+                                 return;
+                             }
+                             if (self->m_scrollDebounceTimerId != 0) {
+                                 g_source_remove(self->m_scrollDebounceTimerId);
+                             }
+                             self->m_scrollDebounceTimerId = g_timeout_add(
+                                 100,
+                                 +[](gpointer d) -> gboolean {
+                                     auto* s = static_cast<DocumentPane*>(d);
+                                     if (s) {
+                                         s->m_scrollDebounceTimerId = 0;
+                                         if (s->m_area && GTK_IS_WIDGET(s->m_area)) {
+                                             gtk_widget_queue_draw(s->m_area);
+                                         }
+                                     }
+                                     return G_SOURCE_REMOVE;
+                                 },
+                                 self);
+                         }),
+                         this);
+    }
+
     gtk_container_add(GTK_CONTAINER(m_viewOverlay), m_scroller);
 
     // Embed floating SearchBarWidget overlay pinned to top-right
@@ -111,6 +176,12 @@ DocumentPane::DocumentPane(const std::string& pdfPath, std::size_t initialPage)
 }
 
 void DocumentPane::closeDocument() {
+    if (m_scrollDebounceTimerId != 0) {
+        g_source_remove(m_scrollDebounceTimerId);
+        m_scrollDebounceTimerId = 0;
+    }
+    m_isScrollbarDragging = false;
+    m_isRapidScrolling = false;
     if (m_pulseTimerId != 0) {
         g_source_remove(m_pulseTimerId);
         m_pulseTimerId = 0;
@@ -311,6 +382,7 @@ bool DocumentPane::loadDocument(const std::string& pdfPath, const std::string& d
     gtk_widget_set_size_request(m_overlay, scaledWidth, scaledHeight);
 
     m_area = gtk_drawing_area_new();
+    gtk_widget_add_events(m_area, GDK_SCROLL_MASK | GDK_SMOOTH_SCROLL_MASK);
     g_signal_connect(m_area, "destroy", G_CALLBACK(+[](GtkWidget*, gpointer data) {
                          auto* self = static_cast<DocumentPane*>(data);
                          if (self) {
@@ -328,12 +400,16 @@ bool DocumentPane::loadDocument(const std::string& pdfPath, const std::string& d
     }
     gtk_overlay_add_overlay(GTK_OVERLAY(m_overlay), m_inkOverlay->widget());
     gtk_overlay_set_overlay_pass_through(GTK_OVERLAY(m_overlay), m_inkOverlay->widget(), FALSE);
+    gtk_widget_add_events(m_inkOverlay->widget(), GDK_SCROLL_MASK | GDK_SMOOTH_SCROLL_MASK);
+    g_signal_connect(m_inkOverlay->widget(), "scroll-event",
+                     G_CALLBACK(DocumentPane::scrollCallback), this);
 
     gtk_container_add(GTK_CONTAINER(m_scroller), m_overlay);
 
-    // Event connections for desktop squeeze gestures
-    gtk_widget_add_events(m_overlay, GDK_SCROLL_MASK | GDK_BUTTON_PRESS_MASK |
-                                         GDK_BUTTON_RELEASE_MASK | GDK_POINTER_MOTION_MASK);
+    // Event connections for desktop squeeze gestures & smooth scrolling
+    gtk_widget_add_events(m_overlay, GDK_SCROLL_MASK | GDK_SMOOTH_SCROLL_MASK |
+                                         GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK |
+                                         GDK_POINTER_MOTION_MASK);
     g_signal_connect(m_overlay, "scroll-event", G_CALLBACK(DocumentPane::scrollCallback), this);
 
     // Attach touch pinch gesture recognizer to scroller with bubble phase
@@ -369,6 +445,12 @@ bool DocumentPane::loadDocument(const std::string& pdfPath, const std::string& d
 }
 
 DocumentPane::~DocumentPane() {
+    if (m_scrollDebounceTimerId != 0) {
+        g_source_remove(m_scrollDebounceTimerId);
+        m_scrollDebounceTimerId = 0;
+    }
+    m_isScrollbarDragging = false;
+    m_isRapidScrolling = false;
     if (m_pulseTimerId != 0) {
         g_source_remove(m_pulseTimerId);
         m_pulseTimerId = 0;
@@ -1374,7 +1456,12 @@ gboolean DocumentPane::onScroll(GdkEventScroll* event) {
         } else if (event->direction == GDK_SCROLL_DOWN) {
             delta = 1.0;
         } else if (event->direction == GDK_SCROLL_SMOOTH) {
-            delta = event->delta_y;
+            double dx = 0.0, dy = 0.0;
+            if (gdk_event_get_scroll_deltas(reinterpret_cast<GdkEvent*>(event), &dx, &dy)) {
+                delta = std::clamp(dy, -2.5, 2.5);
+            } else {
+                delta = std::clamp(event->delta_y, -2.5, 2.5);
+            }
         }
 
         if (delta != 0.0) {
@@ -1393,7 +1480,12 @@ gboolean DocumentPane::onScroll(GdkEventScroll* event) {
         } else if (event->direction == GDK_SCROLL_DOWN) {
             delta = 1.0;
         } else if (event->direction == GDK_SCROLL_SMOOTH) {
-            delta = event->delta_y;
+            double dx = 0.0, dy = 0.0;
+            if (gdk_event_get_scroll_deltas(reinterpret_cast<GdkEvent*>(event), &dx, &dy)) {
+                delta = std::clamp(dy, -2.5, 2.5);
+            } else {
+                delta = std::clamp(event->delta_y, -2.5, 2.5);
+            }
         }
 
         if (delta != 0.0) {
@@ -1401,6 +1493,42 @@ gboolean DocumentPane::onScroll(GdkEventScroll* event) {
             return TRUE; // Consume event to prevent default OS horizontal scrolling
         }
         return TRUE;
+    }
+
+    // Standard Smooth Scrolling (Touchpad 2-finger scroll)
+    if (event->direction == GDK_SCROLL_SMOOTH) {
+        double deltaX = 0.0, deltaY = 0.0;
+        if (gdk_event_get_scroll_deltas(reinterpret_cast<GdkEvent*>(event), &deltaX, &deltaY)) {
+            GtkAdjustment* vadj = m_scroller
+                ? gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(m_scroller))
+                : nullptr;
+            GtkAdjustment* hadj = m_scroller
+                ? gtk_scrolled_window_get_hadjustment(GTK_SCROLLED_WINDOW(m_scroller))
+                : nullptr;
+
+            bool handled = false;
+            if (deltaY != 0.0 && vadj) {
+                double page = gtk_adjustment_get_page_size(vadj);
+                double step = std::pow(page, 2.0 / 3.0);
+                double cur = gtk_adjustment_get_value(vadj);
+                double lower = gtk_adjustment_get_lower(vadj);
+                double upper = gtk_adjustment_get_upper(vadj) - page;
+                gtk_adjustment_set_value(vadj, std::clamp(cur + deltaY * step, lower, std::max(lower, upper)));
+                handled = true;
+            }
+            if (deltaX != 0.0 && hadj) {
+                double page = gtk_adjustment_get_page_size(hadj);
+                double step = std::pow(page, 2.0 / 3.0);
+                double cur = gtk_adjustment_get_value(hadj);
+                double lower = gtk_adjustment_get_lower(hadj);
+                double upper = gtk_adjustment_get_upper(hadj) - page;
+                gtk_adjustment_set_value(hadj, std::clamp(cur + deltaX * step, lower, std::max(lower, upper)));
+                handled = true;
+            }
+            if (handled) {
+                return TRUE;
+            }
+        }
     }
 
     return FALSE;
@@ -1590,18 +1718,48 @@ void DocumentPane::draw(cairo_t* cr) {
     const double pageX =
         kPageMargin + std::max(0.0, (allocation.width / m_zoom - m_layoutWidth) / 2.0);
 
-    std::vector<std::size_t> visiblePageIndices;
     if (m_pages.empty()) {
         return;
     }
 
-    // Map screen clip bounds to document coordinates for accurate vertical culling
+    // 1. Identify all pages that overlap the active viewport [viewYStart, viewYEnd].
+    // These pages must remain pinned in m_pageTileCache to avoid eviction thrashing.
+    const double vpDocY0 = m_squeezeEngine.mapScreenYToDocument(viewYStart, m_docId).screenY;
+    const double vpDocY1 = m_squeezeEngine.mapScreenYToDocument(viewYEnd, m_docId).screenY;
+    const double vpDocMin = std::min(vpDocY0, vpDocY1);
+    const double vpDocMax = std::max(vpDocY0, vpDocY1);
+
+    std::vector<std::size_t> activeViewportPages;
+    auto vpStartIt = std::lower_bound(
+        m_pages.begin(), m_pages.end(), vpDocMin - 1000.0,
+        [](const PageLayout& page, double val) { return (page.y + page.height) < val; });
+    std::size_t vpStartIdx = std::distance(m_pages.begin(), vpStartIt);
+
+    for (std::size_t i = vpStartIdx; i < m_pages.size(); ++i) {
+        const PageLayout& layout = m_pages[i];
+        if (layout.y > vpDocMax + 1000.0) {
+            break;
+        }
+        if (layout.y + layout.height < vpDocMin - 1000.0) {
+            continue;
+        }
+        auto slices = SqueezeRenderHelper::decomposePage(i, layout.y, layout.height, segments);
+        for (const auto& slice : slices) {
+            if (slice.screenYEnd >= viewYStart && slice.screenYStart <= viewYEnd) {
+                activeViewportPages.push_back(i);
+                break;
+            }
+        }
+    }
+    m_pageTileCache.setPinnedPages(activeViewportPages);
+
+    // 2. Identify pages that intersect the damage clip rectangle for actual drawing
     const double docY0 = m_squeezeEngine.mapScreenYToDocument(clipYStart, m_docId).screenY;
     const double docY1 = m_squeezeEngine.mapScreenYToDocument(clipYEnd, m_docId).screenY;
     const double cDocMin = std::min(docY0, docY1);
     const double cDocMax = std::max(docY0, docY1);
 
-    // Binary search to find the first page near the visible viewport
+    std::vector<std::size_t> visiblePageIndices;
     auto startIt = std::lower_bound(
         m_pages.begin(), m_pages.end(), cDocMin - 1000.0,
         [](const PageLayout& page, double val) { return (page.y + page.height) < val; });
@@ -1631,14 +1789,15 @@ void DocumentPane::draw(cairo_t* cr) {
             visiblePageIndices.push_back(i);
         }
     }
-    m_pageTileCache.setPinnedPages(visiblePageIndices);
+
+    const bool isInteractivelyScrolling = m_isScrollbarDragging && (m_scrollDebounceTimerId != 0);
 
     for (std::size_t i : visiblePageIndices) {
         const PageLayout& layout = m_pages[i];
         auto slices = SqueezeRenderHelper::decomposePage(i, layout.y, layout.height, segments);
 
         CairoSurfaceHandle surface = m_pageTileCache.get(i);
-        if (!surface && !m_isZooming && m_document) {
+        if (!surface && !m_isZooming && !isInteractivelyScrolling && m_document) {
             PopplerPage* page = nullptr;
             {
                 std::lock_guard<std::mutex> lock(PdfDocumentService::globalPopplerMutex());

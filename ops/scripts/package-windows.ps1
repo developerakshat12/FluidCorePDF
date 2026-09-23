@@ -13,7 +13,7 @@ param (
     [string]$OutputDir = "build-win\dist\fluidcore-windows-x64",
     [string]$ZipFile = "build-win\dist\fluidcore-windows-x64.zip",
     [switch]$BuildInstaller = $true,
-    [string]$AppVersion = "1.1.4",
+    [string]$AppVersion = "1.1.5",
     [string]$MsysRoot = ""
 )
 

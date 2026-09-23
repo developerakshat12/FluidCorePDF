@@ -577,13 +577,14 @@ void testExternalPathPersistenceAndMigration() {
     assert(sqlite3_open((testDir + "/project.db").c_str(), &db) == SQLITE_OK);
 
     const char* legacyDDL =
-        "CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);"
-        "INSERT INTO metadata VALUES ('project_id', 'legacy-proj'), ('schema_version', '1');"
+        "CREATE TABLE projects (project_id TEXT PRIMARY KEY NOT NULL, title TEXT NOT NULL, "
+        "created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, schema_version INTEGER NOT NULL DEFAULT 1);"
+        "INSERT INTO projects VALUES ('legacy-proj', 'Legacy', 1000, 1000, 1);"
         "CREATE TABLE documents ("
-        "    doc_id TEXT PRIMARY KEY,"
+        "    doc_id TEXT PRIMARY KEY NOT NULL,"
         "    project_id TEXT NOT NULL,"
         "    filename TEXT NOT NULL,"
-        "    relative_path TEXT NOT NULL,"
+        "    file_path_relative TEXT NOT NULL,"
         "    file_sha256 TEXT NOT NULL,"
         "    page_count INTEGER NOT NULL,"
         "    file_size_bytes INTEGER NOT NULL,"

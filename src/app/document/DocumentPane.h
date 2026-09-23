@@ -237,6 +237,9 @@ class DocumentPane {
     double m_zoom = 1.0;
     bool m_isZooming = false;
     guint m_zoomDebounceTimerId = 0;
+    bool m_isScrollbarDragging = false;
+    bool m_isRapidScrolling = false;
+    guint m_scrollDebounceTimerId = 0;
     double m_rawDocHeight = 0.0;
     double m_rawDocWidth = 0.0;
 

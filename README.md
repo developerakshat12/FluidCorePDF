@@ -24,18 +24,16 @@ An **open-source, offline-first fluid document synthesis platform** designed for
 
 ---
 
-## 🚀 Official Release (v1.1.4)
+## 🚀 Official Release (v1.1.5)
 
-FluidCore **v1.1.4** is now officially released! Available for both **Windows 11 (Native)** and **Linux (Ubuntu, Debian, Fedora, Arch)** with verified zero-network air-gapped compliance, SQLite WAL atomic persistence, and sustained 50-document scalability.
+FluidCore **v1.1.5** is now officially released! Available for both **Windows 11 (Native)** and **Linux (Ubuntu, Debian, Fedora, Arch)** with verified zero-network air-gapped compliance, SQLite WAL atomic persistence, and sustained 50-document scalability.
 
-### What's New in v1.1.4:
-- **Temporary Spacebar Minimap Peeking**: Hold `Spacebar` to temporarily reveal and peek the minimap radar overlay at any time; releasing restores the canvas view with zero workflow disruption.
-- **Native Clipboard Image Pasting (`Ctrl+V`)**: Directly paste screenshots and copied images into the canvas as aspect-ratio-locked excerpt cards with full Undo/Redo integration.
-- **Drag-and-Drop Raster Images**: Drop image files (PNG, JPG, WEBP, BMP, etc.) onto the canvas to ingest them directly into project assets.
-- **External PDF Path Persistence**: Projects reliably record and restore external PDF document paths (`external_path`), preventing document detachment across workspaces.
-- **R*-Tree Spatial Index Geometric Robustness**: Inclusive boundary intersection ($\le$), degenerate zero-size point handling, deep-split recursive bounds tightening, and root collapse fixes.
-- **Atomic SQLite Rollback Protection**: Project saves enforce strict transaction rollbacks on failure, guaranteeing zero partial or corrupted commits.
-- **Interaction Polish & Single-Click Inking Clutter Guard**: Filters out accidental micro-taps and single-clicks (< 1.0 px), adds `Ctrl+M` minimap toggle, `Alt+1`..`Alt+6` / `F1`..`F6` tool accelerators, and unified `Delete`/`Backspace` removal.
+### What's New in v1.1.5:
+- **Linux Touchpad Two-Finger Scrolling**: Full support for continuous `GDK_SCROLL_SMOOTH` touchpad gestures with standard GTK smooth kinetics, sub-pixel deltas, and clamped trackpad zoom/squeeze gestures.
+- **Buttery-Smooth Scrollbar Dragging**: Completely eliminated scrollbar stutter and UI thread lag via true active viewport pinning (ending eviction thrashing) and 60 FPS interactive scrollbar drag throttling.
+- **Concurrency & Excerpt Caching Stability**: Hardened background crop rasterization in `PdfDocumentService` and tile caching in `ExcerptTileCache`.
+- **Database Migration Hardening**: Verified and hardened SQLite legacy project migrations for external PDF document paths (`external_path`) and last viewed pages (`last_viewed_page`).
+- **Packaging & Build Polish**: Fully updated Windows Inno Setup installer, standalone UCRT64 portable archive, Linux AppImage, and Debian packages.
 
 ### Downloads
 
@@ -43,8 +41,8 @@ FluidCore **v1.1.4** is now officially released! Available for both **Windows 11
 | :--- | :--- | :--- | :--- |
 | **Windows** | **Native Installer** | `FluidCore-Setup-x64.exe` | **Recommended for Windows.** Inno Setup 64-bit installer with Start Menu integration, desktop shortcut, uninstaller, and `.ltproj` project bundle file associations. |
 | **Windows** | **Portable Zip** | `fluidcore-windows-x64.zip` | Standalone portable archive containing all required UCRT64 runtime DLLs, GLib schemas, GDK-Pixbuf loaders, and Adwaita icons. Run anywhere without admin privileges or external dependencies. |
-| **Linux** | **AppImage Bundle** | `FluidCore-1.1.4-x86_64.AppImage` | **Recommended for Linux.** Standalone portable executable with bundled dependencies, desktop integration, and Wayland/X11 support. Make executable (`chmod +x`) and run anywhere. |
-| **Linux** | **Debian Package** | `fluidcore_1.1.4_amd64.deb` | Native Debian/Ubuntu package (`apt install ./fluidcore_1.1.4_amd64.deb`) with system dependency management, FreeDesktop application menu entry, and MIME type associations. |
+| **Linux** | **AppImage Bundle** | `FluidCore-1.1.5-x86_64.AppImage` | **Recommended for Linux.** Standalone portable executable with bundled dependencies, desktop integration, and Wayland/X11 support. Make executable (`chmod +x`) and run anywhere. |
+| **Linux** | **Debian Package** | `fluidcore_1.1.5_amd64.deb` | Native Debian/Ubuntu package (`apt install ./fluidcore_1.1.5_amd64.deb`) with system dependency management, FreeDesktop application menu entry, and MIME type associations. |
 | **Linux** | **Flatpak Manifest** | `ops/flatpak/org.fluidcore.platform.yml` | Sandboxed distribution manifest for Flathub with zero-network isolation (`--unshare=network`) and host filesystem portal access. |
 
 ---
