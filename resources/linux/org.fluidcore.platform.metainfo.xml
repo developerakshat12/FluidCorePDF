@@ -38,6 +38,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="1.1.6" date="2026-09-28">
+      <description>
+        <p>FluidCore v1.1.6 ink fidelity, memory governance, and stylus release. Ink is now drawn at constant width along the whole stroke instead of tapering with pressure, fixing a detached blob at pen lift, weight drift on reload, and eraser hit-radius mismatch. A single Cairo stroke renderer now serves the document pane, infinite canvas, PDF export, and excerpt crop tiles, so exported ink matches what is on screen and strokes stay smooth at any zoom. A RAM-derived memory budget partitions cache headroom across page tiles, excerpt tiles, and undo history, and trims to 25% when idle. Stylus barrel buttons now erase instead of panning the canvas, and a pen overrides mouse-oriented selection tools. Also repairs the Linux release pipeline, which was missing the tools AppImage packaging requires.</p>
+      </description>
+    </release>
     <release version="1.1.5" date="2026-09-23">
       <description>
         <p>FluidCore v1.1.5 bug fixes and performance release. Resolves Linux touchpad smooth two-finger scrolling with GDK_SCROLL_SMOOTH acceleration, eliminates scrollbar dragging and rendering lag via true active viewport pinning and interactive drag throttling, hardens background crop rasterization and excerpt tile caching concurrency, and resolves SQLite project schema migration edge cases.</p>

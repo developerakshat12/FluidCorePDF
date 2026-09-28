@@ -1,7 +1,7 @@
 # FluidCore Platform
 
 [![CI](https://github.com/developerakshat12/FluidCorePDF/actions/workflows/ci.yml/badge.svg)](https://github.com/developerakshat12/FluidCorePDF/actions/workflows/ci.yml)
-[![Release: v1.1.5](https://img.shields.io/badge/Release-v1.1.5-brightgreen.svg)](https://github.com/developerakshat12/FluidCorePDF/releases)
+[![Release: v1.1.6](https://img.shields.io/badge/Release-v1.1.6-brightgreen.svg)](https://github.com/developerakshat12/FluidCorePDF/releases)
 [![License: GPL-2.0-or-later](https://img.shields.io/badge/License-GPL%202.0%2B-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2011%20Native%20%7C%20Linux-brightgreen.svg)]()
 [![Offline First](https://img.shields.io/badge/Network-Air--Gapped%20%2F%20Zero%20Telemetry-success.svg)]()
@@ -24,16 +24,16 @@ An **open-source, offline-first fluid document synthesis platform** designed for
 
 ---
 
-## 🚀 Official Release (v1.1.5)
+## 🚀 Official Release (v1.1.6)
 
-FluidCore **v1.1.5** is now officially released! Available for both **Windows 11 (Native)** and **Linux (Ubuntu, Debian, Fedora, Arch)** with verified zero-network air-gapped compliance, SQLite WAL atomic persistence, and sustained 50-document scalability.
+FluidCore **v1.1.6** is now officially released! Available for both **Windows 11 (Native)** and **Linux (Ubuntu, Debian, Fedora, Arch)** with verified zero-network air-gapped compliance, SQLite WAL atomic persistence, and sustained 50-document scalability.
 
-### What's New in v1.1.5:
-- **Linux Touchpad Two-Finger Scrolling**: Full support for continuous `GDK_SCROLL_SMOOTH` touchpad gestures with standard GTK smooth kinetics, sub-pixel deltas, and clamped trackpad zoom/squeeze gestures.
-- **Buttery-Smooth Scrollbar Dragging**: Completely eliminated scrollbar stutter and UI thread lag via true active viewport pinning (ending eviction thrashing) and 60 FPS interactive scrollbar drag throttling.
-- **Concurrency & Excerpt Caching Stability**: Hardened background crop rasterization in `PdfDocumentService` and tile caching in `ExcerptTileCache`.
-- **Database Migration Hardening**: Verified and hardened SQLite legacy project migrations for external PDF document paths (`external_path`) and last viewed pages (`last_viewed_page`).
-- **Packaging & Build Polish**: Fully updated Windows Inno Setup installer, standalone UCRT64 portable archive, Linux AppImage, and Debian packages.
+### What's New in v1.1.6:
+- **Constant-Width Ink**: Stroke geometry no longer tapers with pressure, so a stroke is exactly the width you selected along its whole length. Fixes a detached blob at pen lift, weight drift when a saved stroke is reloaded, and the eraser sizing its hit radius from a pressure the ink no longer used.
+- **Unified Stroke Renderer**: The document pane, infinite canvas, PDF export, and excerpt crop tiles now share one Cairo rasterizer. Emits the spline as curve spans stroked once, so ink no longer looks polygonal at 200% zoom or beaded along the edge, and exported ink matches the screen exactly.
+- **Memory Budget**: A single RAM-derived budget partitions cache headroom across page tiles, excerpt tiles, and undo history. Previously four independent 64 MB caches could authorize 256 MB against a documented 120 MB idle target; the pool now trims to 25% when the app goes idle.
+- **Stylus Barrel Buttons**: Barrel presses on a pen now erase instead of panning the canvas or opening a context menu, and a pen overrides mouse-oriented selection tools so you can annotate without switching tools first.
+- **Release Pipeline Repair**: The Linux AppImage step had been failing because `squashfs-tools` and `desktop-file-utils` were never installed, and two jobs raced to publish half-releases. Portable Windows zips also used Windows path separators, so they extracted as flat files on non-Windows systems; checksums are now `sha256sum`-compatible.
 
 ### Downloads
 
@@ -41,8 +41,8 @@ FluidCore **v1.1.5** is now officially released! Available for both **Windows 11
 | :--- | :--- | :--- | :--- |
 | **Windows** | **Native Installer** | `FluidCore-Setup-x64.exe` | **Recommended for Windows.** Inno Setup 64-bit installer with Start Menu integration, desktop shortcut, uninstaller, and `.ltproj` project bundle file associations. |
 | **Windows** | **Portable Zip** | `fluidcore-windows-x64.zip` | Standalone portable archive containing all required UCRT64 runtime DLLs, GLib schemas, GDK-Pixbuf loaders, and Adwaita icons. Run anywhere without admin privileges or external dependencies. |
-| **Linux** | **AppImage Bundle** | `FluidCore-1.1.5-x86_64.AppImage` | **Recommended for Linux.** Standalone portable executable with bundled dependencies, desktop integration, and Wayland/X11 support. Make executable (`chmod +x`) and run anywhere. |
-| **Linux** | **Debian Package** | `fluidcore_1.1.5_amd64.deb` | Native Debian/Ubuntu package (`apt install ./fluidcore_1.1.5_amd64.deb`) with system dependency management, FreeDesktop application menu entry, and MIME type associations. |
+| **Linux** | **AppImage Bundle** | `FluidCore-1.1.6-x86_64.AppImage` | **Recommended for Linux.** Standalone portable executable with bundled dependencies, desktop integration, and Wayland/X11 support. Make executable (`chmod +x`) and run anywhere. |
+| **Linux** | **Debian Package** | `fluidcore_1.1.6_amd64.deb` | Native Debian/Ubuntu package (`apt install ./fluidcore_1.1.6_amd64.deb`) with system dependency management, FreeDesktop application menu entry, and MIME type associations. |
 | **Linux** | **Flatpak Manifest** | `ops/flatpak/org.fluidcore.platform.yml` | Sandboxed distribution manifest for Flathub with zero-network isolation (`--unshare=network`) and host filesystem portal access. |
 
 ---
