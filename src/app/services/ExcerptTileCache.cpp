@@ -296,6 +296,7 @@ uint64_t ExcerptTileCache::requestCropAsync(const std::string& excerptId, const 
     uint64_t requestId = m_nextRequestId.fetch_add(1);
     m_activeRequestIds.insert(requestId);
     m_inFlightKeys.insert(key);
+    m_inFlightIds.emplace(key, requestId);
 
     auto* task = new AsyncRenderTask();
     task->requestId = requestId;
@@ -322,6 +323,7 @@ uint64_t ExcerptTileCache::requestCropAsync(const std::string& excerptId, const 
         delete task;
         m_activeRequestIds.erase(requestId);
         m_inFlightKeys.erase(key);
+        m_inFlightIds.erase(key);
         return 0;
     }
 
@@ -375,6 +377,7 @@ gboolean ExcerptTileCache::onRenderCompletedIdle(gpointer data) {
     if (aliveLock && *aliveLock && result->cache) {
         ExcerptTileCache* cache = result->cache;
         cache->m_inFlightKeys.erase(result->cacheKey);
+        cache->m_inFlightIds.erase(result->cacheKey);
         if (result->surface && cache->m_cancelledRequestIds.count(result->requestId) == 0 &&
             !cache->m_docService.isDocumentCancelled(result->docId)) {
             cache->insert(result->cacheKey, result->surface);
@@ -399,12 +402,27 @@ void ExcerptTileCache::cancelDocumentRequests(const std::string& docId) {
     m_docService.cancelDocumentRequests(docId);
 }
 
+bool ExcerptTileCache::sameDocument(const std::string& cachedDocId,
+                                    const std::string& otherDocId) const {
+    if (cachedDocId == otherDocId) {
+        return true;
+    }
+    if (!m_docAliasResolver) {
+        return false;
+    }
+    // Resolve in both directions: DocumentPane::matchesDocId anchors on the pane's own
+    // id and path, so which argument is the "known" one determines which forms it can
+    // compare. Trying both keeps this correct regardless of how the caller ordered them.
+    return m_docAliasResolver(cachedDocId, otherDocId) ||
+           m_docAliasResolver(otherDocId, cachedDocId);
+}
+
 void ExcerptTileCache::invalidate(const std::string& docId) {
     m_docService.cancelDocumentRequests(docId);
 
     auto it = m_lruList.begin();
     while (it != m_lruList.end()) {
-        if (it->key.docId == docId) {
+        if (sameDocument(it->key.docId, docId)) {
             m_currentBytes -= it->bytes;
             m_lookup.erase(it->key);
             it = m_lruList.erase(it);
@@ -416,19 +434,40 @@ void ExcerptTileCache::invalidate(const std::string& docId) {
 
 void ExcerptTileCache::invalidateSpatial(const std::string& docId, std::size_t pageNo,
                                          const FluidCore::Rectangle& changedNormRect) {
+    const auto tileIntersects = [&](const CropCacheKey& key) {
+        if (key.pageNo != pageNo) {
+            return false;
+        }
+        FluidCore::Rectangle tileNormRect{key.xNorm / 65535.0, key.yNorm / 65535.0,
+                                          key.wNorm / 65535.0, key.hNorm / 65535.0};
+        return FluidCore::rectanglesIntersect(tileNormRect, changedNormRect, 0.001);
+    };
+
     auto it = m_lruList.begin();
     while (it != m_lruList.end()) {
-        if (it->key.docId == docId && it->key.pageNo == pageNo) {
-            FluidCore::Rectangle tileNormRect{it->key.xNorm / 65535.0, it->key.yNorm / 65535.0,
-                                              it->key.wNorm / 65535.0, it->key.hNorm / 65535.0};
-            if (FluidCore::rectanglesIntersect(tileNormRect, changedNormRect, 0.001)) {
-                m_currentBytes -= it->bytes;
-                m_lookup.erase(it->key);
-                it = m_lruList.erase(it);
-                continue;
-            }
+        if (sameDocument(it->key.docId, docId) && tileIntersects(it->key)) {
+            m_currentBytes -= it->bytes;
+            m_lookup.erase(it->key);
+            it = m_lruList.erase(it);
+            continue;
         }
         ++it;
+    }
+
+    // Cancel in-flight renders over the same region. The stroke snapshot for a request
+    // is taken synchronously at dispatch time, so a render that started before this edit
+    // finishes with pre-edit ink. Dropping the request and releasing its in-flight key
+    // also lets the next draw dispatch a fresh one; leaving the key registered would
+    // make requestCropAsync() return early and pin the card to the stale surface.
+    for (auto fit = m_inFlightIds.begin(); fit != m_inFlightIds.end();) {
+        if (sameDocument(fit->first.docId, docId) && tileIntersects(fit->first)) {
+            m_cancelledRequestIds.insert(fit->second);
+            m_activeRequestIds.erase(fit->second);
+            m_inFlightKeys.erase(fit->first);
+            fit = m_inFlightIds.erase(fit);
+        } else {
+            ++fit;
+        }
     }
 }
 
@@ -449,6 +488,7 @@ void ExcerptTileCache::clear() {
     m_cancelledRequestIds.insert(m_activeRequestIds.begin(), m_activeRequestIds.end());
     m_activeRequestIds.clear();
     m_inFlightKeys.clear();
+    m_inFlightIds.clear();
     m_lookup.clear();
     m_lruList.clear();
     m_currentBytes = 0;

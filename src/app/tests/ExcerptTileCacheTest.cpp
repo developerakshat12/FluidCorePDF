@@ -300,6 +300,144 @@ int testSpatialInvalidation() {
     return failures;
 }
 
+// A crop made in this session records the absolute PDF path, but the same card reloaded
+// from a saved project records the project-relative path, while annotation invalidation
+// always arrives keyed by the pane's absolute path. Verbatim comparison silently matched
+// nothing, so on a reloaded project no crop tile was ever evicted and cards kept showing
+// pre-annotation imagery.
+int testAliasAwareSpatialInvalidation() {
+    std::cout << "Running testAliasAwareSpatialInvalidation...\n";
+    int failures = 0;
+
+    const std::string kAbsPath = "D:/projects/thesis/docs/paper.pdf";
+    const std::string kRelPath = "docs/paper.pdf";
+
+    PdfDocumentService docService;
+    ExcerptTileCache cache(docService, 1000000);
+
+    // Models DocumentPane::matchesDocId's relative-path-suffix tier: a relative id matches
+    // an absolute one when the absolute path ends with "/" + relative.
+    cache.setDocAliasResolver([&](const std::string& cachedDocId, const std::string& otherDocId) {
+        auto norm = [](std::string s) {
+            std::replace(s.begin(), s.end(), '\\', '/');
+            while (s.rfind("./", 0) == 0) {
+                s.erase(0, 2);
+            }
+            return s;
+        };
+        const std::string a = norm(cachedDocId);
+        const std::string b = norm(otherDocId);
+        if (a == b) {
+            return true;
+        }
+        if (a.size() > b.size() && a.rfind("/" + b) == a.size() - (b.size() + 1)) {
+            return true;
+        }
+        return b.size() > a.size() && b.rfind("/" + a) == b.size() - (a.size() + 1);
+    });
+
+    // Tile as it exists after the project was saved and reopened: keyed by relative path.
+    CropCacheKey kRel =
+        CropCacheKey::fromNormalizedRect(kRelPath, 0, {0.1, 0.1, 0.3, 0.3}, LodTier::Standard);
+    // Same page, but a region far from the edit, keyed by the relative path too.
+    CropCacheKey kRelFar =
+        CropCacheKey::fromNormalizedRect(kRelPath, 0, {0.6, 0.6, 0.3, 0.3}, LodTier::Standard);
+    // A tile on another page, which must survive.
+    CropCacheKey kRelPage1 =
+        CropCacheKey::fromNormalizedRect(kRelPath, 1, {0.1, 0.1, 0.3, 0.3}, LodTier::Standard);
+    // A genuinely different document that merely shares a name suffix pattern.
+    CropCacheKey kOther = CropCacheKey::fromNormalizedRect("other/docs/paper.pdf", 0,
+                                                           {0.1, 0.1, 0.3, 0.3}, LodTier::Standard);
+
+    cache.insert(kRel,
+                 CairoSurfaceHandle(cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 50, 50), true));
+    cache.insert(kRelFar,
+                 CairoSurfaceHandle(cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 50, 50), true));
+    cache.insert(kRelPage1,
+                 CairoSurfaceHandle(cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 50, 50), true));
+    cache.insert(kOther,
+                 CairoSurfaceHandle(cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 50, 50), true));
+    failures += check(cache.size() == 4, "4 items cached initially");
+
+    // Invalidation arrives keyed by the ABSOLUTE path, as DocumentPane produces it.
+    FluidCore::Rectangle changeRect{0.2, 0.2, 0.1, 0.1};
+    cache.invalidateSpatial(kAbsPath, 0, changeRect);
+
+    failures += check(cache.size() == 3, "one tile evicted by aliased spatial invalidation");
+    failures += check(!cache.get(kRel), "relative-path tile was evicted via absolute-path alias");
+    failures += check(static_cast<bool>(cache.get(kRelFar)), "non-overlapping tile preserved");
+    failures += check(static_cast<bool>(cache.get(kRelPage1)), "different-page tile preserved");
+    failures += check(static_cast<bool>(cache.get(kOther)), "unrelated document preserved");
+
+    // Whole-document invalidation must resolve aliases too: it should clear both tiles
+    // keyed by the relative path and leave the unrelated document alone.
+    cache.invalidate(kAbsPath);
+    failures += check(cache.size() == 1, "aliased whole-document invalidation evicted one tile");
+    failures += check(!cache.get(kRelFar), "aliased whole-document eviction cleared kRelFar");
+    failures += check(!cache.get(kRelPage1), "aliased whole-document eviction cleared kRelPage1");
+    failures += check(static_cast<bool>(cache.get(kOther)),
+                      "whole-document invalidation did not touch an unrelated document");
+
+    // With no resolver installed, behaviour must stay exactly as before: verbatim only.
+    ExcerptTileCache strict(docService, 1000000);
+    CropCacheKey kStrict =
+        CropCacheKey::fromNormalizedRect(kRelPath, 0, {0.1, 0.1, 0.3, 0.3}, LodTier::Standard);
+    strict.insert(
+        kStrict, CairoSurfaceHandle(cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 50, 50), true));
+    strict.invalidateSpatial(kAbsPath, 0, changeRect);
+    failures += check(static_cast<bool>(strict.get(kStrict)),
+                      "no resolver installed: aliases are still not matched (unchanged behaviour)");
+    strict.invalidateSpatial(kRelPath, 0, changeRect);
+    failures += check(!strict.get(kStrict), "no resolver installed: exact id still invalidates");
+
+    return failures;
+}
+
+// An async render snapshots the intersecting strokes synchronously at dispatch. If an edit
+// lands while that render is in flight, the render finishes with pre-edit ink and inserts
+// it, and because requestCropAsync() early-returns while the key is registered in
+// m_inFlightKeys the card is pinned to that stale surface forever. Invalidation must
+// release the in-flight key so the next draw can dispatch a fresh render.
+int testSpatialInvalidationReleasesInFlightRequests() {
+    std::cout << "Running testSpatialInvalidationReleasesInFlightRequests...\n";
+    int failures = 0;
+
+    PdfDocumentService docService;
+    ExcerptTileCache cache(docService, 1000000);
+
+    FluidCore::Rectangle cropRect{0.1, 0.1, 0.3, 0.3};
+
+    const uint64_t first =
+        cache.requestCropAsync("card-1", "doc-A", 0, cropRect, 200.0, 150.0, 1.0);
+    failures += check(first != 0, "first async render was dispatched");
+
+    // Same key while in flight: must be refused, proving the in-flight guard is active.
+    const uint64_t blocked =
+        cache.requestCropAsync("card-1", "doc-A", 0, cropRect, 200.0, 150.0, 1.0);
+    failures += check(blocked == 0, "duplicate in-flight request is refused");
+
+    // Edit lands over the crop while that render is still running.
+    cache.invalidateSpatial("doc-A", 0, {0.2, 0.2, 0.1, 0.1});
+
+    // The key must now be dispatchable again; without releasing it this returns 0 and the
+    // card is stuck on the stale surface.
+    const uint64_t second =
+        cache.requestCropAsync("card-1", "doc-A", 0, cropRect, 200.0, 150.0, 1.0);
+    failures += check(second != 0, "in-flight key released so a fresh render can be dispatched");
+    failures += check(second != first, "re-dispatch produced a new request id");
+
+    // An edit that does not touch the crop must NOT release the in-flight key.
+    const uint64_t third =
+        cache.requestCropAsync("card-2", "doc-A", 0, {0.7, 0.7, 0.2, 0.2}, 200.0, 150.0, 1.0);
+    failures += check(third != 0, "unrelated crop dispatched");
+    cache.invalidateSpatial("doc-A", 0, {0.2, 0.2, 0.1, 0.1});
+    const uint64_t fourth =
+        cache.requestCropAsync("card-2", "doc-A", 0, {0.7, 0.7, 0.2, 0.2}, 200.0, 150.0, 1.0);
+    failures += check(fourth == 0, "non-overlapping in-flight render left running");
+
+    return failures;
+}
+
 int testStrokeProviderWiring() {
     std::cout << "Running testStrokeProviderWiring...\n";
     int failures = 0;
@@ -498,6 +636,8 @@ int main() {
     totalFailures += testTileByteCeiling();
     totalFailures += testDocumentInvalidationAndCancellation();
     totalFailures += testSpatialInvalidation();
+    totalFailures += testAliasAwareSpatialInvalidation();
+    totalFailures += testSpatialInvalidationReleasesInFlightRequests();
     totalFailures += testStrokeProviderWiring();
     totalFailures += testNonStandardPageFilteringAndPointToPixelAlignment();
     totalFailures += testZeroLeakRefcounting();

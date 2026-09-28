@@ -2771,6 +2771,20 @@ void onActivate(GtkApplication* app, gpointer userData) {
             }
         });
 
+    // Crop tiles are keyed by ExcerptCardNode::sourceDocId(), which is the absolute PDF
+    // path for a card cropped in this session but the project-relative path once the
+    // project has been saved and reloaded. Annotation-driven invalidation arrives keyed
+    // by the pane's absolute path, so the cache needs to resolve the two forms instead
+    // of comparing them verbatim -- otherwise a reloaded project's excerpt cards never
+    // refresh and keep showing pre-annotation crops.
+    excerptTileCache->setDocAliasResolver(
+        [documentPane](const std::string& cachedDocId, const std::string& otherDocId) {
+            if (!documentPane) {
+                return cachedDocId == otherDocId;
+            }
+            return documentPane->matchesDocId(cachedDocId, {otherDocId});
+        });
+
     documentPane->setOnAnnotationsChangedSpatialCallback(
         [excerptTileCache, workspace](const std::string& docId, std::size_t pageNo,
                                       const FluidCore::Rectangle& changedNormRect) {

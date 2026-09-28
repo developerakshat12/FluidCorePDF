@@ -98,6 +98,23 @@ class ExcerptTileCache {
                                               const FluidCore::Rectangle& cropNormRect,
                                               std::vector<FluidCore::Stroke>& outStrokes)>;
 
+    // Decides whether two document identifiers name the same document.
+    //
+    // Crop tiles are keyed by ExcerptCardNode::sourceDocId(), and that string is not
+    // stable across a session. A card cropped live records the absolute PDF path
+    // (InkOverlay), while the same card reloaded from a saved project records the
+    // project-relative path (main.cpp). Invalidation, meanwhile, is notified with the
+    // pane's absolute path (DocumentPane::notifyAnnotationChangedSpatial). Comparing
+    // those with `==` silently matched nothing, so on any reloaded project no crop tile
+    // was ever evicted and excerpt cards kept showing pre-annotation imagery.
+    //
+    // The resolver is supplied by the frontend (wired to DocumentPane::matchesDocId,
+    // which already resolves exact id, canonical path, filesystem equivalence and
+    // relative-path-suffix forms). Kept as a callback so the cache stays free of any
+    // document-service or filesystem dependency.
+    using DocAliasResolver =
+        std::function<bool(const std::string& cachedDocId, const std::string& otherDocId)>;
+
     explicit ExcerptTileCache(PdfDocumentService& docService,
                               std::size_t maxBytes = static_cast<std::size_t>(-1));
     ~ExcerptTileCache();
@@ -107,6 +124,9 @@ class ExcerptTileCache {
 
     void setRenderReadyCallback(RenderReadyCallback cb) { m_onRenderReady = std::move(cb); }
     void setStrokeProvider(StrokeProvider provider) { m_strokeProvider = std::move(provider); }
+    void setDocAliasResolver(DocAliasResolver resolver) {
+        m_docAliasResolver = std::move(resolver);
+    }
 
     // Retrieves cached surface for the requested key, promoting it to MRU.
     CairoSurfaceHandle get(const CropCacheKey& key);
@@ -131,9 +151,17 @@ class ExcerptTileCache {
 
     void cancelRequest(uint64_t requestId);
     void cancelDocumentRequests(const std::string& docId);
+    // Drops every cached tile and cancels every in-flight render for docId, matching
+    // through the alias resolver.
     void invalidate(const std::string& docId);
 
-    // Evicts cached crop tiles for docId and pageNo intersecting changedNormRect
+    // Evicts cached crop tiles for docId and pageNo intersecting changedNormRect.
+    //
+    // Also cancels in-flight renders for the intersecting region. Without that, a render
+    // dispatched before the edit completes afterwards and inserts a surface built from
+    // the pre-edit stroke snapshot (the provider is called synchronously at dispatch),
+    // and because requestCropAsync() refuses to re-dispatch a key that is still in
+    // m_inFlightKeys the card is left permanently stale.
     void invalidateSpatial(const std::string& docId, std::size_t pageNo,
                            const FluidCore::Rectangle& changedNormRect);
 
@@ -203,6 +231,10 @@ class ExcerptTileCache {
     static void asyncWorkerFunc(gpointer data, gpointer userData);
     static gboolean onRenderCompletedIdle(gpointer data);
 
+    // True when two document identifiers refer to the same document. Exact match first so
+    // the common case stays a cheap string compare, then the frontend-supplied resolver.
+    bool sameDocument(const std::string& cachedDocId, const std::string& otherDocId) const;
+
     PdfDocumentService& m_docService;
     std::size_t m_maxBytes = kDefaultMaxBytes;
     std::size_t m_currentBytes = 0;
@@ -216,9 +248,13 @@ class ExcerptTileCache {
     std::unordered_set<uint64_t> m_activeRequestIds;
     std::unordered_set<uint64_t> m_cancelledRequestIds;
     std::unordered_set<CropCacheKey, CropCacheKeyHash> m_inFlightKeys;
+    // In-flight key -> request id, so invalidation can cancel precisely the renders
+    // covering an edited region. m_inFlightKeys alone cannot identify them.
+    std::unordered_map<CropCacheKey, uint64_t, CropCacheKeyHash> m_inFlightIds;
 
     RenderReadyCallback m_onRenderReady;
     StrokeProvider m_strokeProvider;
+    DocAliasResolver m_docAliasResolver;
 };
 
 } // namespace FluidCoreApp
