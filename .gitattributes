@@ -1,0 +1,30 @@
+# Normalize line endings so CI runners (and local MSYS2/Git-Bash tooling) see
+# byte-identical files. Without this, Windows checkouts silently rewrite
+# LF -> CRLF, which breaks:
+#   * ops/scripts/*.sh        -> "bad interpreter: /usr/bin/env bash^M"
+#   * ops/patches/*.patch     -> `git apply` refuses to match context lines
+#   * .github/workflows/*.yml -> cosmetic only, but noisy diffs
+# See setup-msys2 "Known Problems: actions/checkout and line endings".
+
+# Scripts and patches MUST stay LF in the repository and in every checkout.
+*.sh    text eol=lf
+*.bash  text eol=lf
+*.patch text eol=lf
+*.diff  text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.py    text eol=lf
+*.iss   text eol=lf
+
+# Windows-native tooling and resources are authored CRLF.
+*.ps1   text eol=crlf
+*.rc    text eol=crlf
+
+# Binary assets: never touch, never normalize.
+*.png   binary
+*.ico   binary
+*.pdf   binary
+*.zst   binary
+*.exe   binary
+*.zip   binary
+*.AppImage binary

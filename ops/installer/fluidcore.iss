@@ -3,7 +3,7 @@
 ; uninstaller, and .ltproj file associations.
 
 #ifndef MyAppVersion
-#define MyAppVersion "1.1.5"
+#define MyAppVersion "1.1.6"
 #endif
 
 #define MyAppName "FluidCore"
@@ -30,7 +30,7 @@ AppUpdatesURL={#MyAppURL}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
-OutputDir={#OutputDir}
+OutputDir="{#OutputDir}"
 OutputBaseFilename=FluidCore-Setup-x64
 Compression=lzma2/ultra64
 SolidCompression=yes
@@ -49,10 +49,11 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-; Standalone binaries, bundled DLLs, schemas, pixbuf loaders, fonts, and icon assets
+; Standalone binaries, bundled DLLs, schemas, pixbuf loaders, fonts, and icon assets.
+; package-windows.ps1 already stages fluidcore.ico / fluidcore.png at the root of
+; {#SourceDistDir}, so the recursesubdirs wildcard above ships them. Listing them
+; again from resources\icons would install the same two files twice.
 Source: "{#SourceDistDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "..\..\resources\icons\fluidcore.ico"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\..\resources\icons\fluidcore.png"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\fluidcore.ico"

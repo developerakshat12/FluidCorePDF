@@ -17,7 +17,7 @@ cd "${PROJECT_ROOT}"
 
 BUILD_DIR="${PROJECT_ROOT}/build-linux"
 OUTPUT_DIR=""
-VERSION="1.1.5"
+VERSION="1.1.6"
 APPDIR_ONLY=false
 
 while [[ $# -gt 0 ]]; do
@@ -171,16 +171,27 @@ elif [[ -x "${TOOL_DIR}/appimagetool" ]]; then
     APPIMAGETOOL="${TOOL_DIR}/appimagetool"
 elif command -v curl >/dev/null 2>&1; then
     echo -e "\033[1;36m[FluidCore AppImage] Downloading pinned appimagetool to ${TOOL_DIR}...\033[0m"
-    TOOL_URL="https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
-    if curl -fsSL -o "${TOOL_DIR}/appimagetool" "${TOOL_URL}"; then
+    # AppImage/appimagetool is the maintained successor. The old
+    # AppImage/AppImageKit asset is explicitly flagged "Obsolete version. DO NOT
+    # USE THIS VERSION ANYMORE" upstream and can be deleted without notice.
+    TOOL_URL="https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
+    if curl -fsSL --retry 3 -o "${TOOL_DIR}/appimagetool" "${TOOL_URL}"; then
         chmod +x "${TOOL_DIR}/appimagetool"
         APPIMAGETOOL="${TOOL_DIR}/appimagetool"
     fi
 fi
 
+if [[ -z "${APPDIR}" || ! -d "${APPDIR}" ]]; then
+    echo "Error: AppDir staging directory missing at ${APPDIR}." >&2
+    exit 1
+fi
+
 if [[ -z "${APPIMAGETOOL}" || ! -x "${APPIMAGETOOL}" ]]; then
-    echo -e "\033[1;33m[FluidCore AppImage] Warning: appimagetool not found or failed to download. Intermediate AppDir is ready at ${APPDIR} and can be run via ./build-linux/dist/AppDir/AppRun\033[0m"
-    exit 0
+    # Reaching here means we were asked for a real AppImage (the --appdir-only
+    # path already exited above), so failing to obtain the tool is fatal.
+    # Exiting 0 here would let a release publish without its AppImage.
+    echo "Error: appimagetool not found or failed to download. Install it, or re-run with --appdir-only to skip AppImage compression." >&2
+    exit 1
 fi
 
 # 8. Compile standalone AppImage
@@ -190,12 +201,19 @@ APPIMAGE_PATH="${OUTPUT_DIR}/${APPIMAGE_NAME}"
 echo -e "\033[1;36m[FluidCore AppImage] Packaging ${APPIMAGE_NAME} via appimagetool...\033[0m"
 export ARCH=x86_64
 export NO_APPSTREAM=1
+# appimagetool embeds $VERSION into the AppImage's update-information block.
+export VERSION
 
-# Use --appimage-extract-and-run for compatibility in container/WSL/CI environments without FUSE
-if "${APPIMAGETOOL}" --version >/dev/null 2>&1; then
-    "${APPIMAGETOOL}" --no-appstream "${APPDIR}" "${APPIMAGE_PATH}"
-else
-    "${APPIMAGETOOL}" --appimage-extract-and-run --no-appstream "${APPDIR}" "${APPIMAGE_PATH}"
+# Always use --appimage-extract-and-run. The tool checks its own dependencies
+# (file, mksquashfs, desktop-file-validate) and exits before doing any work, so
+# a `--version` capability probe cannot detect FUSE availability: it returns 0
+# unconditionally. Extract-and-run sidesteps FUSE entirely, which is required on
+# GitHub-hosted runners (no /dev/fuse) and inside containers/WSL.
+"${APPIMAGETOOL}" --appimage-extract-and-run --no-appstream "${APPDIR}" "${APPIMAGE_PATH}"
+
+if [[ ! -f "${APPIMAGE_PATH}" ]]; then
+    echo "Error: appimagetool did not produce ${APPIMAGE_PATH}" >&2
+    exit 1
 fi
 
 chmod +x "${APPIMAGE_PATH}"

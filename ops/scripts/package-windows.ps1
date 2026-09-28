@@ -13,7 +13,7 @@ param (
     [string]$OutputDir = "build-win\dist\fluidcore-windows-x64",
     [string]$ZipFile = "build-win\dist\fluidcore-windows-x64.zip",
     [switch]$BuildInstaller = $true,
-    [string]$AppVersion = "1.1.5",
+    [string]$AppVersion = "1.1.6",
     [string]$MsysRoot = ""
 )
 
@@ -24,10 +24,14 @@ if ($MsysRoot -and (Test-Path "$MsysRoot\msys64\ucrt64\bin") -and -not (Test-Pat
 }
 
 if (-not $MsysRoot) {
-    # Check PATH for active gcc or objdump in ucrt64
+    # Derive the MSYS2 root from an active ucrt64 gcc on PATH. gcc.exe lives at
+    # <root>\ucrt64\bin\gcc.exe, so the root is three levels up, not two. Two
+    # levels yields <root>\ucrt64, which then fails the "$MsysRoot\ucrt64\bin"
+    # probe below and aborts with a misleading "MSYS2 UCRT64 environment not
+    # found" even though the toolchain is present and on PATH.
     $GccCmd = Get-Command gcc.exe -ErrorAction SilentlyContinue
     if ($GccCmd -and $GccCmd.Source -match "ucrt64[\\/]bin") {
-        $MsysRoot = Split-Path -Parent (Split-Path -Parent $GccCmd.Source)
+        $MsysRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $GccCmd.Source))
     }
 }
 
@@ -250,7 +254,55 @@ if (Test-Path $FullZipFile) {
     Remove-Item -Force $FullZipFile
 }
 Write-Host "[FluidCore Packager] Compressing package into $FullZipFile..." -ForegroundColor Cyan
-Compress-Archive -Path "$FullOutputDir\*" -DestinationPath $FullZipFile -Force
+
+# Build the archive entry-by-entry rather than via Compress-Archive.
+# Windows PowerShell's Compress-Archive and System.IO.Compression.ZipFile.
+# CreateFromDirectory both stamp the native Windows separator ("\") into the
+# zip entry names, which violates APPNOTE 4.4.17.1 (path separators MUST be
+# "/"). Non-Windows extractors (unzip, macOS Archive Utility, Python zipfile)
+# then materialise literal single files named e.g. "share\glib-2.0\schemas\
+# gschemas.compiled" instead of a directory tree. Writing the entries by hand
+# also lets us pick up dotfiles, which Compress-Archive silently skips.
+Add-Type -AssemblyName System.IO.Compression | Out-Null
+Add-Type -AssemblyName System.IO.Compression.FileSystem | Out-Null
+
+$ZipRoot = (Resolve-Path -LiteralPath $FullOutputDir).Path.TrimEnd('\', '/')
+$ZipStream = [System.IO.File]::Open($FullZipFile, [System.IO.FileMode]::CreateNew)
+try {
+    $ZipArchive = New-Object System.IO.Compression.ZipArchive($ZipStream, [System.IO.Compression.ZipArchiveMode]::Create)
+    try {
+        $ZipEntries = 0
+        foreach ($File in Get-ChildItem -LiteralPath $ZipRoot -Recurse -File -Force) {
+            $RelativeName = $File.FullName.Substring($ZipRoot.Length + 1).Replace('\', '/')
+            [void][System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+                $ZipArchive,
+                $File.FullName,
+                $RelativeName,
+                [System.IO.Compression.CompressionLevel]::Optimal
+            )
+            $ZipEntries++
+        }
+    } finally {
+        $ZipArchive.Dispose()
+    }
+} finally {
+    $ZipStream.Dispose()
+}
+
+# Verify the archive actually round-trips with portable separators.
+$VerifyArchive = [System.IO.Compression.ZipFile]::OpenRead($FullZipFile)
+try {
+    $BackslashEntries = @($VerifyArchive.Entries | Where-Object { $_.FullName.Contains('\') })
+    if ($BackslashEntries.Count -gt 0) {
+        Write-Error "Packaging verification failed: $($BackslashEntries.Count) zip entries use backslash separators (first: '$($BackslashEntries[0].FullName)'). The portable zip would extract as flat files on non-Windows systems."
+    }
+    if ($VerifyArchive.Entries.Count -ne $ZipEntries) {
+        Write-Error "Packaging verification failed: expected $ZipEntries zip entries but found $($VerifyArchive.Entries.Count)."
+    }
+} finally {
+    $VerifyArchive.Dispose()
+}
+Write-Host "[FluidCore Packager] Wrote $ZipEntries entries with POSIX separators." -ForegroundColor Green
 
 $ZipSizeMb = [math]::Round(((Get-Item $FullZipFile).Length / 1MB), 2)
 Write-Host "[FluidCore Packager] Success! Standalone package created: $FullZipFile ($ZipSizeMb MB)" -ForegroundColor Green
@@ -297,11 +349,15 @@ if ($BuildInstaller) {
     Write-Host "[FluidCore Packager] Using Inno Setup compiler: $IsccExe" -ForegroundColor Cyan
     $IssScript = Join-Path $ProjectRoot "ops\installer\fluidcore.iss"
 
+    # ISCC parses its command line with a space-delimited splitter, so every
+    # /D define whose value may contain a space must arrive pre-quoted.
+    # Start-Process joins ArgumentList with plain spaces, so we embed the
+    # quotes here rather than relying on PowerShell to add them.
     $IsccArgs = @(
         "/DMyAppVersion=$AppVersion",
-        "/DSourceDistDir=$FullOutputDir",
-        "/DOutputDir=$DistDir",
-        $IssScript
+        "`"/DSourceDistDir=$FullOutputDir`"",
+        "`"/DOutputDir=$DistDir`"",
+        "`"$IssScript`""
     )
 
     Write-Host "[FluidCore Packager] Compiling Inno Setup installer..." -ForegroundColor Cyan
