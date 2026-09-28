@@ -113,7 +113,15 @@ if ($Run) {
     if ($Monitor) {
         Write-Host "[FluidCore] Launching $AppPath with live terminal monitor..." -ForegroundColor Green
         $MonitorScript = Join-Path $ProjectRoot "debug\scripts\monitor.ps1"
-        & powershell -ExecutionPolicy Bypass -File $MonitorScript -Launch -Document $DocPath
+        # -Document must be omitted rather than passed empty. PowerShell drops empty
+        # string arguments when spawning a child process, so "-Document $DocPath" with
+        # an empty $DocPath arrives as a bare -Document and the child script fails to
+        # bind, reporting a missing argument.
+        $monitorArgs = @("-ExecutionPolicy", "Bypass", "-File", $MonitorScript, "-Launch")
+        if ($DocPath) {
+            $monitorArgs += @("-Document", $DocPath)
+        }
+        & powershell @monitorArgs
     } else {
         Write-Host "[FluidCore] Launching $AppPath..." -ForegroundColor Green
         if ($DocPath) {

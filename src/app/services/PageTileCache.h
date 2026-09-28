@@ -1,5 +1,7 @@
 #pragma once
 
+#include "services/MemoryBudget.h"
+
 #include <cstddef>
 #include <list>
 #include <string>
@@ -87,10 +89,22 @@ class CairoSurfaceHandle {
 // a strict memory working set fraction (default 64 MB <= 1.2 GB limit).
 class PageTileCache {
   public:
-    static constexpr std::size_t kDefaultMaxBytes = 64 * 1024 * 1024; // 64 MB
+    // Default budget is now a slice of one global pool rather than an independent 64 MB
+    // ceiling. Callers that pass an explicit maxBytes (tests, the scalability benchmark)
+    // are unaffected.
+    static std::size_t defaultMaxBytes() {
+        return MemoryBudget::instance().sliceBytes(MemoryBudget::Slice::PageTiles);
+    }
+    static constexpr std::size_t kDefaultMaxBytes = 64 * 1024 * 1024; // legacy per-cache ceiling
     static constexpr std::size_t kDefaultMaxPages = 8;
 
-    explicit PageTileCache(std::size_t maxBytes = kDefaultMaxBytes,
+    // Per-surface dimension ceiling (Fix 5D). DocumentPane's zoom is not itself clamped,
+    // so a single letter page at 10x would otherwise ask for a 6120x7920 ARGB surface -
+    // ~194 MB for one page. Clamping the raster bounds the damage to one page instead of
+    // the process, at the cost of a soft-rendered page beyond this zoom.
+    static constexpr int kMaxSurfaceDimension = 4096;
+
+    explicit PageTileCache(std::size_t maxBytes = static_cast<std::size_t>(-1),
                            std::size_t maxPages = kDefaultMaxPages);
     ~PageTileCache();
 
@@ -117,6 +131,14 @@ class PageTileCache {
 
     void invalidate(std::size_t pageIndex);
     void clear();
+
+    // Ejects least-recently-used surfaces until currentBytes() <= targetBytes, skipping
+    // pinned (currently visible) pages. Used by the idle trim, which has to release
+    // surfaces *before* _heapmin() can hand anything back to the OS.
+    std::size_t trimToBytes(std::size_t targetBytes);
+
+    // Releases every unpinned surface. Returns the bytes reclaimed.
+    std::size_t releaseUnpinned();
 
     std::size_t currentBytes() const { return m_currentBytes; }
     std::size_t maxBytes() const { return m_maxBytes; }
@@ -164,6 +186,11 @@ class PageTileCache {
     std::size_t m_maxBytes;
     std::size_t m_maxPages;
     std::size_t m_currentBytes = 0;
+
+    // Largest single surface admitted so far. Pinning holds back this much headroom so
+    // that one more incoming page always fits, which is what keeps eviction from being
+    // blocked at the exact moment it is needed (Fix 5D).
+    std::size_t m_largestSurfaceBytes = 0;
 
     std::list<CacheNode> m_lruList;
     std::unordered_map<std::size_t, std::list<CacheNode>::iterator> m_lookup;

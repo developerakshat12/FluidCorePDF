@@ -63,7 +63,8 @@ struct AsyncRenderResult {
 };
 
 ExcerptTileCache::ExcerptTileCache(PdfDocumentService& docService, std::size_t maxBytes)
-    : m_docService(docService), m_maxBytes(maxBytes),
+    : m_docService(docService),
+      m_maxBytes(maxBytes == static_cast<std::size_t>(-1) ? defaultMaxBytes() : maxBytes),
       m_alive(std::make_shared<std::atomic<bool>>(true)) {
     GError* error = nullptr;
     m_threadPool = g_thread_pool_new(asyncWorkerFunc, this, 2, FALSE, &error);
@@ -123,6 +124,30 @@ void ExcerptTileCache::evict(std::size_t incomingBytes) {
     }
 }
 
+std::size_t ExcerptTileCache::evictSiblingTiers(const CropCacheKey& key) {
+    // Collect first: erasing from m_lookup while iterating it would invalidate the
+    // iterator, and every erase is a hash lookup over a 4-byte-payload key.
+    std::vector<CropCacheKey> doomed;
+    for (const auto& node : m_lruList) {
+        if (node.key.tier != key.tier && node.key.sameCropAs(key)) {
+            doomed.push_back(node.key);
+        }
+    }
+
+    std::size_t reclaimed = 0;
+    for (const auto& victimKey : doomed) {
+        auto it = m_lookup.find(victimKey);
+        if (it == m_lookup.end()) {
+            continue;
+        }
+        reclaimed += it->second->bytes;
+        m_currentBytes -= it->second->bytes;
+        m_lruList.erase(it->second);
+        m_lookup.erase(it);
+    }
+    return reclaimed;
+}
+
 void ExcerptTileCache::insert(const CropCacheKey& key, CairoSurfaceHandle handle) {
     if (!handle) {
         return;
@@ -135,10 +160,18 @@ void ExcerptTileCache::insert(const CropCacheKey& key, CairoSurfaceHandle handle
         it->second->surface = handle;
         it->second->bytes = handle.byteSize();
         m_lruList.splice(m_lruList.begin(), m_lruList, it->second);
+        // Re-rendering at the same tier can still leave a higher tier resident from an
+        // earlier zoom excursion, so the sweep runs on both paths.
+        evictSiblingTiers(key);
         return;
     }
 
     std::size_t bytes = handle.byteSize();
+
+    // Retire other resolutions of this crop before generic LRU eviction, otherwise the
+    // byte budget is spent on stale tiers while evicting tiles other cards still need.
+    evictSiblingTiers(key);
+
     evict(bytes);
 
     CacheNode node;
@@ -181,6 +214,18 @@ CairoSurfaceHandle ExcerptTileCache::renderCropSync(const std::string& docId, st
                        kMaxTileDimension);
     int h = std::clamp(static_cast<int>(std::round(targetHeightPx)), kMinTileDimension,
                        kMaxTileDimension);
+
+    // Byte ceiling on a single tile. The dimension clamp alone permits 1536x1536 ARGB =
+    // 9.44 MB, which is ~40% of the whole excerpt slice for one card thumbnail. Cards are
+    // ~400 pt wide on the canvas, so a tile is already well oversampled well below this.
+    // Scale down uniformly rather than distorting the crop's aspect ratio.
+    const std::size_t bytes = static_cast<std::size_t>(w) * h * 4;
+    if (bytes > kMaxTileBytes) {
+        const double shrink =
+            std::sqrt(static_cast<double>(kMaxTileBytes) / static_cast<double>(bytes));
+        w = std::max(kMinTileDimension, static_cast<int>(w * shrink));
+        h = std::max(kMinTileDimension, static_cast<int>(h * shrink));
+    }
 
     std::size_t incomingBytes = static_cast<std::size_t>(w) * h * 4;
     evict(incomingBytes);
@@ -385,6 +430,19 @@ void ExcerptTileCache::invalidateSpatial(const std::string& docId, std::size_t p
         }
         ++it;
     }
+}
+
+std::size_t ExcerptTileCache::trimToBytes(std::size_t targetBytes) {
+    const std::size_t before = m_currentBytes;
+    // Drop the LRU tail until the target is met. Surfaces are released on eviction, so
+    // the backing stores are freed here and _heapmin() can then hand the pages back.
+    while (m_currentBytes > targetBytes && !m_lruList.empty()) {
+        CacheNode& victim = m_lruList.back();
+        m_currentBytes -= victim.bytes;
+        m_lookup.erase(victim.key);
+        m_lruList.pop_back();
+    }
+    return before - m_currentBytes;
 }
 
 void ExcerptTileCache::clear() {

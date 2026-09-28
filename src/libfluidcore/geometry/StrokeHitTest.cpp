@@ -1,4 +1,5 @@
 #include "geometry/StrokeHitTest.h"
+#include "geometry/StrokeWidthModel.h"
 
 namespace FluidCore {
 
@@ -91,14 +92,10 @@ double maxRenderedStrokeWidth(const Stroke& stroke) {
     if (stroke.points.empty()) {
         return 0.0;
     }
-    double maxP = 1.0;
-    for (double p : stroke.pressures) {
-        if (p > maxP) {
-            maxP = p;
-        }
-    }
-    // FluidCore Cairo renderer equation: width * (0.25 + 0.75 * p)
-    return stroke.width * (0.25 + 0.75 * maxP);
+    // Ink width is constant, so the rendered width is the selected width. Pressure is
+    // still stored with the stroke but no longer affects geometry, and sizing the eraser
+    // from it would report hits on blank page.
+    return renderedWidth(stroke.width);
 }
 
 Rectangle computeStrokeBounds(const Stroke& stroke) {

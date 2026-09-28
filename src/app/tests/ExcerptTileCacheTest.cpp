@@ -105,6 +105,75 @@ int testByteBoundedLruEviction() {
     return failures;
 }
 
+int testTierExclusiveEviction() {
+    std::cout << "Running testTierExclusiveEviction...\n";
+    int failures = 0;
+
+    PdfDocumentService docService;
+    // Generous budget so generic LRU eviction can never be what removes a tile: this
+    // test only passes if sibling tiers are retired by crop identity.
+    ExcerptTileCache cache(docService, 64 * 1024 * 1024);
+
+    const FluidCore::Rectangle region{0.0, 0.0, 0.4, 0.3};
+    const FluidCore::Rectangle otherRegion{0.6, 0.6, 0.3, 0.3};
+
+    CropCacheKey standard = CropCacheKey::fromNormalizedRect("doc-1", 0, region, LodTier::Standard);
+    CropCacheKey hidpi = CropCacheKey::fromNormalizedRect("doc-1", 0, region, LodTier::HiDpi);
+    CropCacheKey retina = CropCacheKey::fromNormalizedRect("doc-1", 0, region, LodTier::Retina);
+
+    // A different crop on the same page must be untouched by the sweep.
+    CropCacheKey neighbour =
+        CropCacheKey::fromNormalizedRect("doc-1", 0, otherRegion, LodTier::Standard);
+
+    const std::size_t tileBytes = 100 * 100 * 4;
+
+    cache.insert(standard, CairoSurfaceHandle(
+                               cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 100, 100), true));
+    cache.insert(neighbour, CairoSurfaceHandle(
+                                cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 100, 100), true));
+    failures += check(cache.size() == 2, "Two distinct crops cached");
+    failures += check(cache.currentBytes() == 2 * tileBytes, "Two tiles resident");
+
+    cache.insert(
+        hidpi, CairoSurfaceHandle(cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 100, 100), true));
+    failures += check(!cache.get(standard), "Standard tier dropped when HiDpi inserted");
+    failures += check(static_cast<bool>(cache.get(hidpi)), "HiDpi tier present");
+    failures += check(static_cast<bool>(cache.get(neighbour)), "Neighbouring crop survives");
+    failures += check(cache.size() == 2, "Entry count unchanged by tier swap");
+    failures += check(cache.currentBytes() == 2 * tileBytes, "No byte growth from tier swap");
+
+    cache.insert(retina, CairoSurfaceHandle(
+                             cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 100, 100), true));
+    failures += check(!cache.get(hidpi), "HiDpi tier dropped when Retina inserted");
+    failures += check(static_cast<bool>(cache.get(retina)), "Retina tier present");
+    failures += check(cache.size() == 2, "Still only two entries after second swap");
+    failures += check(cache.currentBytes() == 2 * tileBytes, "Bytes flat across three zoom levels");
+
+    // Re-inserting the same tier it already holds must not evict itself.
+    cache.insert(retina, CairoSurfaceHandle(
+                             cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 100, 100), true));
+    failures += check(static_cast<bool>(cache.get(retina)), "Same-tier re-insert keeps the tile");
+    failures += check(static_cast<bool>(cache.get(neighbour)), "Neighbouring crop still resident");
+    failures += check(cache.size() == 2, "Same-tier re-insert does not duplicate");
+
+    return failures;
+}
+
+int testTileByteCeiling() {
+    std::cout << "Running testTileByteCeiling...\n";
+    int failures = 0;
+
+    failures +=
+        check(ExcerptTileCache::kMaxTileBytes == 4 * 1024 * 1024, "Per-tile byte ceiling is 4 MB");
+    // The dimension clamp alone would allow 1536*1536*4 = 9.44 MB for one card.
+    const std::size_t unclamped = static_cast<std::size_t>(ExcerptTileCache::kMaxTileDimension) *
+                                  ExcerptTileCache::kMaxTileDimension * 4;
+    failures += check(unclamped > ExcerptTileCache::kMaxTileBytes,
+                      "Byte ceiling is stricter than the dimension clamp");
+
+    return failures;
+}
+
 int testDocumentInvalidationAndCancellation() {
     std::cout << "Running testDocumentInvalidationAndCancellation...\n";
     int failures = 0;
@@ -425,6 +494,8 @@ int main() {
     totalFailures += testCropCacheKeyQuantizationAndHashing();
     totalFailures += testLoDTierCalculations();
     totalFailures += testByteBoundedLruEviction();
+    totalFailures += testTierExclusiveEviction();
+    totalFailures += testTileByteCeiling();
     totalFailures += testDocumentInvalidationAndCancellation();
     totalFailures += testSpatialInvalidation();
     totalFailures += testStrokeProviderWiring();

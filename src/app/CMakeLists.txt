@@ -21,10 +21,13 @@ set(FLUIDCORE_APP_SOURCES
     export/ExportProgressDialog.cpp
     services/DocumentSearchService.cpp
     services/ExcerptTileCache.cpp
+    services/MemoryBudget.cpp
     services/PageTileCache.cpp
     services/PdfDocumentService.cpp
     services/PdfExportService.cpp
+    services/StrokeRenderer.cpp
     services/StrokeStabilizer.cpp
+    services/StylusButtonRouter.cpp
     services/TextSelectionService.cpp
     services/ToolManager.cpp
     workspace/TopToolbarWidget.cpp
@@ -89,7 +92,7 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME ToolManagerTest COMMAND tool_manager_test)
 
-    add_executable(page_tile_cache_test tests/PageTileCacheTest.cpp services/PageTileCache.cpp)
+    add_executable(page_tile_cache_test tests/PageTileCacheTest.cpp services/MemoryBudget.cpp services/PageTileCache.cpp)
     target_include_directories(page_tile_cache_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(page_tile_cache_test PRIVATE fluidcore PkgConfig::CAIRO PkgConfig::POPPLER_GLIB)
     if(MSVC)
@@ -98,6 +101,16 @@ if(BUILD_TESTING)
         target_compile_options(page_tile_cache_test PRIVATE -Wall -Wextra -Wpedantic)
     endif()
     add_test(NAME PageTileCacheTest COMMAND page_tile_cache_test)
+
+    add_executable(memory_budget_test tests/MemoryBudgetTest.cpp services/MemoryBudget.cpp)
+    target_include_directories(memory_budget_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(memory_budget_test PRIVATE fluidcore)
+    if(MSVC)
+        target_compile_options(memory_budget_test PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(memory_budget_test PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    add_test(NAME MemoryBudgetTest COMMAND memory_budget_test)
 
     add_executable(stroke_stabilizer_test tests/StrokeStabilizerTest.cpp services/StrokeStabilizer.cpp)
     target_include_directories(stroke_stabilizer_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -108,6 +121,26 @@ if(BUILD_TESTING)
         target_compile_options(stroke_stabilizer_test PRIVATE -Wall -Wextra -Wpedantic)
     endif()
     add_test(NAME StrokeStabilizerTest COMMAND stroke_stabilizer_test)
+
+    add_executable(stroke_renderer_test tests/StrokeRendererTest.cpp services/StrokeRenderer.cpp services/StrokeStabilizer.cpp)
+    target_include_directories(stroke_renderer_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(stroke_renderer_test PRIVATE fluidcore PkgConfig::CAIRO)
+    if(MSVC)
+        target_compile_options(stroke_renderer_test PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(stroke_renderer_test PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    add_test(NAME StrokeRendererTest COMMAND stroke_renderer_test)
+
+    add_executable(stylus_button_router_test tests/StylusButtonRouterTest.cpp services/StylusButtonRouter.cpp)
+    target_include_directories(stylus_button_router_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(stylus_button_router_test PRIVATE fluidcore PkgConfig::GTK3)
+    if(MSVC)
+        target_compile_options(stylus_button_router_test PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(stylus_button_router_test PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    add_test(NAME StylusButtonRouterTest COMMAND stylus_button_router_test)
 
     add_executable(squeeze_render_test tests/SqueezeRenderTest.cpp document/SqueezeRenderHelper.cpp)
     target_include_directories(squeeze_render_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -149,7 +182,7 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME BiDirectionalAnchorTest COMMAND bi_directional_anchor_test)
 
-    add_executable(excerpt_tile_cache_test tests/ExcerptTileCacheTest.cpp services/ExcerptTileCache.cpp services/PdfDocumentService.cpp services/PdfExportService.cpp services/StrokeStabilizer.cpp)
+    add_executable(excerpt_tile_cache_test tests/ExcerptTileCacheTest.cpp services/MemoryBudget.cpp services/ExcerptTileCache.cpp services/PdfDocumentService.cpp services/PdfExportService.cpp services/StrokeRenderer.cpp services/StrokeStabilizer.cpp)
     target_include_directories(excerpt_tile_cache_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(excerpt_tile_cache_test PRIVATE fluidcore PkgConfig::CAIRO PkgConfig::POPPLER_GLIB PkgConfig::GTK3)
     if(MSVC)
@@ -169,7 +202,7 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME WorkspaceInteractionTest COMMAND workspace_interaction_test)
 
-    add_executable(crop_drag_crash_test tests/CropDragCrashTest.cpp workspace/WorkspaceRenderer.cpp workspace/WorkspaceInteraction.cpp services/ExcerptTileCache.cpp services/PdfDocumentService.cpp services/PdfExportService.cpp services/StrokeStabilizer.cpp)
+    add_executable(crop_drag_crash_test tests/CropDragCrashTest.cpp workspace/WorkspaceRenderer.cpp workspace/WorkspaceInteraction.cpp services/MemoryBudget.cpp services/ExcerptTileCache.cpp services/PdfDocumentService.cpp services/PdfExportService.cpp services/StrokeRenderer.cpp services/StrokeStabilizer.cpp)
     target_include_directories(crop_drag_crash_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(crop_drag_crash_test PRIVATE fluidcore PkgConfig::GTK3 PkgConfig::CAIRO PkgConfig::POPPLER_GLIB)
     if(MSVC)
@@ -179,7 +212,7 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME CropDragCrashTest COMMAND crop_drag_crash_test)
 
-    add_executable(pdf_export_service_test tests/PdfExportServiceTest.cpp services/PdfExportService.cpp services/StrokeStabilizer.cpp)
+    add_executable(pdf_export_service_test tests/PdfExportServiceTest.cpp services/PdfExportService.cpp services/StrokeRenderer.cpp services/StrokeStabilizer.cpp)
     target_include_directories(pdf_export_service_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(pdf_export_service_test PRIVATE fluidcore PkgConfig::CAIRO PkgConfig::POPPLER_GLIB)
     if(MSVC)
@@ -191,10 +224,12 @@ if(BUILD_TESTING)
 
     add_executable(scalability_benchmark_test
         tests/ScalabilityBenchmarkTest.cpp
+        services/MemoryBudget.cpp
         services/ExcerptTileCache.cpp
         services/PdfDocumentService.cpp
         services/PageTileCache.cpp
         services/PdfExportService.cpp
+        services/StrokeRenderer.cpp
         services/StrokeStabilizer.cpp
     )
     target_include_directories(scalability_benchmark_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

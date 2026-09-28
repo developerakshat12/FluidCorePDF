@@ -21,6 +21,10 @@
 // clang-format on
 #endif
 
+#ifdef __GLIBC__
+#include <malloc.h>
+#endif
+
 #ifdef FLUIDCORE_HAS_MIMALLOC
 #include <mimalloc.h>
 #endif
@@ -61,6 +65,40 @@ class MemoryTelemetry {
 #endif
         return res;
     }
+    // Drops the process's resident page set without changing any allocation.
+    //
+    // This is what the OS itself does to a background process after a long idle period,
+    // and it is why an app left alone for hours reads far smaller in Task Manager than one
+    // freshly launched. Doing it explicitly means the user does not have to wait hours,
+    // and it reaches memory that neither cache eviction nor _heapmin() can: DLL code
+    // pages, GDK/GDI/DirectWrite allocations, and thread stacks. Those pages are written
+    // back to the page file and faulted back in on next access, so the only cost is a
+    // brief re-fault on the first redraw after an idle period.
+    struct WorkingSetTrimResult {
+        std::size_t workingSetBefore = 0;
+        std::size_t workingSetAfter = 0;
+        int status = 0;
+
+        std::size_t reclaimedBytes() const {
+            return workingSetBefore > workingSetAfter ? workingSetBefore - workingSetAfter : 0;
+        }
+    };
+
+    static WorkingSetTrimResult trimWorkingSet() {
+        WorkingSetTrimResult res;
+        res.workingSetBefore = getProcessWorkingSet();
+#ifdef _WIN32
+        res.status = EmptyWorkingSet(GetCurrentProcess()) ? 0 : -1;
+#elif defined(__GLIBC__)
+        // glibc's malloc_trim returns the space released back to the OS via madvise.
+        res.status = malloc_trim(0);
+#else
+        res.status = 0;
+#endif
+        res.workingSetAfter = getProcessWorkingSet();
+        return res;
+    }
+
     struct ProcessHeapMetrics {
         std::size_t privateBytes = 0;
         std::size_t workingSet = 0;
@@ -74,6 +112,7 @@ class MemoryTelemetry {
     static ProcessHeapMetrics getHeapMetrics() {
         ProcessHeapMetrics m;
 #ifdef _WIN32
+
         PROCESS_MEMORY_COUNTERS_EX pmc;
         if (GetProcessMemoryInfo(GetCurrentProcess(),
                                  reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&pmc), sizeof(pmc))) {
@@ -118,6 +157,34 @@ class MemoryTelemetry {
         }
 #endif
         return 0;
+    }
+
+    // True only once main() has actually called mi_heap_new(). The FLUIDCORE_HAS_MIMALLOC
+    // compile define merely records that the package was found at configure time, which
+    // says nothing about whether the allocator is installed at runtime.
+    static void markMimallocInstalled() { s_mimallocInstalled = true; }
+    static bool isMimallocInstalled() {
+#ifdef FLUIDCORE_HAS_MIMALLOC
+        return s_mimallocInstalled;
+#else
+        return false;
+#endif
+    }
+
+    // Live bytes mimalloc currently has committed, or 0 when it is not the allocator.
+    static std::size_t getMimallocCommittedBytes() {
+#ifdef FLUIDCORE_HAS_MIMALLOC
+        if (!s_mimallocInstalled) {
+            return 0;
+        }
+        size_t elapsed = 0, user = 0, sys = 0, curRss = 0, peakRss = 0, curCommit = 0,
+               peakCommit = 0, pageFaults = 0;
+        mi_process_info(&elapsed, &user, &sys, &curRss, &peakRss, &curCommit, &peakCommit,
+                        &pageFaults);
+        return curCommit;
+#else
+        return 0;
+#endif
     }
 
     static std::size_t getProcessWorkingSet() {
@@ -218,6 +285,9 @@ class MemoryTelemetry {
             }
         }
     }
+
+  private:
+    static inline bool s_mimallocInstalled = false;
 };
 
 class PopplerLifetimeTracker {

@@ -5,6 +5,7 @@
 #include "geometry/StrokeHitTest.h"
 #include "input/PalmRejectionEngine.h"
 #include "services/ExcerptTileCache.h"
+#include "services/MemoryBudget.h"
 #include "services/PdfDocumentService.h"
 #include "services/ToolManager.h"
 #include "window/AppHeaderBar.h"
@@ -2620,6 +2621,14 @@ void onActivate(GtkApplication* app, gpointer userData) {
         G_OBJECT(app), "workspace-view", workspace,
         +[](gpointer data) { delete static_cast<FluidCoreApp::WorkspaceView*>(data); });
 
+    // UndoStack lives in libfluidcore and cannot read the app-level pool (ADR-0001), so
+    // each stack's byte ceiling is assigned from the budget here. UndoStack's own 64 MB
+    // default is pure headroom in practice: kMaxDepth = 100 bounds history long before
+    // that byte ceiling is reached.
+    const std::size_t undoBudget = FluidCoreApp::MemoryBudget::instance().undoBytesPerStack();
+    documentPane->undoStack().setMaxBytes(undoBudget);
+    workspace->undoStack().setMaxBytes(undoBudget);
+
     auto* palmEngine = new FluidCore::PalmRejectionEngine();
     g_object_set_data_full(
         G_OBJECT(app), "palm-rejection-engine", palmEngine,
@@ -3662,6 +3671,212 @@ void onActivate(GtkApplication* app, gpointer userData) {
     std::cout << "[FluidCore] Window ready and presented (" << documentPane->pages().size()
               << " pages loaded)." << std::endl;
 
+    // Idle trim. Surfaces must be released BEFORE _heapmin(), otherwise there is nothing
+    // free for the heap manager to hand back and the call is a no-op - the ordering is the
+    // whole mechanism, not an optimisation.
+    //
+    // A single self-rescheduling timer polls a last-activity stamp, so there is no
+    // timeout handle to cancel or leak. Any widget event re-stamps it.
+    {
+        struct IdleTrim {
+            AppViewContext* ctx = nullptr;
+            gint64 lastActivityUs = 0;
+
+            // When the current stretch of inactivity began. Tracked separately from
+            // lastActivityUs so the two thresholds (trim at 20s, drop the working set
+            // after several minutes) can differ.
+            gint64 idleSinceUs = 0;
+            guint timerId = 0;
+
+            // Pushes the arbiter's current state onto the objects that actually enforce
+            // byte limits. MemoryBudget only decides *how much* each consumer may hold;
+            // the caches and undo stacks read their own m_maxBytes and never consult the
+            // arbiter again on their own. Without this, trimToIdle() would only relabel
+            // the heartbeat while every cache kept its full 24 MB ceiling.
+            //
+            // Held by value because the timer is a captureless C function pointer and
+            // cannot reach a lambda local.
+            std::function<void(const FluidCoreApp::MemoryBudget&)> applyBudget;
+        };
+        // The working set is dropped only after a long stretch of no input, since every
+        // page has to fault back in from the page file on the next redraw. Overridable so
+        // the behaviour can be exercised without waiting minutes.
+        constexpr gint64 kWorkingSetIdleUsDefault = 5 * 60 * G_USEC_PER_SEC;
+
+        auto* idle = new IdleTrim{
+            viewCtx, g_get_monotonic_time(), g_get_monotonic_time(), 0,
+            [viewCtx](const FluidCoreApp::MemoryBudget& budget) -> void {
+                if (viewCtx->pane) {
+                    viewCtx->pane->pageTileCache().setMaxBytes(
+                        budget.sliceBytes(FluidCoreApp::MemoryBudget::Slice::PageTiles));
+                    viewCtx->pane->undoStack().setMaxBytes(budget.undoBytesPerStack());
+                }
+                if (viewCtx->excerptTileCache) {
+                    viewCtx->excerptTileCache->setMaxBytes(
+                        budget.sliceBytes(FluidCoreApp::MemoryBudget::Slice::ExcerptTiles));
+                }
+                if (viewCtx->workspace) {
+                    viewCtx->workspace->undoStack().setMaxBytes(budget.undoBytesPerStack());
+                }
+            }};
+
+        g_signal_connect(window, "event",
+                         G_CALLBACK(+[](GtkWidget*, GdkEvent* event, gpointer data) -> gboolean {
+                             auto* self = static_cast<IdleTrim*>(data);
+                             if (!self) {
+                                 return false;
+                             }
+                             // Scrolling, zooming, typing and card drags all surface as
+                             // widget events; none of them should trigger a trim.
+                             switch (event->type) {
+                             case GDK_SCROLL:
+                             case GDK_BUTTON_PRESS:
+                             case GDK_MOTION_NOTIFY:
+                             case GDK_KEY_PRESS:
+                             case GDK_TOUCH_BEGIN:
+                                 self->lastActivityUs = g_get_monotonic_time();
+                                 break;
+                             default:
+                                 break;
+                             }
+                             return false;
+                         }),
+                         idle);
+
+        idle->timerId = g_timeout_add_seconds(
+            5,
+            +[](gpointer data) -> gboolean {
+                auto* self = static_cast<IdleTrim*>(data);
+                auto& budget = FluidCoreApp::MemoryBudget::instance();
+
+                // Restore reacts to activity on a short leash; the trim itself is the
+                // expensive operation and stays on the long one. Polling every 5s instead
+                // of 20s means a user who comes back is not left scrolling at 6 MB ceilings
+                // for up to 20 seconds.
+                constexpr gint64 kIdleRestoreThresholdUs = 2 * G_USEC_PER_SEC;
+
+                // Any interaction restores the budget, and this must be checked BEFORE the
+                // idle test. Checking it after meant the user had to sit still for another
+                // full idle window before their caches came back, so the first interaction
+                // after idling ran against the 6 MB idle ceilings.
+                //
+                // Keyed on the activity stamp alone, not on focus: focus is unreliable on
+                // Windows (see the working-set note below), whereas a real input event is
+                // unambiguous. Doing it here rather than in the event handler keeps the work
+                // off the per-motion-event path - the timer observes the transition, so
+                // returning costs one setMaxBytes() rather than one per mouse-move event.
+                if (budget.isIdle() &&
+                    g_get_monotonic_time() - self->lastActivityUs < kIdleRestoreThresholdUs) {
+                    budget.restoreFromIdle();
+                    self->applyBudget(budget);
+                    // A restored budget must not immediately re-trim: the app is being
+                    // touched, so the idle countdown has to start over from now.
+                    self->idleSinceUs = g_get_monotonic_time();
+                    FluidCoreApp::MemoryTelemetry::log(
+                        "[IdleRestore] activity detected; cache budgets restored | " +
+                        budget.describe());
+                }
+                // Requiring a full idle window, and NOT requiring loss of focus. This app
+                // is read for long stretches without input, so a focused-but-idle window is
+                // the common case and the one most worth reclaiming memory for. Only the
+                // working-set drop below is gated on the user not watching.
+                constexpr gint64 kIdleThresholdUs = 20 * G_USEC_PER_SEC;
+                if (g_get_monotonic_time() - self->lastActivityUs < kIdleThresholdUs) {
+                    return G_SOURCE_CONTINUE;
+                }
+                // Begin (or continue) the current idle stretch. Reset on the first tick
+                // that satisfies the threshold, so a single stray event 19s ago does not
+                // count as inactivity.
+                if (g_get_monotonic_time() - self->idleSinceUs < kIdleThresholdUs) {
+                    self->idleSinceUs = g_get_monotonic_time();
+                }
+                // Shrink the arbiter FIRST, so the eviction targets below are the already-
+                // reduced idle slices. Previously this ran after the trim, which meant the
+                // targets were computed from the full-size slices and a hand-applied /4
+                // hid the ordering mistake.
+                budget.trimToIdle();
+                self->applyBudget(budget);
+
+                if (self->ctx && self->ctx->pane) {
+                    self->ctx->pane->clearCache();
+                }
+                if (self->ctx->excerptTileCache) {
+                    self->ctx->excerptTileCache->trimToBytes(
+                        budget.sliceBytes(FluidCoreApp::MemoryBudget::Slice::ExcerptTiles));
+                }
+
+                // Only now, with surfaces released, can the heap return pages to the OS.
+                const auto hm = FluidCoreApp::MemoryTelemetry::runHeapMin("IdleTrim");
+
+                // The working set is only dropped when the user is not looking at the
+                // window. Emptying it makes every page fault back in from the page file on
+                // the next redraw - invisible behind another app, a visible hitch on screen.
+                // Surface eviction and _heapmin() above run either way, since a released
+                // tile just re-renders.
+                //
+                // The working set is the harshest step - every page faults back in from the
+                // page file on the next redraw - so it is deferred much longer than the
+                // surface eviction above, and to a threshold measured in minutes.
+                //
+                // It is deliberately NOT gated on window state. Every GTK/Win32 signal for
+                // "the user is not looking at this" was tried and none could be verified:
+                // gtk_window_is_active() stayed TRUE after minimize, gtk_widget_get_mapped()
+                // stayed TRUE, and GDK_WINDOW_STATE_ICONIFIED never arrived under scripted
+                // minimize. Gating on any of them risks silently disabling the step while
+                // the logs still look healthy, which is worse than trimming a little early.
+                //
+                // A 5-minute no-input window is a sound proxy instead: it is the same
+                // judgement Windows itself applies after hours, only faster, and long enough
+                // that someone mid-read is not interrupted. Set FLUIDCORE_IDLE_WS_SECONDS
+                // to tune it; 0 makes the step unconditional.
+                static const gint64 kWorkingSetIdleUs = []() -> gint64 {
+                    const char* override = std::getenv("FLUIDCORE_IDLE_WS_SECONDS");
+                    if (override == nullptr) {
+                        return kWorkingSetIdleUsDefault;
+                    }
+                    const long long seconds = std::atoll(override);
+                    return seconds < 0 ? kWorkingSetIdleUsDefault : seconds * G_USEC_PER_SEC;
+                }();
+                const bool minimized =
+                    g_get_monotonic_time() - self->idleSinceUs >= kWorkingSetIdleUs;
+                std::size_t wsAfter = hm.wsAfter;
+                std::size_t wsReclaimed = 0;
+                const char* wsNote = "skipped (not idle long enough)";
+                if (minimized) {
+                    const auto ws = FluidCoreApp::MemoryTelemetry::trimWorkingSet();
+                    wsAfter = ws.workingSetAfter;
+                    wsReclaimed = ws.reclaimedBytes();
+                    wsNote = "trimmed";
+                }
+
+                FluidCoreApp::MemoryTelemetry::log(
+                    std::string("[IdleTrim] surfaces released, heap purged, working set ") +
+                    wsNote + " | WS " + FluidCoreApp::MemoryTelemetry::formatMB(hm.wsAfter) +
+                    " -> " + FluidCoreApp::MemoryTelemetry::formatMB(wsAfter) + " (reclaimed " +
+                    FluidCoreApp::MemoryTelemetry::formatMB(wsReclaimed) + ")" + " | Priv " +
+                    FluidCoreApp::MemoryTelemetry::formatMB(
+                        FluidCoreApp::MemoryTelemetry::getProcessPrivateBytes()) +
+                    " | " + budget.describe());
+
+                // Re-arm the surface trim after another full idle window. Deliberately does
+                // NOT reset idleSinceUs: the working-set countdown measures total
+                // uninterrupted inactivity, so it keeps running across repeated surface
+                // trims while the app stays untouched.
+                self->lastActivityUs = g_get_monotonic_time();
+                return G_SOURCE_CONTINUE;
+            },
+            idle);
+
+        g_object_set_data_full(
+            G_OBJECT(window), "idle-trim", idle, +[](gpointer d) {
+                auto* self = static_cast<IdleTrim*>(d);
+                if (self && self->timerId != 0) {
+                    g_source_remove(self->timerId);
+                }
+                delete self;
+            });
+    }
+
     if (g_getenv("FLUIDCORE_HEARTBEAT") != nullptr) {
         g_timeout_add_seconds(
             4,
@@ -3677,9 +3892,19 @@ void onActivate(GtkApplication* app, gpointer userData) {
                     " | WS: " + FluidCoreApp::MemoryTelemetry::formatMB(m.workingSet) +
                     " | LiveAlloc: " + FluidCoreApp::MemoryTelemetry::formatMB(m.heapAllocated) +
                     " | HeapCommit: " + FluidCoreApp::MemoryTelemetry::formatMB(m.heapCommitted) +
-                    " | Slack: " + FluidCoreApp::MemoryTelemetry::formatMB(m.heapSlack) +
-                    " | Poppler Live: " +
-                    std::to_string(FluidCoreApp::PopplerLifetimeTracker::getLivePages());
+                    " | Slack: " + FluidCoreApp::MemoryTelemetry::formatMB(m.heapSlack);
+
+                if (FluidCoreApp::MemoryTelemetry::isMimallocInstalled()) {
+                    msg += " | MiCommit: " +
+                           FluidCoreApp::MemoryTelemetry::formatMB(m.mimallocCommitted) +
+                           " | MiRSS: " + FluidCoreApp::MemoryTelemetry::formatMB(m.mimallocRss);
+                } else {
+                    msg += " | Mi: OFF";
+                }
+
+                msg += " | Poppler Live: " +
+                       std::to_string(FluidCoreApp::PopplerLifetimeTracker::getLivePages()) +
+                       " | Budget: " + FluidCoreApp::MemoryBudget::instance().describe();
 
                 if (vCtx->pane) {
                     auto ptStats = vCtx->pane->pageTileCache().getStats();
@@ -3714,6 +3939,18 @@ void onActivate(GtkApplication* app, gpointer userData) {
 } // namespace
 
 int main(int argc, char** argv) {
+    // NOTE: mimalloc is linked but deliberately NOT installed as the process allocator.
+    //
+    // Proven dead end - see
+    // debug/investigations/MEMORY_LEAK_INVESTIGATION_CHRONOLOGY_AND_TEST_CASES.md (Micro-Test B,
+    // lines 483-498). mi_heap_new() only creates a *separate* mimalloc heap; standard CRT malloc()
+    // in poppler/cairo/glib keeps routing to ucrtbase.dll, so it reclaims 0% of the LFH slack that
+    // actually holds our memory. Forcing it per-TU via <mimalloc-new-delete.h> overrides operator
+    // new/delete locally and aborts the process with 0xC0000374 STATUS_HEAP_CORRUPTION when a DLL
+    // frees what we allocated.
+    //
+    // The options below are retained because they are correct no-ops, and the banner below
+    // reports the *runtime* truth rather than claiming an allocator we do not have.
 #ifdef FLUIDCORE_HAS_MIMALLOC
     mi_option_set(mi_option_purge_delay, 0);
     mi_option_set(mi_option_purge_decommits, 1);
@@ -3872,8 +4109,15 @@ int main(int argc, char** argv) {
                               ? "1 (ACTIVE - no Cairo tiles cached)\n"
                               : "0 (Disabled - Cairo surfaces cached in LRU)\n");
 #ifdef FLUIDCORE_HAS_MIMALLOC
-    banner += "    MIMALLOC_ALLOCATOR:           1 (ACTIVE - PurgeDelay=0, Decommit=1, Heap Slack "
-              "Optimized)";
+    if (FluidCoreApp::MemoryTelemetry::isMimallocInstalled()) {
+        banner += "    MIMALLOC_ALLOCATOR:           1 (ACTIVE - PurgeDelay=0, Decommit=1, "
+                  "CommitDelay=n/a; committed " +
+                  FluidCoreApp::MemoryTelemetry::formatMB(
+                      FluidCoreApp::MemoryTelemetry::getMimallocCommittedBytes()) +
+                  ")\n";
+    } else {
+        banner += "    MIMALLOC_ALLOCATOR:           0 (Linked but NOT installed - CRT heap)\n";
+    }
 #else
     banner += "    MIMALLOC_ALLOCATOR:           0 (Disabled - Standard CRT Heap)";
 #endif

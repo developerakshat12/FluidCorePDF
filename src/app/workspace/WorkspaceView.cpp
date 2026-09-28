@@ -28,6 +28,11 @@ namespace {
 constexpr double kMinZoom = 0.10; // 10%
 constexpr double kMaxZoom = 2.0;  // 200%
 
+// Width forced onto the eraser, matching the document pane. The eraser deletes whole
+// strokes rather than painting, so its width only sizes the hit radius and the cursor
+// ring.
+constexpr double kWorkspaceEraserWidth = 20.0;
+
 std::string generateUniqueStrokeId() {
     static std::atomic<uint64_t> s_strokeSeq{0};
     const uint64_t ts = static_cast<uint64_t>(g_get_real_time());
@@ -807,7 +812,7 @@ void WorkspaceView::setTool(const std::string& tool) {
         cancelCurrentInteraction();
         m_state.inking.currentTool = tool;
         if (tool == "eraser") {
-            m_state.inking.currentWidth = 24.0;
+            m_state.inking.currentWidth = kWorkspaceEraserWidth;
         }
         if (tool != "eraser") {
             m_state.isEraserPointerHovering = false;
@@ -990,8 +995,23 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
     if (!dev) {
         dev = event->device;
     }
+    const GdkInputSource source = dev ? gdk_device_get_source(dev) : GDK_SOURCE_MOUSE;
     updatePalmProfile(m_palmEngine, dev);
     FluidCore::InputDeviceClass devClass = classifyGdkDevice(dev);
+
+    // A pen barrel button borrows the eraser. GDK reports barrel presses as middle or
+    // secondary buttons, so without this the branch below would read them as a canvas
+    // pan or pop open a context menu. Resolved before the palm engine, which only
+    // cares about the primary nib contact.
+    if (StylusButtonRouter::isBarrelButton(event->button, source)) {
+        m_toolBeforeBarrel = m_stylusRouter.beginBarrel(m_state.inking.currentTool);
+        m_state.inking.currentTool = "eraser";
+        m_state.inking.currentWidth = kWorkspaceEraserWidth;
+        m_state.isEraserPointerHovering = true;
+        m_barrelDownAtMs = static_cast<uint32_t>(g_get_real_time() / 1000);
+        gtk_widget_queue_draw(m_area);
+        return TRUE;
+    }
 
     gdouble pressAxis = 1.0;
     if (!gdk_event_get_axis(reinterpret_cast<GdkEvent*>(event), GDK_AXIS_PRESSURE, &pressAxis) ||
@@ -1036,6 +1056,22 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
                                                            event->y, alloc.width, alloc.height);
             return TRUE;
         }
+    }
+
+    // A stylus inks regardless of the tool the mouse last selected. "select" is a
+    // mouse-oriented mode that would otherwise consume a pen press as a card
+    // selection, forcing the user to switch tools with a mouse before annotating.
+    // The override lasts only for this stroke and is undone on release, so the mouse
+    // selection is preserved for when the pen is put down.
+    if (event->button == GDK_BUTTON_PRIMARY && StylusButtonRouter::isStylusSource(source) &&
+        !m_stylusToolOverride) {
+        m_toolBeforeStylus = m_state.inking.currentTool;
+        m_state.inking.currentTool = StylusButtonRouter::resolveInkTool(
+            m_state.inking.currentTool, source, (event->state & GDK_SHIFT_MASK) != 0);
+        // Remember what was installed, so the release unwind can tell "still ours"
+        // from "the user changed tools while the pen was down".
+        m_stylusToolInstalled = m_state.inking.currentTool;
+        m_stylusToolOverride = true;
     }
 
     if (event->button == GDK_BUTTON_MIDDLE ||
@@ -1381,12 +1417,63 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
 }
 
 gboolean WorkspaceView::onButtonRelease(GdkEventButton* event) {
+    // The stylus tool override spans a whole press/motion/release sequence, and the
+    // release handler has many early returns, so it is unwound here rather than at each
+    // exit.
+    //
+    // The unwind is conditional on the tool still being the one the override installed.
+    // Restoring unconditionally is wrong: the user can change tools while the pen is
+    // still down, and ToolManager writes straight to currentTool, bypassing the
+    // override's saved value. An unconditional restore then overwrites that newer
+    // choice with a value captured at some earlier point, which made the eraser revert
+    // to the pen and needed several presses of E to take effect again.
+    struct ToolOverrideGuard {
+        WorkspaceView& view;
+        ~ToolOverrideGuard() {
+            if (!view.m_stylusToolOverride) {
+                return;
+            }
+            view.m_stylusToolOverride = false;
+            if (StylusButtonRouter::shouldRestoreBorrowedTool(view.m_toolBeforeStylus,
+                                                              view.m_stylusToolInstalled,
+                                                              view.m_state.inking.currentTool)) {
+                view.m_state.inking.currentTool = view.m_toolBeforeStylus;
+            }
+            view.m_toolBeforeStylus.clear();
+        }
+    } guard{*this};
+
+    return handleButtonRelease(event);
+}
+
+gboolean WorkspaceView::handleButtonRelease(GdkEventButton* event) {
     GdkDevice* dev = gdk_event_get_source_device(reinterpret_cast<GdkEvent*>(event));
     if (!dev) {
         dev = event->device;
     }
     FluidCore::InputDeviceClass devClass = classifyGdkDevice(dev);
     uint64_t nowMs = static_cast<uint64_t>(g_get_real_time() / 1000);
+
+    // Barrel release: hand the selected tool back unless the eraser latched.
+    if (StylusButtonRouter::isBarrelButton(event->button,
+                                           dev ? gdk_device_get_source(dev) : GDK_SOURCE_MOUSE) &&
+        m_stylusRouter.barrelActive()) {
+        const uint32_t heldMs = static_cast<uint32_t>(g_get_real_time() / 1000) - m_barrelDownAtMs;
+        if (heldMs >= StylusButtonRouter::kBarrelLatchMs) {
+            m_stylusRouter.latchBarrel();
+        }
+        // Only restore if the tool is still the eraser the barrel installed. A tool
+        // change made while the barrel was held wins.
+        if (m_stylusRouter.endBarrel() && !m_toolBeforeBarrel.empty() &&
+            m_state.inking.currentTool == "eraser") {
+            m_state.inking.currentTool = m_toolBeforeBarrel;
+        }
+        m_toolBeforeBarrel.clear();
+        m_state.isEraserPointerHovering = false;
+        gtk_widget_queue_draw(m_area);
+        return TRUE;
+    }
+
     if (m_palmEngine) {
         if (devClass == FluidCore::InputDeviceClass::Pen ||
             devClass == FluidCore::InputDeviceClass::Eraser) {

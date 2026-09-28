@@ -525,7 +525,139 @@ During the iterative root-cause investigation, several isolated micro-test progr
 
 ---
 
-## 5. Next Steps: Out-of-Process Search Worker
+## 5. 2026-09-28 Re-Verification: Layer 1 Leak No Longer Reproduces
+
+The findings in §1–§4 were re-tested on 2026-09-28 against the current tree and the
+current MSYS2 UCRT64 toolchain, using the production scenario runner rather than the
+quarantined IAT probe.
+
+**Command:** `fluidcore_app.exe --run-scenario-find20 "…\ComparchTB.pdf"` (793 pages, 20
+consecutive full-document searches, `FLUIDCORE_LOG_TELEMETRY=1`).
+
+### 5.1 Result: LiveAlloc is flat, not +5.08 MB per pass
+
+| Metric | Test Case 10 (documented, 892-page Hull) | Re-verification 2026-09-28 (793-page ComparchTB) |
+|---|---|---|
+| LiveAlloc after 20 passes | 23.65 → 124.77 MB (**+101.12 MB**) | 31.74 → 31.65 MB (**−0.09 MB**) |
+| Per-pass LiveAlloc delta | +5.06 MB (σ = 0.05) | ≈ 0.00 MB (oscillates ±0.1) |
+| Private after 20 passes | 214 → 221 MB (linear ratchet) | 69.5 → 80.0 MB, **plateaus after ~3 passes** |
+| HeapCommit | 42 → 187 MB (linear) | 37.7 → 55.0 MB, **plateaus ~54 MB** |
+| Worker thread recycling | no effect | no effect (same as before) |
+| Exit code | — | **0 (clean)** |
+
+The `libwinpthread-1.dll` 24-byte mutex leak attributed in §3 (Phase 3) to
+`std::recursive_mutex::~recursive_mutex() = default;` in `poppler/Array.h:82` and
+`poppler/Dict.h:119` **does not occur on this toolchain.** The mechanism was real when
+observed; the GCC/`<mutex>` behaviour behind it has since changed. Searches were verified
+to genuinely run: 793 pages scanned per pass, 15–20 s per pass, ephemeral
+`PopplerDocument` opened and destroyed each time.
+
+**Consequence: the Out-of-Process Search Worker proposed in §5 solves a problem that no
+longer exists. It should not be built on the basis of this document alone.**
+
+### 5.2 What still accumulates: Layer 2 slack only
+
+The residual effect is Layer 2 (§1.2): committed-but-unused LFH retention, ~6 MB per pass
+for the first few passes, then flat. It is bounded, it plateaus, and it is not a leak.
+
+### 5.3 Corrections to §2 (Phase 4) and §4 (Gotcha 3)
+
+- **mimalloc is a dead end, confirmed by re-test.** `mi_heap_new()` was added to `main()`
+  and reverted. It creates a separate mimalloc heap; CRT `malloc()` in poppler/cairo/glib
+  keeps routing to `ucrtbase.dll`, so it reclaims 0% of the LFH slack that actually holds
+  the memory. It also crashed at startup (`0xC0000005`) via the same allocator-mismatch
+  class of failure documented in §4.3. mimalloc remains linked for its
+  `mi_process_info()` telemetry only; the startup banner now reports *runtime* truth via
+  `MemoryTelemetry::isMimallocInstalled()` rather than the `#ifdef`, which previously
+  claimed `MIMALLOC_ALLOCATOR: 1 (ACTIVE … Heap Slack Optimized)` on a build where the
+  allocator was never installed.
+- **Thread recycling remains useless** — §2 Phase 5 and §4.1 still hold.
+
+### 5.4 What was actually worth fixing (measured 2026-09-28)
+
+With the search leak gone, the remaining growth was in the caches, and none of it was
+covered by this document:
+
+| Fix | Measured effect |
+|---|---|
+| Tier-exclusive eviction in `ExcerptTileCache::insert()` — LoD siblings of the same crop were never dropped, so one card retained up to 4 tiles | 58 crops / 28.95 MB → 3–10 crops / 5.6–14.9 MB |
+| Fix 5D byte-aware pinning (pinned bytes were only count-capped, so 8 pins at 200% zoom held ~76 MB against a 64 MB budget and blocked eviction) | prevents the documented unbounded growth |
+| Fix 5D 4096 px per-surface clamp | bounds a single page allocation |
+| Global `MemoryBudget` arbiter — 4 independent 64 MB ceilings (256 MB authorized) → one 64 MB pool (24/24/16) | budget now enforced, not advisory |
+| Idle trim: release surfaces, *then* `_heapmin()` | −6 MB WS / −8 MB private when idle |
+
+Net: project-loaded private bytes 156.7 → 82–92 MB; working set 202.6 → 128–138 MB.
+
+---
+
+
+## 6. Next Steps: Out-of-Process Search Worker (SUPERSEDED - see Section 5)
+
+> **Status as of 2026-09-28: DO NOT BUILD THIS.** The leak it was designed to eliminate
+> (the +5.08 MB per search pass) no longer reproduces on the current toolchain. See
+> Section 5.1. The proposal is retained below for historical context only.
+
+## 7. Idle Reclamation: Verified Behaviour (2026-09-28)
+
+Distinct from the search-leak work above. This concerns what the app does when it is
+left alone, and it was measured on the packaged build.
+
+### 7.1 Working Set vs. Private Bytes
+
+Task Manager's "Memory" column is the **working set** (resident pages), not committed
+memory. This distinction decides the whole question:
+
+| State | Working set | Private bytes |
+|---|---|---|
+| Fresh launch, no document | 94.4 MB | 47.7 MB |
+| Document loaded, in use | 133.8 MB | 89.3 MB |
+| **Document loaded, idle** | **1.5 MB** | 84.3 MB |
+
+The ~19 MB previously observed after several hours unattended was the working set, and
+it was never a smaller baseline: Windows trims resident pages from a background process
+over time. The app is now made to do that itself after a short idle window.
+
+**The 1.5 MB is not the app using 1.5 MB.** Private bytes remain at ~84 MB; the pages are
+paged out and fault back in on access. For real footprint, watch commit size, not the
+Memory column.
+
+### 7.2 Three-Stage Idle Trim
+
+Fires only after a full idle window, and is **not** gated on window focus — this app is
+read for long stretches without input, so a focused-but-idle window is the common case.
+
+1. **20s idle** — release tile surfaces, shrink the `MemoryBudget` slices to 25%, then
+   `_heapmin()`. Surface release must precede the heap purge, or there is nothing to return.
+2. **5 minutes idle** (overridable via `FLUIDCORE_IDLE_WS_SECONDS`) — `EmptyWorkingSet`
+   on Windows, `malloc_trim(0)` on glibc. Deferred separately because every page faults
+   back in from the page file on the next redraw.
+3. **Any activity** — budget restored to full slices.
+
+Verified round-trip on the packaged build, launched from an unrelated working directory
+with no MSYS2 on `PATH`:
+
+```
+IDLE 75s              : WS=   1.5 MB
+AFTER user interaction : WS=  18.2 MB
+[IdleTrim]    ... working set trimmed | WS 127.71 MB -> 0.07 MB | total 64MB (idle) | PageTiles 6MB | ...
+[IdleRestore] activity detected; cache budgets restored | total 64MB | PageTiles 24MB | ...
+```
+
+### 7.3 Gotcha: GTK Window State Is Unreliable for This on Windows
+
+Gating the working-set step on window state **silently disables it**. All three obvious
+signals were measured and all failed to flip under a scripted minimize:
+
+| Signal | Result after minimize |
+|---|---|
+| `gtk_window_is_active()` | stays `TRUE` |
+| `gtk_widget_get_mapped()` | stays `TRUE` |
+| `GDK_WINDOW_STATE_ICONIFIED` | never delivered |
+
+The failure mode is dangerous because the surface-eviction stage still runs, so logs look
+healthy while the working set never moves. The step is therefore keyed on **uninterrupted
+idle time** rather than on any window-state query.
+
 
 Because in-process IAT hooking is unsafe for production, and in-process worker thread recycling cannot reclaim process-scoped heap memory, the permanent production architecture is:
 

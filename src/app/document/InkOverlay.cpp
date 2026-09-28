@@ -3,8 +3,11 @@
 #include "document/DocumentPane.h"
 #include "document/SqueezeRenderHelper.h"
 #include "geometry/StrokeHitTest.h"
+#include "geometry/StrokeWidthModel.h"
 #include "input/PalmRejectionEngine.h"
 #include "services/CairoStrokeHelper.h"
+#include "services/StrokeRenderer.h"
+#include "services/StylusButtonRouter.h"
 #include "undo/AnnotationCommands.h"
 #include "workspace/ExcerptPayload.h"
 
@@ -56,6 +59,29 @@ void updatePalmProfile(FluidCore::PalmRejectionEngine* engine, GdkDevice* dev) {
 }
 
 constexpr double kPageMargin = 16.0;
+
+// Safety margin, in *device* pixels, kept around ink when clipping it to an isolated
+// group so round caps, joins, and the antialiased edge are never cut. Expressed in
+// device pixels because antialiasing is a screen-space phenomenon; callers convert to
+// page points by dividing by the current zoom.
+constexpr double kAAMarginDevicePx = 4.0;
+
+// Width forced onto the eraser, matching the workspace canvas. The eraser is a
+// whole-stroke deleter rather than a paint tool, so its width only sizes the hit
+// radius and the on-screen cursor ring.
+constexpr double kEraserWidth = 20.0;
+
+// The eraser hit radius used for whole-stroke deletion.
+constexpr double kEraserRadius = 24.0;
+
+void fillDot(cairo_t* cr, double x, double y, double radius) {
+    if (!(radius > 0.0)) {
+        return;
+    }
+    cairo_new_path(cr);
+    cairo_arc(cr, x, y, radius, 0.0, 2.0 * M_PI);
+    cairo_fill(cr);
+}
 
 double distSqPointToSegment(double px, double py, double x1, double y1, double x2, double y2) {
     const double dx = x2 - x1;
@@ -206,7 +232,15 @@ void InkOverlay::queueDrawArea(int x, int y, int width, int height) {
 void InkOverlay::setTool(const std::string& tool) {
     m_currentTool = tool;
     if (tool == "eraser") {
-        m_currentWidth = 20.0;
+        m_currentWidth = kEraserWidth;
+        m_widthForcedByTool = true;
+    } else if (m_widthForcedByTool) {
+        // The eraser forces a wide radius for its hit test, and that width must not leak
+        // into the next ink stroke. Reset only if the eraser is what set it, so this
+        // cannot clobber a width the user chose, whatever order the toolbar calls the
+        // two setters in.
+        m_currentWidth = m_defaultInkWidth;
+        m_widthForcedByTool = false;
     }
     updateCursor();
 }
@@ -398,14 +432,28 @@ gboolean InkOverlay::touchCallback(GtkWidget*, GdkEventTouch* event, gpointer us
 gboolean InkOverlay::onButtonPress(GdkEventButton* event) {
     m_pane.notifyActivated();
 
-    if (event->button != GDK_BUTTON_PRIMARY) {
-        return FALSE;
-    }
-
     GdkDevice* device = gdk_event_get_source_device(reinterpret_cast<GdkEvent*>(event));
     if (!device) {
         device = event->device;
     }
+    const GdkInputSource source = device ? gdk_device_get_source(device) : GDK_SOURCE_MOUSE;
+
+    // A pen barrel button borrows the eraser for the duration of the press. This has to
+    // be resolved before the primary-button gate below, because GDK reports barrel
+    // presses as middle/secondary buttons and would otherwise drop them.
+    if (StylusButtonRouter::isBarrelButton(event->button, source)) {
+        m_toolBeforeBarrel = m_stylusRouter.beginBarrel(m_currentTool);
+        m_currentTool = "eraser";
+        m_currentWidth = kEraserWidth;
+        updateCursor();
+        m_barrelDownAtMs = static_cast<uint32_t>(g_get_real_time() / 1000);
+        return TRUE;
+    }
+
+    if (event->button != GDK_BUTTON_PRIMARY) {
+        return FALSE;
+    }
+
     updatePalmProfile(m_palmEngine, device);
     FluidCore::InputDeviceClass devClass = classifyGdkDevice(device);
 
@@ -441,9 +489,18 @@ gboolean InkOverlay::onButtonPress(GdkEventButton* event) {
         }
     }
 
-    const GdkInputSource source = device ? gdk_device_get_source(device) : GDK_SOURCE_MOUSE;
     if (source == GDK_SOURCE_TOUCHSCREEN) {
         return FALSE;
+    }
+
+    // A stylus never enters the mouse-oriented select/text/crop modes. Without this,
+    // a pen touch while the select tool was active started a text selection and
+    // consumed the press, so annotating required switching tools with a mouse first.
+    const bool isStylus = StylusButtonRouter::isStylusSource(source);
+    const bool highlighterModifier = (event->state & GDK_SHIFT_MASK) != 0;
+    const std::string effectiveTool = resolveToolForDevice(devClass);
+    if (isStylus) {
+        m_stylusHighlighter = highlighterModifier;
     }
 
     const double zoom = m_pane.zoom();
@@ -456,7 +513,7 @@ gboolean InkOverlay::onButtonPress(GdkEventButton* event) {
     const double screenX = event->x / zoom;
     const double docY = m_pane.screenYToDoc(event->y);
 
-    if (m_currentTool == "crop" || m_currentTool == "rect_select") {
+    if (!isStylus && (effectiveTool == "crop" || effectiveTool == "rect_select")) {
         // Visual diagram crop selection mode
         auto targetIdxOpt = findPageIndexAt(pages, docY, screenX, pageX);
         if (!targetIdxOpt.has_value()) {
@@ -492,7 +549,7 @@ gboolean InkOverlay::onButtonPress(GdkEventButton* event) {
         return TRUE;
     }
 
-    if (m_currentTool == "select" || m_currentTool == "text") {
+    if (!isStylus && (effectiveTool == "select" || effectiveTool == "text")) {
         // Text selection mode
         auto targetIdxOpt = findPageIndexAt(pages, docY, screenX, pageX);
         if (!targetIdxOpt.has_value()) {
@@ -550,8 +607,9 @@ gboolean InkOverlay::onButtonPress(GdkEventButton* event) {
     m_activePageIndex = i;
 
     m_lastPressure = pressure;
+    m_stylusAttributes = m_stylusRouter.readAttributes(reinterpret_cast<GdkEvent*>(event), device);
     m_activeStroke = FluidCore::Stroke{};
-    m_activeStroke.tool = (source == GDK_SOURCE_ERASER) ? "eraser" : m_currentTool;
+    m_activeStroke.tool = (source == GDK_SOURCE_ERASER) ? "eraser" : effectiveTool;
     m_activeStroke.color = m_currentColor;
     m_activeStroke.width = m_currentWidth;
     m_activeStroke.timestamp = static_cast<std::uint64_t>(event->time);
@@ -568,7 +626,7 @@ gboolean InkOverlay::onButtonPress(GdkEventButton* event) {
         const auto existingStrokes = m_annotationStore.strokesForPage(i);
         const auto& samples = m_stabilizer.rawSamples();
         for (const auto& s : existingStrokes) {
-            if (strokeIntersectsEraser(s, samples, 24.0)) {
+            if (strokeIntersectsEraser(s, samples, kEraserRadius)) {
                 invalidateStroke(s);
                 m_pane.notifyAnnotationChangedSpatial(i, FluidCore::computeStrokeBounds(s));
                 m_pane.undoStack().pushAndExecute(
@@ -710,7 +768,7 @@ gboolean InkOverlay::onMotionNotify(GdkEventMotion* event) {
         const auto& samples = m_stabilizer.rawSamples();
         bool erasedAny = false;
         for (const auto& s : existingStrokes) {
-            if (strokeIntersectsEraser(s, samples, 24.0)) {
+            if (strokeIntersectsEraser(s, samples, kEraserRadius)) {
                 invalidateStroke(s);
                 m_pane.notifyAnnotationChangedSpatial(m_activePageIndex,
                                                       FluidCore::computeStrokeBounds(s));
@@ -754,6 +812,26 @@ gboolean InkOverlay::onButtonRelease(GdkEventButton* event) {
         } else if (devClass == FluidCore::InputDeviceClass::Touch) {
             m_palmEngine->onTouchUp(1, event->x, event->y, nowMs);
         }
+    }
+
+    const GdkInputSource source = dev ? gdk_device_get_source(dev) : GDK_SOURCE_MOUSE;
+    if (StylusButtonRouter::isBarrelButton(event->button, source) &&
+        m_stylusRouter.barrelActive()) {
+        const uint32_t heldMs = static_cast<uint32_t>(g_get_real_time() / 1000) - m_barrelDownAtMs;
+        if (heldMs >= StylusButtonRouter::kBarrelLatchMs) {
+            m_stylusRouter.latchBarrel();
+        }
+        if (m_stylusRouter.endBarrel() && !m_toolBeforeBarrel.empty() &&
+            m_currentTool == "eraser") {
+            // Only restore if the tool is still the eraser the barrel installed. A tool
+            // change made while the barrel was held must win, otherwise releasing the
+            // barrel silently reverts the user's newer choice.
+            m_currentTool = m_toolBeforeBarrel;
+        }
+        m_toolBeforeBarrel.clear();
+        updateCursor();
+        queueDraw();
+        return TRUE;
     }
 
     if (m_isPotentialExcerptDrag) {
@@ -864,44 +942,23 @@ gboolean InkOverlay::onButtonRelease(GdkEventButton* event) {
     return TRUE;
 }
 
-void InkOverlay::renderBezierSegment(cairo_t* cr, const StrokeStabilizer::BezierSegment& seg,
-                                     double baseWidth) const {
-    constexpr int kSubdivisions = 3;
-    StrokeStabilizer::Point2D prevPt = seg.p0;
-    double prevP = seg.pressure0;
-
-    for (int k = 1; k <= kSubdivisions; ++k) {
-        const double t = static_cast<double>(k) / kSubdivisions;
-        const auto currPt = evalCubicBezier(seg.p0, seg.p1, seg.p2, seg.p3, t);
-        const double currP = (1.0 - t) * seg.pressure0 + t * seg.pressure1;
-        const double avgP = 0.5 * (prevP + currP);
-        const double segWidth = std::max(0.5, baseWidth * (0.25 + 0.75 * avgP));
-
-        cairo_set_line_width(cr, segWidth);
-        cairo_move_to(cr, prevPt.x, prevPt.y);
-        cairo_line_to(cr, currPt.x, currPt.y);
-        cairo_stroke(cr);
-
-        prevPt = currPt;
-        prevP = currP;
-    }
-}
-
 void InkOverlay::renderActiveLiveStroke(cairo_t* cr) const {
+    // Width is the selected width, constant for the whole stroke. Pressure is still read
+    // and stored, but it does not modulate the ink, so a stroke never thins toward its
+    // tail or fattens where the user pressed harder.
+    const double w = FluidCore::renderedWidth(m_activeStroke.width);
+
     if (m_activeBezierSegments.empty() && !m_hasWetSegment) {
         if (!m_stabilizer.rawSamples().empty()) {
             const auto& p0 = m_stabilizer.rawSamples().front().point;
-            const double w0 = m_activeStroke.width * (0.25 + 0.75 * m_lastPressure);
-            const double radius = std::max(0.5, w0 * 0.5);
-            cairo_arc(cr, p0.x, p0.y, radius, 0.0, 2.0 * M_PI);
-            cairo_fill(cr);
+            fillDot(cr, p0.x, p0.y, w * 0.5);
         }
         return;
     }
 
-    for (const auto& seg : m_activeBezierSegments) {
-        renderBezierSegment(cr, seg, m_activeStroke.width);
-    }
+    // The stabilizer streams Bezier spans, so this consumes spans directly rather
+    // than the raw sample polyline.
+    strokeBezierSpansCairo(cr, m_activeBezierSegments, m_activeStroke.width);
 
     if (m_hasWetSegment) {
         StrokeStabilizer::Point2D lastEnd = m_wetTip;
@@ -911,9 +968,10 @@ void InkOverlay::renderActiveLiveStroke(cairo_t* cr) const {
             lastEnd = m_stabilizer.rawSamples().front().point;
         }
 
-        const double segWidth =
-            std::max(0.5, m_activeStroke.width * (0.25 + 0.75 * m_lastPressure));
-        cairo_set_line_width(cr, segWidth);
+        // Zero-lag leading edge: the tail between the last committed span and the
+        // newest sample, so the nib never lags the hardware. It uses the same width as
+        // the committed spans, so the join is invisible.
+        cairo_set_line_width(cr, w);
         cairo_move_to(cr, lastEnd.x, lastEnd.y);
         cairo_line_to(cr, m_wetTip.x, m_wetTip.y);
         cairo_stroke(cr);
@@ -942,6 +1000,73 @@ void InkOverlay::renderTextSelection(cairo_t* cr, std::size_t pageIndex) const {
     }
 }
 
+std::string InkOverlay::resolveToolForDevice(FluidCore::InputDeviceClass devClass) const {
+    const bool isStylus = devClass == FluidCore::InputDeviceClass::Pen ||
+                          devClass == FluidCore::InputDeviceClass::Eraser;
+    const GdkInputSource source =
+        isStylus
+            ? (devClass == FluidCore::InputDeviceClass::Pen ? GDK_SOURCE_PEN : GDK_SOURCE_ERASER)
+            : GDK_SOURCE_MOUSE;
+    return StylusButtonRouter::resolveInkTool(m_currentTool, source, m_stylusHighlighter);
+}
+
+StrokeClipBounds
+InkOverlay::highlighterPassClipBounds(const std::vector<FluidCore::Stroke>& pageStrokes) const {
+    bool any = false;
+    double minX = 0.0;
+    double minY = 0.0;
+    double maxX = 0.0;
+    double maxY = 0.0;
+
+    const auto include = [&](double x, double y, double w, double h) {
+        if (!any) {
+            minX = x;
+            minY = y;
+            maxX = x + w;
+            maxY = y + h;
+            any = true;
+        } else {
+            minX = std::min(minX, x);
+            minY = std::min(minY, y);
+            maxX = std::max(maxX, x + w);
+            maxY = std::max(maxY, y + h);
+        }
+    };
+
+    // The clip has to hold the antialiased outline in *device* pixels, but it is
+    // expressed in page points and the context is scaled by zoom. Dividing by zoom
+    // keeps the margin at a constant screen size; without this, zooming out below
+    // roughly 0.4x shrank the margin under a pixel and the clip shaved the outline.
+    const double zoom = std::max(m_pane.zoom(), 0.05);
+    const double aaMargin = kAAMarginDevicePx / zoom;
+
+    for (const auto& stroke : pageStrokes) {
+        if (!isConstantWidthTool(stroke.tool) || stroke.points.empty()) {
+            continue;
+        }
+        const auto box = computeStrokeClipBounds(stroke, aaMargin);
+        if (box.valid) {
+            include(box.x, box.y, box.width, box.height);
+        }
+    }
+
+    // The in-progress highlighter has to be inside the clip too, otherwise a wet
+    // highlight drawn on a page that has no committed highlights yet would be clipped
+    // away entirely and stay invisible until the pen lifted.
+    if (m_isDrawing && isConstantWidthTool(m_activeStroke.tool)) {
+        const auto wetBox = computeWetStrokeClipBounds(m_stabilizer.rawSamples(), m_hasWetSegment,
+                                                       m_wetTip, m_activeStroke.width, aaMargin);
+        if (wetBox.valid) {
+            include(wetBox.x, wetBox.y, wetBox.width, wetBox.height);
+        }
+    }
+
+    if (!any) {
+        return {0.0, 0.0, 0.0, 0.0, false};
+    }
+    return {minX, minY, maxX - minX, maxY - minY, true};
+}
+
 void InkOverlay::renderStroke(cairo_t* cr, const FluidCore::Stroke& stroke) const {
     if (stroke.points.empty()) {
         return;
@@ -950,74 +1075,17 @@ void InkOverlay::renderStroke(cairo_t* cr, const FluidCore::Stroke& stroke) cons
     const double r = ((stroke.color >> 16) & 0xFF) / 255.0;
     const double g = ((stroke.color >> 8) & 0xFF) / 255.0;
     const double b = (stroke.color & 0xFF) / 255.0;
-    const bool isHighlighter = (stroke.tool == "highlighter");
 
     cairo_save(cr);
     cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
     cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
+    cairo_set_source_rgb(cr, r, g, b);
 
-    if (isHighlighter) {
-        // Isolated offscreen group composited with uniform 0.5 alpha.
-        // Bounded to stroke clip box in page coordinates to avoid full-slice surface allocation.
-        const auto clipBox = computeStrokeClipBounds(stroke, 4.0);
-        cairo_save(cr);
-        cairo_rectangle(cr, clipBox.x, clipBox.y, clipBox.width, clipBox.height);
-        cairo_clip(cr);
-
-        cairo_push_group(cr);
-        cairo_set_source_rgb(cr, r, g, b);
-    } else {
-        cairo_set_source_rgb(cr, r, g, b);
-    }
-
-    if (stroke.points.size() == 1) {
-        const double p0 = stroke.pressures.empty() ? 1.0 : stroke.pressures[0];
-        const double w0 = stroke.width * (0.25 + 0.75 * p0);
-        const double radius = std::max(0.5, w0 / 2.0);
-        cairo_arc(cr, stroke.points[0].x, stroke.points[0].y, radius, 0.0, 2.0 * M_PI);
-        cairo_fill(cr);
-    } else if (stroke.points.size() == 2) {
-        const double p0 = stroke.pressures.empty() ? 1.0 : stroke.pressures[0];
-        const double p1 = stroke.pressures.size() > 1 ? stroke.pressures[1] : p0;
-        const double avgP = 0.5 * (p0 + p1);
-        const double w = stroke.width * (0.25 + 0.75 * avgP);
-        cairo_set_line_width(cr, std::max(0.5, w));
-        cairo_move_to(cr, stroke.points[0].x, stroke.points[0].y);
-        cairo_line_to(cr, stroke.points[1].x, stroke.points[1].y);
-        cairo_stroke(cr);
-    } else {
-        const std::size_t n = stroke.points.size();
-        for (std::size_t i = 0; i < n - 1; ++i) {
-            StrokeStabilizer::Point2D p0 =
-                (i == 0)
-                    ? StrokeStabilizer::Point2D{2.0 * stroke.points[0].x - stroke.points[1].x,
-                                                2.0 * stroke.points[0].y - stroke.points[1].y}
-                    : StrokeStabilizer::Point2D{stroke.points[i - 1].x, stroke.points[i - 1].y};
-
-            StrokeStabilizer::Point2D p1 = {stroke.points[i].x, stroke.points[i].y};
-            StrokeStabilizer::Point2D p2 = {stroke.points[i + 1].x, stroke.points[i + 1].y};
-
-            StrokeStabilizer::Point2D p3 =
-                (i + 2 < n)
-                    ? StrokeStabilizer::Point2D{stroke.points[i + 2].x, stroke.points[i + 2].y}
-                    : StrokeStabilizer::Point2D{
-                          2.0 * stroke.points[n - 1].x - stroke.points[n - 2].x,
-                          2.0 * stroke.points[n - 1].y - stroke.points[n - 2].y};
-
-            const double pr1 = (i < stroke.pressures.size()) ? stroke.pressures[i] : 1.0;
-            const double pr2 = (i + 1 < stroke.pressures.size()) ? stroke.pressures[i + 1] : pr1;
-
-            const auto seg =
-                StrokeStabilizer::centripetalCatmullRomToBezier(p0, p1, p2, p3, pr1, pr2);
-            renderBezierSegment(cr, seg, stroke.width);
-        }
-    }
-
-    if (isHighlighter) {
-        cairo_pop_group_to_source(cr);
-        cairo_paint_with_alpha(cr, 0.5);
-        cairo_restore(cr);
-    }
+    // Geometry goes through the shared renderer, which flattens adaptively to a
+    // device-pixel tolerance and emits a single composite instead of a chain of
+    // independently stroked chords. Translucency is the caller's concern: draw()
+    // batches every highlighter on a page into one isolated group.
+    renderStrokeGeometry(cr, stroke);
 
     cairo_restore(cr);
 }
@@ -1116,7 +1184,7 @@ void InkOverlay::draw(cairo_t* cr) {
 
             auto renderActiveStrokeIfMatch = [&](bool wantHighlighter) {
                 if (m_isDrawing && m_activePageIndex == i && m_activeStroke.tool != "eraser") {
-                    const bool isHighlighter = (m_activeStroke.tool == "highlighter");
+                    const bool isHighlighter = isConstantWidthTool(m_activeStroke.tool);
                     if (isHighlighter != wantHighlighter) {
                         return;
                     }
@@ -1128,48 +1196,43 @@ void InkOverlay::draw(cairo_t* cr) {
                     cairo_save(cr);
                     cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
                     cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
-
-                    if (isHighlighter) {
-                        const auto clipBox =
-                            computeWetStrokeClipBounds(m_stabilizer.rawSamples(), m_hasWetSegment,
-                                                       m_wetTip, m_activeStroke.width, 4.0);
-                        if (!clipBox.valid) {
-                            cairo_restore(cr);
-                            return;
-                        }
-                        cairo_save(cr);
-                        cairo_rectangle(cr, clipBox.x, clipBox.y, clipBox.width, clipBox.height);
-                        cairo_clip(cr);
-
-                        cairo_push_group(cr);
-                        cairo_set_source_rgb(cr, r, g, b);
-                    } else {
-                        cairo_set_source_rgb(cr, r, g, b);
-                    }
-
+                    cairo_set_source_rgb(cr, r, g, b);
                     renderActiveLiveStroke(cr);
-
-                    if (isHighlighter) {
-                        cairo_pop_group_to_source(cr);
-                        cairo_paint_with_alpha(cr, 0.5);
-                        cairo_restore(cr);
-                    }
-
                     cairo_restore(cr);
                 }
             };
 
-            // Pass 1: Highlighters
-            for (const FluidCore::Stroke& stroke : pageStrokes) {
-                if (stroke.tool == "highlighter") {
-                    renderStroke(cr, stroke);
+            // Pass 1: Highlighters.
+            //
+            // Every highlighter on the page is drawn into one isolated group and
+            // composited at a single uniform alpha, rather than one group per stroke.
+            // That drops an offscreen surface allocation and a composite per stroke
+            // per frame, and it stops overlapping highlight passes from compounding
+            // into a darker band where they cross, which is what a real marker does.
+            {
+                const auto clipBox = highlighterPassClipBounds(pageStrokes);
+                if (clipBox.valid) {
+                    cairo_save(cr);
+                    cairo_rectangle(cr, clipBox.x, clipBox.y, clipBox.width, clipBox.height);
+                    cairo_clip(cr);
+                    cairo_push_group(cr);
+
+                    for (const FluidCore::Stroke& stroke : pageStrokes) {
+                        if (isConstantWidthTool(stroke.tool)) {
+                            renderStroke(cr, stroke);
+                        }
+                    }
+                    renderActiveStrokeIfMatch(true);
+
+                    cairo_pop_group_to_source(cr);
+                    cairo_paint_with_alpha(cr, FluidCore::kHighlighterAlpha);
+                    cairo_restore(cr);
                 }
             }
-            renderActiveStrokeIfMatch(true);
 
-            // Pass 2: Pen & other solid strokes
+            // Pass 2: Pen & other solid strokes, drawn opaque over the highlighters.
             for (const FluidCore::Stroke& stroke : pageStrokes) {
-                if (stroke.tool != "highlighter") {
+                if (!isConstantWidthTool(stroke.tool)) {
                     renderStroke(cr, stroke);
                 }
             }

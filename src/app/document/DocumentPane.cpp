@@ -400,6 +400,16 @@ bool DocumentPane::loadDocument(const std::string& pdfPath, const std::string& d
     gtk_overlay_add_overlay(GTK_OVERLAY(m_overlay), m_inkOverlay->widget());
     gtk_overlay_set_overlay_pass_through(GTK_OVERLAY(m_overlay), m_inkOverlay->widget(), FALSE);
     gtk_widget_add_events(m_inkOverlay->widget(), GDK_SCROLL_MASK | GDK_SMOOTH_SCROLL_MASK);
+
+    // Scroll handling is connected on the ink overlay and nowhere else.
+    //
+    // The overlay child is the event target for everything except the scroll bars
+    // (pass-through is disabled above), and onScroll returns FALSE for a plain discrete
+    // wheel click so the GtkScrolledWindow can still handle scroll-bar dragging. That
+    // meant the same handler was also reachable from the parent m_overlay, which carried
+    // its own scroll-event connection, so a single wheel click ran the whole handler
+    // twice and doubled every scroll and zoom step. m_area keeps the scroll mask for
+    // widget-level focus but has no handler.
     g_signal_connect(m_inkOverlay->widget(), "scroll-event",
                      G_CALLBACK(DocumentPane::scrollCallback), this);
 
@@ -409,9 +419,16 @@ bool DocumentPane::loadDocument(const std::string& pdfPath, const std::string& d
     gtk_widget_add_events(m_overlay, GDK_SCROLL_MASK | GDK_SMOOTH_SCROLL_MASK |
                                          GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK |
                                          GDK_POINTER_MOTION_MASK);
-    g_signal_connect(m_overlay, "scroll-event", G_CALLBACK(DocumentPane::scrollCallback), this);
 
-    // Attach touch pinch gesture recognizer to scroller with bubble phase
+    // Pinch-to-squeeze recognizer, on the scrolled window in bubble phase.
+    //
+    // It stays on the scroller deliberately: squeeze is a viewport-level gesture, and
+    // that is the idiomatic GTK3 owner. It does not compete with the overlay's touch
+    // handling because InkOverlay::onTouch returns FALSE whenever the palm engine
+    // accepts a touch, which lets the event continue to the viewport gesture, and
+    // returns TRUE only for a touch it is suppressing, which is exactly the intended
+    // behaviour. GtkGestureZoom also needs two contacts, so a single palm or finger
+    // never reaches a claim.
     m_pinchGesture = gtk_gesture_zoom_new(m_scroller);
     gtk_event_controller_set_propagation_phase(GTK_EVENT_CONTROLLER(m_pinchGesture),
                                                GTK_PHASE_BUBBLE);
@@ -423,7 +440,7 @@ bool DocumentPane::loadDocument(const std::string& pdfPath, const std::string& d
                          double cx = 0.0, cy = 0.0;
                          gtk_gesture_get_bounding_box_center(GTK_GESTURE(self->m_pinchGesture), &cx,
                                                              &cy);
-                         double delta = (scale < 1.0) ? 1.0 : -1.0;
+                         double delta = (scale >= 1.0) ? 1.0 : -1.0;
                          self->applyContinuousSqueezeDelta(delta, cy);
                      })),
                      this);

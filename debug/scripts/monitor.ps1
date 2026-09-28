@@ -15,50 +15,94 @@
 
 .PARAMETER Document
     Optional PDF or project path to pass if launching.
+
+.PARAMETER AppPath
+    Optional explicit path to fluidcore_app.exe. Defaults to the build-win binary.
 #>
 param(
     [double]$IntervalSeconds = 3.0,
     [switch]$Launch,
-    [string]$Document = ""
+    [string]$Document = "",
+    [string]$AppPath = ""
 )
 
 $ErrorActionPreference = "Continue"
-    
+
+# debug/scripts/monitor.ps1 -> debug/scripts -> debug -> repo root
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$ProjectRoot = Split-Path -Parent $ScriptDir
+$ProjectRoot = Split-Path -Parent (Split-Path -Parent $ScriptDir)
 
 # Launch app if requested
 if ($Launch) {
     $MsysRoot = "C:\msys64"
-    $env:PATH = "D:\fluidcore-windows-x64;$MsysRoot\ucrt64\bin;$MsysRoot\usr\bin;$env:PATH"
+
+    if (-not $AppPath) {
+        $AppPath = Join-Path $ProjectRoot "build-win\src\app\fluidcore_app.exe"
+    }
+    if (-not (Test-Path $AppPath)) {
+        $AppPath = Join-Path $ProjectRoot "fluidcore-windows-x64\fluidcore_app.exe"
+    }
+    if (-not (Test-Path $AppPath)) {
+        Write-Error "fluidcore_app.exe not found. Build first: powershell -File ops\scripts\build-win.ps1"
+        exit 1
+    }
+    $AppPath = (Resolve-Path $AppPath).Path
+
+    $AppDir = Split-Path -Parent $AppPath
+    # A packaged build carries its runtime DLLs beside the exe, so that directory has to
+    # precede the MSYS2 toolchain on PATH. A source build wants the opposite: the MSYS2
+    # DLLs must win, or the app silently loads a stale packaged runtime.
+    $IsPackaged = (Split-Path -Leaf $AppDir) -eq "fluidcore-windows-x64"
+    $PathPrefix = if ($IsPackaged) { "$AppDir;" } else { "" }
+    $env:PATH = "$PathPrefix$MsysRoot\ucrt64\bin;$MsysRoot\usr\bin;$env:PATH"
     $env:MSYSTEM = "UCRT64"
     $env:FLUIDCORE_HEARTBEAT = "1"
     $env:FLUIDCORE_LOG_TELEMETRY = "1"
     $env:FLUIDCORE_EPHEMERAL_SEARCH = "1"
 
-    $AppPath = "D:\fluidcore-windows-x64\fluidcore_app.exe"
-    if (-not (Test-Path $AppPath)) {
-        $AppPath = Join-Path $ProjectRoot "build-win\src\app\fluidcore_app.exe"
+    Write-Host "[Monitor] Launching $AppPath..." -ForegroundColor Cyan
+    if ($IsPackaged) {
+        Write-Host "[Monitor] WARNING: monitoring a packaged build, not your source tree." -ForegroundColor Yellow
+        Write-Host "[Monitor]          Changes to src/ will NOT be reflected." -ForegroundColor Yellow
     }
 
-    Write-Host "[Monitor] Launching $AppPath..." -ForegroundColor Cyan
-    $DocArg = if ($Document) { "`"$Document`"" } else { "" }
-    $AppStdoutLog = "D:\FluidCorePDF\fluidcore_stdout.log"
-    $AppStderrLog = "D:\FluidCorePDF\fluidcore_stderr.log"
+    $AppStdoutLog = Join-Path $ProjectRoot "fluidcore_stdout.log"
+    $AppStderrLog = Join-Path $ProjectRoot "fluidcore_stderr.log"
 
-    # Launch detached with redirected stdout/stderr so app logging doesn't overwrite the terminal dashboard
-    Start-Process -FilePath $AppPath -ArgumentList $DocArg -RedirectStandardOutput $AppStdoutLog -RedirectStandardError $AppStderrLog
+    # Launch detached with redirected stdout/stderr so app logging doesn't overwrite the
+    # terminal dashboard.
+    #
+    # ArgumentList is added only when there is a document: Start-Process rejects an empty
+    # or null ArgumentList outright, and passing "" produced a parameter binding error
+    # that aborted the launch while leaving the caller stuck on "Connecting".
+    $launchArgs = @{
+        FilePath               = $AppPath
+        RedirectStandardOutput = $AppStdoutLog
+        RedirectStandardError  = $AppStderrLog
+    }
+    if ($Document) {
+        $launchArgs.ArgumentList = "`"$Document`""
+    }
+    Start-Process @launchArgs
     Start-Sleep -Seconds 2
 }
 
 Write-Host "Connecting to fluidcore_app.exe..." -ForegroundColor Cyan
 
 $proc = $null
+$waitDeadline = [DateTime]::UtcNow.AddSeconds(15)
 while (-not $proc) {
     $procs = Get-Process -Name fluidcore_app -ErrorAction SilentlyContinue
     if ($procs) {
         $proc = $procs[0]
         break
+    }
+    if ([DateTime]::UtcNow -gt $waitDeadline) {
+        # Previously this looped forever, so a failed launch looked like a hang.
+        Write-Host ""
+        Write-Host "[Monitor] No fluidcore_app.exe process appeared within 15s." -ForegroundColor Red
+        Write-Host "[Monitor] Check fluidcore_stderr.log next to the repo root for the launch error." -ForegroundColor Red
+        exit 1
     }
     Start-Sleep -Milliseconds 500
 }
@@ -71,8 +115,7 @@ $startWS = $proc.WorkingSet64 / 1MB
 $peakPriv = $startPriv
 $peakWS = $startWS
 
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$ProjectRoot = Split-Path -Parent (Split-Path -Parent $ScriptDir)
+$recentEvents = @()
 
 $TelemetryPath = if (Test-Path "$ProjectRoot\debug\logs\fluidcore_telemetry.log") {
     "$ProjectRoot\debug\logs\fluidcore_telemetry.log"

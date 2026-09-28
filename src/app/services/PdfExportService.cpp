@@ -1,5 +1,7 @@
 #include "services/PdfExportService.h"
+#include "geometry/StrokeWidthModel.h"
 #include "services/CairoStrokeHelper.h"
+#include "services/StrokeRenderer.h"
 #include "services/StrokeStabilizer.h"
 
 #include <algorithm>
@@ -15,28 +17,6 @@
 namespace FluidCoreApp {
 
 namespace {
-
-void renderBezierSegment(cairo_t* cr, const StrokeStabilizer::BezierSegment& seg,
-                         double baseWidth) {
-    constexpr int kSubdivisions = 3;
-    StrokeStabilizer::Point2D prevPt = seg.p0;
-    double prevP = seg.pressure0;
-
-    for (int k = 1; k <= kSubdivisions; ++k) {
-        const double t = static_cast<double>(k) / kSubdivisions;
-        const auto currPt = evalCubicBezier(seg.p0, seg.p1, seg.p2, seg.p3, t);
-        const double currP = (1.0 - t) * seg.pressure0 + t * seg.pressure1;
-        const double segWidth = std::max(0.5, baseWidth * 0.5 * (prevP + currP));
-
-        cairo_set_line_width(cr, segWidth);
-        cairo_move_to(cr, prevPt.x, prevPt.y);
-        cairo_line_to(cr, currPt.x, currPt.y);
-        cairo_stroke(cr);
-
-        prevPt = currPt;
-        prevP = currP;
-    }
-}
 
 // Marshalling payloads for GLib main-thread dispatch
 struct ProgressPayload {
@@ -90,67 +70,34 @@ void PdfExportService::renderStroke(cairo_t* cr, const FluidCore::Stroke& stroke
     const double r = ((stroke.color >> 16) & 0xFF) / 255.0;
     const double g = ((stroke.color >> 8) & 0xFF) / 255.0;
     const double b = (stroke.color & 0xFF) / 255.0;
-    const bool isHighlighter = (stroke.tool == "highlighter");
+    const bool isHighlighter = isConstantWidthTool(stroke.tool);
 
     cairo_save(cr);
     cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
     cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
+    cairo_set_source_rgb(cr, r, g, b);
 
     if (isHighlighter) {
-        // Isolated offscreen group composited with uniform 0.5 alpha.
-        // Bounded to stroke clip box in page coordinates to keep PDF Form XObject tightly bounded.
+        // Isolated offscreen group composited with a uniform alpha. Bounded to the
+        // stroke clip box in page coordinates to keep the PDF Form XObject tightly
+        // bounded. Each exported highlighter keeps its own group so a viewer sees
+        // discrete highlight objects rather than one flattened wash per page.
         const auto clipBox = computeStrokeClipBounds(stroke, 4.0);
         cairo_save(cr);
         cairo_rectangle(cr, clipBox.x, clipBox.y, clipBox.width, clipBox.height);
         cairo_clip(cr);
-
         cairo_push_group(cr);
-        cairo_set_source_rgb(cr, r, g, b);
-    } else {
-        cairo_set_source_rgb(cr, r, g, b);
     }
 
-    if (stroke.points.size() == 1) {
-        const double radius = std::max(0.5, stroke.width / 2.0);
-        cairo_arc(cr, stroke.points[0].x, stroke.points[0].y, radius, 0.0, 2.0 * M_PI);
-        cairo_fill(cr);
-    } else if (stroke.points.size() == 2) {
-        const double p0 = stroke.pressures.empty() ? 1.0 : stroke.pressures[0];
-        cairo_set_line_width(cr, std::max(0.5, stroke.width * p0));
-        cairo_move_to(cr, stroke.points[0].x, stroke.points[0].y);
-        cairo_line_to(cr, stroke.points[1].x, stroke.points[1].y);
-        cairo_stroke(cr);
-    } else {
-        const std::size_t n = stroke.points.size();
-        for (std::size_t i = 0; i < n - 1; ++i) {
-            StrokeStabilizer::Point2D p0 =
-                (i == 0)
-                    ? StrokeStabilizer::Point2D{2.0 * stroke.points[0].x - stroke.points[1].x,
-                                                2.0 * stroke.points[0].y - stroke.points[1].y}
-                    : StrokeStabilizer::Point2D{stroke.points[i - 1].x, stroke.points[i - 1].y};
-
-            StrokeStabilizer::Point2D p1 = {stroke.points[i].x, stroke.points[i].y};
-            StrokeStabilizer::Point2D p2 = {stroke.points[i + 1].x, stroke.points[i + 1].y};
-
-            StrokeStabilizer::Point2D p3 =
-                (i + 2 < n)
-                    ? StrokeStabilizer::Point2D{stroke.points[i + 2].x, stroke.points[i + 2].y}
-                    : StrokeStabilizer::Point2D{
-                          2.0 * stroke.points[n - 1].x - stroke.points[n - 2].x,
-                          2.0 * stroke.points[n - 1].y - stroke.points[n - 2].y};
-
-            const double pr1 = (i < stroke.pressures.size()) ? stroke.pressures[i] : 1.0;
-            const double pr2 = (i + 1 < stroke.pressures.size()) ? stroke.pressures[i + 1] : pr1;
-
-            const auto seg =
-                StrokeStabilizer::centripetalCatmullRomToBezier(p0, p1, p2, p3, pr1, pr2);
-            renderBezierSegment(cr, seg, stroke.width);
-        }
-    }
+    // Geometry comes from the shared renderer. The previous copy here used its own
+    // width equation, baseWidth * 0.5 * (p0 + p1), which rendered 0.50x the nominal
+    // width at mid pressure where the on-screen renderers produce 0.625x, so exported
+    // ink came out measurably thinner than what the user had drawn.
+    renderStrokeGeometry(cr, stroke);
 
     if (isHighlighter) {
         cairo_pop_group_to_source(cr);
-        cairo_paint_with_alpha(cr, 0.5);
+        cairo_paint_with_alpha(cr, FluidCore::kHighlighterAlpha);
         cairo_restore(cr);
     }
 

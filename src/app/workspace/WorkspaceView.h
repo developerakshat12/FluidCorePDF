@@ -1,6 +1,7 @@
 #pragma once
 
 #include "FluidCoreAPI.h"
+#include "services/StylusButtonRouter.h"
 #include "undo/UndoStack.h"
 #include "workspace/WorkspaceState.h"
 
@@ -166,6 +167,9 @@ class WorkspaceView {
     gboolean onScroll(GdkEventScroll* event);
     gboolean onButtonPress(GdkEventButton* event);
     gboolean onButtonRelease(GdkEventButton* event);
+    // Body of the release handling. Split out so onButtonRelease can unwind the stylus
+    // tool override on every exit path, including the early returns.
+    gboolean handleButtonRelease(GdkEventButton* event);
     gboolean onMotion(GdkEventMotion* event);
     gboolean onKeyPress(GdkEventKey* event);
     gboolean onKeyRelease(GdkEventKey* event);
@@ -191,6 +195,21 @@ class WorkspaceView {
     guint m_settleTimeoutSourceId = 0;
 
     ExcerptTileCache* m_excerptTileCache = nullptr;
+
+    // Pen barrel button and stylus tool override.
+    //
+    // A barrel press borrows the eraser for its duration (or latches it, when held past
+    // the threshold) and the tool selected beforehand is restored on release. A pen
+    // primary press overrides the mouse-oriented "select" tool for the duration of one
+    // stroke, so annotating never requires first switching tools with a mouse.
+    StylusButtonRouter m_stylusRouter;
+    std::string m_toolBeforeBarrel;
+    std::string m_toolBeforeStylus;
+    // What the stylus override actually installed, so the release unwind can detect a
+    // tool change the user made while the pen was down and must not clobber.
+    std::string m_stylusToolInstalled;
+    uint32_t m_barrelDownAtMs = 0;
+    bool m_stylusToolOverride = false;
 
     NavigateToSourceCallback m_onNavigateToSource;
     ExcerptAddedCallback m_onExcerptAdded;

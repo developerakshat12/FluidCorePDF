@@ -1,5 +1,6 @@
 #pragma once
 
+#include "services/MemoryBudget.h"
 #include "services/PageTileCache.h"
 #include "services/PdfDocumentService.h"
 #include "storage/AnnotationStore.h"
@@ -52,6 +53,14 @@ struct CropCacheKey {
                yNorm == other.yNorm && wNorm == other.wNorm && hNorm == other.hNorm &&
                tier == other.tier;
     }
+
+    // True when both keys address the same region of the same page, regardless of
+    // resolution. Inserting a higher tier supersedes every lower one, so this is what
+    // identifies the tiles that must be dropped alongside the incoming one.
+    bool sameCropAs(const CropCacheKey& other) const {
+        return docId == other.docId && pageNo == other.pageNo && xNorm == other.xNorm &&
+               yNorm == other.yNorm && wNorm == other.wNorm && hNorm == other.hNorm;
+    }
 };
 
 struct CropCacheKeyHash {
@@ -70,9 +79,17 @@ struct CropCacheKeyHash {
 // and supports both synchronous rasterization and asynchronous worker pool rendering.
 class ExcerptTileCache {
   public:
-    static constexpr std::size_t kDefaultMaxBytes = 64 * 1024 * 1024; // 64 MB
+    // Default budget is a slice of one global pool rather than an independent 64 MB
+    // ceiling. Callers that pass an explicit maxBytes are unaffected.
+    static std::size_t defaultMaxBytes() {
+        return MemoryBudget::instance().sliceBytes(MemoryBudget::Slice::ExcerptTiles);
+    }
+    static constexpr std::size_t kDefaultMaxBytes = 64 * 1024 * 1024; // legacy per-cache ceiling
     static constexpr int kMaxTileDimension = 1536;                    // 1536 px clamp
     static constexpr int kMinTileDimension = 16;                      // 16 px minimum
+    // 4 MB ceiling for one crop tile (~1024x1024). The 1536 px clamp permits 9.44 MB,
+    // which is a large share of the whole excerpt slice for a single card thumbnail.
+    static constexpr std::size_t kMaxTileBytes = 4 * 1024 * 1024;
 
     using RenderReadyCallback =
         std::function<void(const std::string& excerptId, uint64_t requestId)>;
@@ -82,7 +99,7 @@ class ExcerptTileCache {
                                               std::vector<FluidCore::Stroke>& outStrokes)>;
 
     explicit ExcerptTileCache(PdfDocumentService& docService,
-                              std::size_t maxBytes = kDefaultMaxBytes);
+                              std::size_t maxBytes = static_cast<std::size_t>(-1));
     ~ExcerptTileCache();
 
     ExcerptTileCache(const ExcerptTileCache&) = delete;
@@ -121,6 +138,11 @@ class ExcerptTileCache {
                            const FluidCore::Rectangle& changedNormRect);
 
     void clear();
+
+    // Ejects least-recently-used crop tiles until currentBytes() <= targetBytes. Used by
+    // the idle trim, which must release surfaces *before* _heapmin() can return anything
+    // to the OS. Returns the bytes reclaimed.
+    std::size_t trimToBytes(std::size_t targetBytes);
 
     std::size_t currentBytes() const { return m_currentBytes; }
     std::size_t maxBytes() const { return m_maxBytes; }
@@ -171,6 +193,13 @@ class ExcerptTileCache {
     };
 
     void evict(std::size_t incomingBytes);
+
+    // Drops every cached LoD tier of the same crop region, whatever its tier. A single
+    // card visited at several zoom levels would otherwise retain one surface per tier
+    // (up to 4x its necessary bytes) until generic byte eviction happens to reach them.
+    // Called from insert() so the resolution the cache holds always matches the
+    // resolution most recently requested.
+    std::size_t evictSiblingTiers(const CropCacheKey& key);
     static void asyncWorkerFunc(gpointer data, gpointer userData);
     static gboolean onRenderCompletedIdle(gpointer data);
 

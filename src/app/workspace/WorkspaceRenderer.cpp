@@ -1,7 +1,9 @@
 #include "workspace/WorkspaceRenderer.h"
 #include "FluidCoreEngine.h"
+#include "geometry/StrokeWidthModel.h"
 #include "graph/GraphTopology.h"
 #include "services/CairoStrokeHelper.h"
+#include "services/StrokeRenderer.h"
 #include "workspace/CanvasStrokeNode.h"
 #include "workspace/CardLayoutEngine.h"
 #include "workspace/CardStackNode.h"
@@ -10,6 +12,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <filesystem>
 #include <gdk-pixbuf/gdk-pixbuf.h>
 #include <gdk/gdk.h>
@@ -17,10 +20,17 @@
 #include <iomanip>
 #include <sstream>
 #include <unordered_map>
+#include <vector>
 
 namespace FluidCoreApp {
 
 namespace {
+
+// Safety margin, in device pixels, kept around ink when clipping it to an isolated
+// group so round caps, joins, and the antialiased edge are never cut. Antialiasing is
+// a screen-space phenomenon, so callers convert to world units by dividing by the zoom.
+constexpr double kAAMarginDevicePx = 4.0;
+
 bool isRasterImageDoc(const std::string& docId) {
     std::string lower = docId;
     std::transform(lower.begin(), lower.end(), lower.begin(),
@@ -1156,7 +1166,7 @@ void WorkspaceRenderer::draw(cairo_t* cr, const WorkspaceState& state, FluidCore
 
     for (const FluidCore::WorkspaceNode* node : visibleNodes) {
         if (const auto* strokeNode = dynamic_cast<const FluidCore::CanvasStrokeNode*>(node)) {
-            if (strokeNode->stroke().tool == "highlighter") {
+            if (isConstantWidthTool(strokeNode->stroke().tool)) {
                 highlighterStrokeNodes.push_back(strokeNode);
             } else {
                 penStrokeNodes.push_back(strokeNode);
@@ -1192,460 +1202,235 @@ void WorkspaceRenderer::draw(cairo_t* cr, const WorkspaceState& state, FluidCore
         }
     }
 
+    // The camera transform is pushed onto the cairo context rather than baked into the
+    // point coordinates. Doing it here removes a screen of hand-rolled
+    // (x - originX) * zoom arithmetic that had already produced two different renderers
+    // for the same stroke.
+    //
+    // Scopes must NOT nest. Each one translates and scales, so a nested scope applies
+    // the camera twice and every path under it lands somewhere else entirely, which
+    // showed up as the erase-target aura being drawn offset from the stroke it belonged
+    // to. The nesting depth is tracked and reported so this fails loudly rather than
+    // silently displacing geometry.
+    static int s_cameraScopeDepth = 0;
+
+    struct CameraScope {
+        cairo_t* cr;
+        double originX;
+        double originY;
+        double zoom;
+
+        CameraScope(cairo_t* c, double ox, double oy, double z)
+            : cr(c), originX(ox), originY(oy), zoom(z) {
+            if (s_cameraScopeDepth > 0) {
+                std::fprintf(stderr,
+                             "[WorkspaceRenderer] CameraScope nested at depth %d; the camera "
+                             "will be applied more than once and geometry will be displaced\n",
+                             s_cameraScopeDepth);
+            }
+            ++s_cameraScopeDepth;
+            cairo_save(cr);
+            cairo_translate(cr, -originX * zoom, -originY * zoom);
+            cairo_scale(cr, zoom, zoom);
+        }
+        ~CameraScope() {
+            --s_cameraScopeDepth;
+            cairo_restore(cr);
+        }
+        CameraScope(const CameraScope&) = delete;
+        CameraScope& operator=(const CameraScope&) = delete;
+    };
+
     auto drawStrokeHoverGlow = [&](const FluidCore::Stroke& stroke) {
         if (stroke.points.empty())
             return;
-        const auto& pt0 = stroke.points[0];
-        cairo_save(cr);
+        CameraScope camera(cr, originX, originY, zoom);
         cairo_set_source_rgba(cr, 1.0, 0.22, 0.22, 0.45);
         cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
         cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
-        const double glowWidth = (stroke.width + 10.0) * zoom;
-        const std::size_t n = stroke.points.size();
+        strokeConstantCairo(cr, stroke.points, stroke.width + 10.0);
+    };
 
-        if (n == 1) {
-            cairo_new_path(cr);
-            cairo_arc(cr, (pt0.x - originX) * zoom, (pt0.y - originY) * zoom,
-                      std::max(2.0, glowWidth / 2.0), 0, 2 * M_PI);
-            cairo_fill(cr);
-        } else if (n == 2) {
-            cairo_set_line_width(cr, std::max(2.0, glowWidth));
-            cairo_new_path(cr);
-            cairo_move_to(cr, (stroke.points[0].x - originX) * zoom,
-                          (stroke.points[0].y - originY) * zoom);
-            cairo_line_to(cr, (stroke.points[1].x - originX) * zoom,
-                          (stroke.points[1].y - originY) * zoom);
-            cairo_stroke(cr);
-        } else {
-            cairo_set_line_width(cr, std::max(2.0, glowWidth));
-            cairo_new_path(cr);
-            cairo_move_to(cr, (stroke.points[0].x - originX) * zoom,
-                          (stroke.points[0].y - originY) * zoom);
-            for (std::size_t i = 0; i < n - 1; ++i) {
-                StrokeStabilizer::Point2D p0 =
-                    (i == 0)
-                        ? StrokeStabilizer::Point2D{2.0 * (stroke.points[0].x - originX) * zoom -
-                                                        (stroke.points[1].x - originX) * zoom,
-                                                    2.0 * (stroke.points[0].y - originY) * zoom -
-                                                        (stroke.points[1].y - originY) * zoom}
-                        : StrokeStabilizer::Point2D{(stroke.points[i - 1].x - originX) * zoom,
-                                                    (stroke.points[i - 1].y - originY) * zoom};
-                StrokeStabilizer::Point2D p1 = {(stroke.points[i].x - originX) * zoom,
-                                                (stroke.points[i].y - originY) * zoom};
-                StrokeStabilizer::Point2D p2 = {(stroke.points[i + 1].x - originX) * zoom,
-                                                (stroke.points[i + 1].y - originY) * zoom};
-                StrokeStabilizer::Point2D p3 =
-                    (i + 2 < n)
-                        ? StrokeStabilizer::Point2D{(stroke.points[i + 2].x - originX) * zoom,
-                                                    (stroke.points[i + 2].y - originY) * zoom}
-                        : StrokeStabilizer::Point2D{
-                              2.0 * (stroke.points[n - 1].x - originX) * zoom -
-                                  (stroke.points[n - 2].x - originX) * zoom,
-                              2.0 * (stroke.points[n - 1].y - originY) * zoom -
-                                  (stroke.points[n - 2].y - originY) * zoom};
-                const auto seg =
-                    StrokeStabilizer::centripetalCatmullRomToBezier(p0, p1, p2, p3, 1.0, 1.0);
-                cairo_curve_to(cr, seg.p1.x, seg.p1.y, seg.p2.x, seg.p2.y, seg.p3.x, seg.p3.y);
-            }
-            cairo_stroke(cr);
-        }
-        cairo_restore(cr);
+    auto isHoveredForErase = [&](const FluidCore::CanvasStrokeNode* node) {
+        return !state.inking.hoveredEraserStrokeIds.empty() &&
+               (std::find(state.inking.hoveredEraserStrokeIds.begin(),
+                          state.inking.hoveredEraserStrokeIds.end(),
+                          node->id()) != state.inking.hoveredEraserStrokeIds.end());
     };
 
     // 2. Render Highlighter Strokes (beneath pen strokes)
-    for (const auto* strokeNode : highlighterStrokeNodes) {
-        const auto& stroke = strokeNode->stroke();
-        if (stroke.points.empty())
-            continue;
-
-        const bool isHoveredForErase =
-            !state.inking.hoveredEraserStrokeIds.empty() &&
-            (std::find(state.inking.hoveredEraserStrokeIds.begin(),
-                       state.inking.hoveredEraserStrokeIds.end(),
-                       strokeNode->id()) != state.inking.hoveredEraserStrokeIds.end());
-
-        if (isHoveredForErase) {
-            drawStrokeHoverGlow(stroke);
-        }
-
-        const auto& pt0 = stroke.points[0];
-        const double baseW = stroke.width * zoom;
-        const double r = ((stroke.color >> 16) & 0xFF) / 255.0;
-        const double g = ((stroke.color >> 8) & 0xFF) / 255.0;
-        const double b = (stroke.color & 0xFF) / 255.0;
-
-        cairo_save(cr);
-        cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
-        cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
-
-        const auto clipBox = computeStrokeClipBounds(stroke, 4.0);
-        const double sx = (clipBox.x - originX) * zoom;
-        const double sy = (clipBox.y - originY) * zoom;
-        const double sw = clipBox.width * zoom;
-        const double sh = clipBox.height * zoom;
-
-        cairo_save(cr);
-        cairo_rectangle(cr, sx, sy, sw, sh);
-        cairo_clip(cr);
-
-        cairo_push_group(cr);
-        cairo_set_source_rgb(cr, r, g, b);
-        cairo_set_line_width(cr, std::max(0.5, baseW));
-
-        const std::size_t n = stroke.points.size();
-        if (n == 1) {
-            cairo_new_path(cr);
-            cairo_arc(cr, (pt0.x - originX) * zoom, (pt0.y - originY) * zoom,
-                      std::max(1.0, baseW / 2.0), 0, 2 * M_PI);
-            cairo_fill(cr);
-        } else if (n == 2) {
-            cairo_new_path(cr);
-            cairo_move_to(cr, (stroke.points[0].x - originX) * zoom,
-                          (stroke.points[0].y - originY) * zoom);
-            cairo_line_to(cr, (stroke.points[1].x - originX) * zoom,
-                          (stroke.points[1].y - originY) * zoom);
-            cairo_stroke(cr);
-        } else {
-            cairo_new_path(cr);
-            cairo_move_to(cr, (stroke.points[0].x - originX) * zoom,
-                          (stroke.points[0].y - originY) * zoom);
-            for (std::size_t i = 0; i < n - 1; ++i) {
-                StrokeStabilizer::Point2D p0 =
-                    (i == 0)
-                        ? StrokeStabilizer::Point2D{2.0 * (stroke.points[0].x - originX) * zoom -
-                                                        (stroke.points[1].x - originX) * zoom,
-                                                    2.0 * (stroke.points[0].y - originY) * zoom -
-                                                        (stroke.points[1].y - originY) * zoom}
-                        : StrokeStabilizer::Point2D{(stroke.points[i - 1].x - originX) * zoom,
-                                                    (stroke.points[i - 1].y - originY) * zoom};
-                StrokeStabilizer::Point2D p1 = {(stroke.points[i].x - originX) * zoom,
-                                                (stroke.points[i].y - originY) * zoom};
-                StrokeStabilizer::Point2D p2 = {(stroke.points[i + 1].x - originX) * zoom,
-                                                (stroke.points[i + 1].y - originY) * zoom};
-                StrokeStabilizer::Point2D p3 =
-                    (i + 2 < n)
-                        ? StrokeStabilizer::Point2D{(stroke.points[i + 2].x - originX) * zoom,
-                                                    (stroke.points[i + 2].y - originY) * zoom}
-                        : StrokeStabilizer::Point2D{
-                              2.0 * (stroke.points[n - 1].x - originX) * zoom -
-                                  (stroke.points[n - 2].x - originX) * zoom,
-                              2.0 * (stroke.points[n - 1].y - originY) * zoom -
-                                  (stroke.points[n - 2].y - originY) * zoom};
-                const auto seg =
-                    StrokeStabilizer::centripetalCatmullRomToBezier(p0, p1, p2, p3, 1.0, 1.0);
-                cairo_curve_to(cr, seg.p1.x, seg.p1.y, seg.p2.x, seg.p2.y, seg.p3.x, seg.p3.y);
+    //
+    // All highlighters on the canvas are drawn into a single isolated group composited
+    // at one uniform alpha, rather than one group per stroke. That is one offscreen
+    // surface and one composite per frame instead of one per stroke, and it stops
+    // overlapping highlight passes from compounding into a darker band where they
+    // cross, which is what a real marker does.
+    {
+        bool anyHighlighter = false;
+        for (const auto* strokeNode : highlighterStrokeNodes) {
+            if (!strokeNode->stroke().points.empty()) {
+                anyHighlighter = true;
+                break;
             }
-            cairo_stroke(cr);
         }
+        const bool wetHighlighterActive =
+            state.inking.isDrawing && isConstantWidthTool(state.inking.currentTool);
 
-        cairo_pop_group_to_source(cr);
-        cairo_paint_with_alpha(cr, 0.45);
-        cairo_restore(cr);
-        cairo_restore(cr);
-    }
-
-    // 3. Render active wet highlighter (if drawing with highlighter)
-    if (state.inking.isDrawing && state.inking.currentTool == "highlighter") {
-        const double r = ((state.inking.currentColor >> 16) & 0xFF) / 255.0;
-        const double g = ((state.inking.currentColor >> 8) & 0xFF) / 255.0;
-        const double b = (state.inking.currentColor & 0xFF) / 255.0;
-        const auto& samples = state.inking.stabilizer.rawSamples();
-        const double baseW = state.inking.currentWidth * zoom;
-
-        cairo_save(cr);
-        cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
-        cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
-
-        const auto clipBox =
-            computeWetStrokeClipBounds(samples, state.inking.hasWetSegment,
-                                       state.inking.activeWetTip, state.inking.currentWidth, 4.0);
-        if (clipBox.valid) {
-            const double sx = (clipBox.x - originX) * zoom;
-            const double sy = (clipBox.y - originY) * zoom;
-            const double sw = clipBox.width * zoom;
-            const double sh = clipBox.height * zoom;
-
-            cairo_save(cr);
-            cairo_rectangle(cr, sx, sy, sw, sh);
-            cairo_clip(cr);
-
-            cairo_push_group(cr);
-            cairo_set_source_rgb(cr, r, g, b);
-            cairo_set_line_width(cr, std::max(0.5, baseW));
-
-            const std::size_t n = samples.size();
-            if (n == 1) {
-                cairo_new_path(cr);
-                cairo_arc(cr, (samples[0].point.x - originX) * zoom,
-                          (samples[0].point.y - originY) * zoom, std::max(1.0, baseW / 2.0), 0,
-                          2 * M_PI);
-                cairo_fill(cr);
-            } else if (n == 2) {
-                cairo_new_path(cr);
-                cairo_move_to(cr, (samples[0].point.x - originX) * zoom,
-                              (samples[0].point.y - originY) * zoom);
-                cairo_line_to(cr, (samples[1].point.x - originX) * zoom,
-                              (samples[1].point.y - originY) * zoom);
-                cairo_stroke(cr);
-            } else if (n > 2) {
-                cairo_new_path(cr);
-                cairo_move_to(cr, (samples[0].point.x - originX) * zoom,
-                              (samples[0].point.y - originY) * zoom);
-                for (std::size_t i = 0; i < n - 1; ++i) {
-                    StrokeStabilizer::Point2D p0 =
-                        (i == 0)
-                            ? StrokeStabilizer::Point2D{2.0 * (samples[0].point.x - originX) *
-                                                                zoom -
-                                                            (samples[1].point.x - originX) * zoom,
-                                                        2.0 * (samples[0].point.y - originY) *
-                                                                zoom -
-                                                            (samples[1].point.y - originY) * zoom}
-                            : StrokeStabilizer::Point2D{(samples[i - 1].point.x - originX) * zoom,
-                                                        (samples[i - 1].point.y - originY) * zoom};
-                    StrokeStabilizer::Point2D p1 = {(samples[i].point.x - originX) * zoom,
-                                                    (samples[i].point.y - originY) * zoom};
-                    StrokeStabilizer::Point2D p2 = {(samples[i + 1].point.x - originX) * zoom,
-                                                    (samples[i + 1].point.y - originY) * zoom};
-                    StrokeStabilizer::Point2D p3 =
-                        (i + 2 < n)
-                            ? StrokeStabilizer::Point2D{(samples[i + 2].point.x - originX) * zoom,
-                                                        (samples[i + 2].point.y - originY) * zoom}
-                            : StrokeStabilizer::Point2D{
-                                  2.0 * (samples[n - 1].point.x - originX) * zoom -
-                                      (samples[n - 2].point.x - originX) * zoom,
-                                  2.0 * (samples[n - 1].point.y - originY) * zoom -
-                                      (samples[n - 2].point.y - originY) * zoom};
-                    const auto seg =
-                        StrokeStabilizer::centripetalCatmullRomToBezier(p0, p1, p2, p3, 1.0, 1.0);
-                    cairo_curve_to(cr, seg.p1.x, seg.p1.y, seg.p2.x, seg.p2.y, seg.p3.x, seg.p3.y);
+        if (anyHighlighter || wetHighlighterActive) {
+            // Bounded to the union of the highlighter geometry, padded to a constant
+            // screen size, so the group surface stays small instead of covering the
+            // whole canvas. Expressed in world units by dividing the device-pixel
+            // antialiasing margin by the zoom.
+            const double aaMargin = kAAMarginDevicePx / std::max(zoom, 0.05);
+            bool hasBounds = false;
+            double bx0 = 0.0, by0 = 0.0, bx1 = 0.0, by1 = 0.0;
+            for (const auto* strokeNode : highlighterStrokeNodes) {
+                const auto box = computeStrokeClipBounds(strokeNode->stroke(), aaMargin);
+                if (!box.valid)
+                    continue;
+                if (!hasBounds) {
+                    bx0 = box.x;
+                    by0 = box.y;
+                    bx1 = box.x + box.width;
+                    by1 = box.y + box.height;
+                    hasBounds = true;
+                } else {
+                    bx0 = std::min(bx0, box.x);
+                    by0 = std::min(by0, box.y);
+                    bx1 = std::max(bx1, box.x + box.width);
+                    by1 = std::max(by1, box.y + box.height);
                 }
-                cairo_stroke(cr);
+            }
+            if (wetHighlighterActive) {
+                const auto wetBox = computeWetStrokeClipBounds(
+                    state.inking.stabilizer.rawSamples(), state.inking.hasWetSegment,
+                    state.inking.activeWetTip, state.inking.currentWidth, aaMargin);
+                if (wetBox.valid) {
+                    if (!hasBounds) {
+                        bx0 = wetBox.x;
+                        by0 = wetBox.y;
+                        bx1 = wetBox.x + wetBox.width;
+                        by1 = wetBox.y + wetBox.height;
+                        hasBounds = true;
+                    } else {
+                        bx0 = std::min(bx0, wetBox.x);
+                        by0 = std::min(by0, wetBox.y);
+                        bx1 = std::max(bx1, wetBox.x + wetBox.width);
+                        by1 = std::max(by1, wetBox.y + wetBox.height);
+                    }
+                }
             }
 
-            cairo_pop_group_to_source(cr);
-            cairo_paint_with_alpha(cr, 0.45);
-            cairo_restore(cr);
+            // Erase-target aura for hovered highlighters, drawn BEFORE the camera scope
+            // and before the isolated group. Two reasons it cannot live inside either:
+            // the group clip only extends the antialiasing margin past the ink and the
+            // highlighter is painted over it, then the group composites at 0.5; and
+            // drawStrokeHoverGlow establishes the camera itself, so an enclosing scope
+            // would apply the transform twice and displace the aura off the stroke.
+            for (const auto* strokeNode : highlighterStrokeNodes) {
+                if (!strokeNode->stroke().points.empty() && isHoveredForErase(strokeNode)) {
+                    drawStrokeHoverGlow(strokeNode->stroke());
+                }
+            }
+
+            if (hasBounds) {
+                CameraScope camera(cr, originX, originY, zoom);
+                cairo_new_path(cr);
+                cairo_rectangle(cr, bx0, by0, bx1 - bx0, by1 - by0);
+                cairo_clip(cr);
+                cairo_push_group(cr);
+                cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+                cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
+
+                for (const auto* strokeNode : highlighterStrokeNodes) {
+                    const auto& stroke = strokeNode->stroke();
+                    if (stroke.points.empty())
+                        continue;
+
+                    cairo_set_source_rgb(cr, ((stroke.color >> 16) & 0xFF) / 255.0,
+                                         ((stroke.color >> 8) & 0xFF) / 255.0,
+                                         (stroke.color & 0xFF) / 255.0);
+                    strokeConstantCairo(cr, stroke.points, stroke.width);
+                }
+
+                // The wet highlighter joins the same group so an in-progress highlight
+                // cannot be darker than a committed one.
+                if (wetHighlighterActive) {
+                    const auto& samples = state.inking.stabilizer.rawSamples();
+                    if (!samples.empty()) {
+                        cairo_set_source_rgb(cr, ((state.inking.currentColor >> 16) & 0xFF) / 255.0,
+                                             ((state.inking.currentColor >> 8) & 0xFF) / 255.0,
+                                             (state.inking.currentColor & 0xFF) / 255.0);
+                        std::vector<FluidCore::XoppPoint> livePts;
+                        livePts.reserve(samples.size());
+                        for (const auto& s : samples) {
+                            livePts.push_back({s.point.x, s.point.y});
+                        }
+                        strokeConstantCairo(cr, livePts, state.inking.currentWidth);
+                    }
+                }
+
+                cairo_pop_group_to_source(cr);
+                cairo_paint_with_alpha(cr, FluidCore::kHighlighterAlpha);
+            }
         }
-        cairo_restore(cr);
     }
 
-    // 4. Render Pen & Solid Strokes (above highlighters, with Centripetal Catmull-Rom smoothing)
+    // 3. Render Pen & Solid Strokes (above highlighters)
     for (const auto* strokeNode : penStrokeNodes) {
         const auto& stroke = strokeNode->stroke();
         if (stroke.points.empty())
             continue;
 
-        const bool isHoveredForErase =
-            !state.inking.hoveredEraserStrokeIds.empty() &&
-            (std::find(state.inking.hoveredEraserStrokeIds.begin(),
-                       state.inking.hoveredEraserStrokeIds.end(),
-                       strokeNode->id()) != state.inking.hoveredEraserStrokeIds.end());
-
-        if (isHoveredForErase) {
+        if (isHoveredForErase(strokeNode)) {
             drawStrokeHoverGlow(stroke);
         }
 
-        const auto& pt0 = stroke.points[0];
-        const double baseW = stroke.width * zoom;
-        const double r = ((stroke.color >> 16) & 0xFF) / 255.0;
-        const double g = ((stroke.color >> 8) & 0xFF) / 255.0;
-        const double b = (stroke.color & 0xFF) / 255.0;
-
-        cairo_save(cr);
-        cairo_set_source_rgba(cr, r, g, b, 1.0);
+        CameraScope camera(cr, originX, originY, zoom);
+        cairo_set_source_rgb(cr, ((stroke.color >> 16) & 0xFF) / 255.0,
+                             ((stroke.color >> 8) & 0xFF) / 255.0, (stroke.color & 0xFF) / 255.0);
         cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
         cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
-
-        const std::size_t n = stroke.points.size();
-        const bool hasVariablePressure =
-            (!stroke.pressures.empty() && stroke.pressures.size() == n);
-
-        if (n == 1) {
-            const double w0 =
-                hasVariablePressure ? baseW * (0.25 + 0.75 * stroke.pressures[0]) : baseW;
-            cairo_new_path(cr);
-            cairo_arc(cr, (pt0.x - originX) * zoom, (pt0.y - originY) * zoom,
-                      std::max(1.0, w0 / 2.0), 0, 2 * M_PI);
-            cairo_fill(cr);
-        } else if (n == 2) {
-            if (hasVariablePressure) {
-                const double segPressure = (stroke.pressures[0] + stroke.pressures[1]) / 2.0;
-                cairo_set_line_width(cr, std::max(0.5, baseW * (0.25 + 0.75 * segPressure)));
-            } else {
-                cairo_set_line_width(cr, std::max(0.5, baseW));
-            }
-            cairo_new_path(cr);
-            cairo_move_to(cr, (stroke.points[0].x - originX) * zoom,
-                          (stroke.points[0].y - originY) * zoom);
-            cairo_line_to(cr, (stroke.points[1].x - originX) * zoom,
-                          (stroke.points[1].y - originY) * zoom);
-            cairo_stroke(cr);
-        } else {
-            // n >= 3: Smooth Centripetal Catmull-Rom Bézier spline
-            if (!hasVariablePressure) {
-                cairo_set_line_width(cr, std::max(0.5, baseW));
-                cairo_new_path(cr);
-                cairo_move_to(cr, (stroke.points[0].x - originX) * zoom,
-                              (stroke.points[0].y - originY) * zoom);
-                for (std::size_t i = 0; i < n - 1; ++i) {
-                    StrokeStabilizer::Point2D p0 =
-                        (i == 0)
-                            ? StrokeStabilizer::Point2D{2.0 * (stroke.points[0].x - originX) *
-                                                                zoom -
-                                                            (stroke.points[1].x - originX) * zoom,
-                                                        2.0 * (stroke.points[0].y - originY) *
-                                                                zoom -
-                                                            (stroke.points[1].y - originY) * zoom}
-                            : StrokeStabilizer::Point2D{(stroke.points[i - 1].x - originX) * zoom,
-                                                        (stroke.points[i - 1].y - originY) * zoom};
-                    StrokeStabilizer::Point2D p1 = {(stroke.points[i].x - originX) * zoom,
-                                                    (stroke.points[i].y - originY) * zoom};
-                    StrokeStabilizer::Point2D p2 = {(stroke.points[i + 1].x - originX) * zoom,
-                                                    (stroke.points[i + 1].y - originY) * zoom};
-                    StrokeStabilizer::Point2D p3 =
-                        (i + 2 < n)
-                            ? StrokeStabilizer::Point2D{(stroke.points[i + 2].x - originX) * zoom,
-                                                        (stroke.points[i + 2].y - originY) * zoom}
-                            : StrokeStabilizer::Point2D{
-                                  2.0 * (stroke.points[n - 1].x - originX) * zoom -
-                                      (stroke.points[n - 2].x - originX) * zoom,
-                                  2.0 * (stroke.points[n - 1].y - originY) * zoom -
-                                      (stroke.points[n - 2].y - originY) * zoom};
-                    const auto seg =
-                        StrokeStabilizer::centripetalCatmullRomToBezier(p0, p1, p2, p3, 1.0, 1.0);
-                    cairo_curve_to(cr, seg.p1.x, seg.p1.y, seg.p2.x, seg.p2.y, seg.p3.x, seg.p3.y);
-                }
-                cairo_stroke(cr);
-            } else {
-                constexpr int kSubdivisions = 4;
-                for (std::size_t i = 0; i < n - 1; ++i) {
-                    StrokeStabilizer::Point2D p0 =
-                        (i == 0)
-                            ? StrokeStabilizer::Point2D{2.0 * (stroke.points[0].x - originX) *
-                                                                zoom -
-                                                            (stroke.points[1].x - originX) * zoom,
-                                                        2.0 * (stroke.points[0].y - originY) *
-                                                                zoom -
-                                                            (stroke.points[1].y - originY) * zoom}
-                            : StrokeStabilizer::Point2D{(stroke.points[i - 1].x - originX) * zoom,
-                                                        (stroke.points[i - 1].y - originY) * zoom};
-                    StrokeStabilizer::Point2D p1 = {(stroke.points[i].x - originX) * zoom,
-                                                    (stroke.points[i].y - originY) * zoom};
-                    StrokeStabilizer::Point2D p2 = {(stroke.points[i + 1].x - originX) * zoom,
-                                                    (stroke.points[i + 1].y - originY) * zoom};
-                    StrokeStabilizer::Point2D p3 =
-                        (i + 2 < n)
-                            ? StrokeStabilizer::Point2D{(stroke.points[i + 2].x - originX) * zoom,
-                                                        (stroke.points[i + 2].y - originY) * zoom}
-                            : StrokeStabilizer::Point2D{
-                                  2.0 * (stroke.points[n - 1].x - originX) * zoom -
-                                      (stroke.points[n - 2].x - originX) * zoom,
-                                  2.0 * (stroke.points[n - 1].y - originY) * zoom -
-                                      (stroke.points[n - 2].y - originY) * zoom};
-                    const auto seg =
-                        StrokeStabilizer::centripetalCatmullRomToBezier(p0, p1, p2, p3, 1.0, 1.0);
-
-                    const double pStart = stroke.pressures[i];
-                    const double pEnd = stroke.pressures[i + 1];
-
-                    StrokeStabilizer::Point2D prevPt = p1;
-                    for (int step = 1; step <= kSubdivisions; ++step) {
-                        const double t = static_cast<double>(step) / kSubdivisions;
-                        const StrokeStabilizer::Point2D curPt =
-                            evalCubicBezier(p1, seg.p1, seg.p2, seg.p3, t);
-                        const double curPressure = pStart + t * (pEnd - pStart);
-                        const double curWidth = baseW * (0.25 + 0.75 * curPressure);
-
-                        cairo_set_line_width(cr, std::max(0.5, curWidth));
-                        cairo_new_path(cr);
-                        cairo_move_to(cr, prevPt.x, prevPt.y);
-                        cairo_line_to(cr, curPt.x, curPt.y);
-                        cairo_stroke(cr);
-                        prevPt = curPt;
-                    }
-                }
-            }
-        }
-        cairo_restore(cr);
+        renderStrokeGeometry(cr, stroke);
     }
 
-    // 5. Render active wet pen ink (if drawing with pen)
-    if (state.inking.isDrawing && state.inking.currentTool == "pen") {
-        const double r = ((state.inking.currentColor >> 16) & 0xFF) / 255.0;
-        const double g = ((state.inking.currentColor >> 8) & 0xFF) / 255.0;
-        const double b = (state.inking.currentColor & 0xFF) / 255.0;
-        const auto& samples = state.inking.stabilizer.rawSamples();
-        const double baseW = state.inking.currentWidth * zoom;
-
-        cairo_save(cr);
-        cairo_set_source_rgba(cr, r, g, b, 1.0);
+    // 4. Render the active wet pen stroke.
+    //
+    // The stabilizer streams Bezier spans, so this feeds those straight to the shared
+    // renderer rather than re-deriving spans from the raw sample list.
+    if (state.inking.isDrawing && !isConstantWidthTool(state.inking.currentTool) &&
+        state.inking.currentTool != "eraser") {
+        CameraScope camera(cr, originX, originY, zoom);
+        cairo_set_source_rgb(cr, ((state.inking.currentColor >> 16) & 0xFF) / 255.0,
+                             ((state.inking.currentColor >> 8) & 0xFF) / 255.0,
+                             (state.inking.currentColor & 0xFF) / 255.0);
         cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
         cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
 
-        const std::size_t n = samples.size();
-        if (n == 1) {
-            const double w0 = baseW * (0.25 + 0.75 * samples[0].pressure);
-            cairo_new_path(cr);
-            cairo_arc(cr, (samples[0].point.x - originX) * zoom,
-                      (samples[0].point.y - originY) * zoom, std::max(1.0, w0 / 2.0), 0, 2 * M_PI);
+        // Width is the selected width, constant for the whole stroke. Pressure is
+        // recorded but does not modulate the ink.
+        const double w = FluidCore::renderedWidth(state.inking.currentWidth);
+        const auto& samples = state.inking.stabilizer.rawSamples();
+        if (samples.size() == 1) {
+            cairo_set_line_width(cr, w);
+            cairo_arc(cr, samples[0].point.x, samples[0].point.y, w * 0.5, 0.0, 2.0 * M_PI);
             cairo_fill(cr);
-        } else if (n == 2) {
-            const double segPressure = (samples[0].pressure + samples[1].pressure) / 2.0;
-            cairo_set_line_width(cr, std::max(0.5, baseW * (0.25 + 0.75 * segPressure)));
-            cairo_new_path(cr);
-            cairo_move_to(cr, (samples[0].point.x - originX) * zoom,
-                          (samples[0].point.y - originY) * zoom);
-            cairo_line_to(cr, (samples[1].point.x - originX) * zoom,
-                          (samples[1].point.y - originY) * zoom);
-            cairo_stroke(cr);
-        } else if (n > 2) {
-            constexpr int kSubdivisions = 4;
-            for (std::size_t i = 0; i < n - 1; ++i) {
-                StrokeStabilizer::Point2D p0 =
-                    (i == 0)
-                        ? StrokeStabilizer::Point2D{2.0 * (samples[0].point.x - originX) * zoom -
-                                                        (samples[1].point.x - originX) * zoom,
-                                                    2.0 * (samples[0].point.y - originY) * zoom -
-                                                        (samples[1].point.y - originY) * zoom}
-                        : StrokeStabilizer::Point2D{(samples[i - 1].point.x - originX) * zoom,
-                                                    (samples[i - 1].point.y - originY) * zoom};
-                StrokeStabilizer::Point2D p1 = {(samples[i].point.x - originX) * zoom,
-                                                (samples[i].point.y - originY) * zoom};
-                StrokeStabilizer::Point2D p2 = {(samples[i + 1].point.x - originX) * zoom,
-                                                (samples[i + 1].point.y - originY) * zoom};
-                StrokeStabilizer::Point2D p3 =
-                    (i + 2 < n)
-                        ? StrokeStabilizer::Point2D{(samples[i + 2].point.x - originX) * zoom,
-                                                    (samples[i + 2].point.y - originY) * zoom}
-                        : StrokeStabilizer::Point2D{
-                              2.0 * (samples[n - 1].point.x - originX) * zoom -
-                                  (samples[n - 2].point.x - originX) * zoom,
-                              2.0 * (samples[n - 1].point.y - originY) * zoom -
-                                  (samples[n - 2].point.y - originY) * zoom};
-                const auto seg =
-                    StrokeStabilizer::centripetalCatmullRomToBezier(p0, p1, p2, p3, 1.0, 1.0);
+        } else if (!samples.empty()) {
+            strokeBezierSpansCairo(cr, state.inking.activeSegments, state.inking.currentWidth);
 
-                const double pStart = samples[i].pressure;
-                const double pEnd = samples[i + 1].pressure;
-
-                StrokeStabilizer::Point2D prevPt = p1;
-                for (int step = 1; step <= kSubdivisions; ++step) {
-                    const double t = static_cast<double>(step) / kSubdivisions;
-                    const StrokeStabilizer::Point2D curPt =
-                        evalCubicBezier(p1, seg.p1, seg.p2, seg.p3, t);
-                    const double curPressure = pStart + t * (pEnd - pStart);
-                    const double curWidth = baseW * (0.25 + 0.75 * curPressure);
-
-                    cairo_set_line_width(cr, std::max(0.5, curWidth));
-                    cairo_new_path(cr);
-                    cairo_move_to(cr, prevPt.x, prevPt.y);
-                    cairo_line_to(cr, curPt.x, curPt.y);
-                    cairo_stroke(cr);
-                    prevPt = curPt;
+            // Zero-lag leading edge from the last committed span to the newest sample,
+            // at the same width so the join is invisible.
+            if (state.inking.hasWetSegment) {
+                StrokeStabilizer::Point2D lastEnd = state.inking.activeWetTip;
+                if (!state.inking.activeSegments.empty()) {
+                    lastEnd = state.inking.activeSegments.back().p3;
                 }
+                cairo_set_line_width(cr, w);
+                cairo_move_to(cr, lastEnd.x, lastEnd.y);
+                cairo_line_to(cr, state.inking.activeWetTip.x, state.inking.activeWetTip.y);
+                cairo_stroke(cr);
             }
         }
-        cairo_restore(cr);
     }
 
     drawMagneticSnapGuides(cr, state);

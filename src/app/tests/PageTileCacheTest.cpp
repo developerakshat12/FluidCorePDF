@@ -114,11 +114,53 @@ void testByteBudgetAndClear() {
     std::cout << "[PASS] testByteBudgetAndClear\n";
 }
 
+// Fix 5D: at high zoom a page surface is large enough that a count-based pin cap can
+// hold more bytes than the whole budget, leaving evict() with no unpinned victim. This
+// is the shape that produced the 4.16 GB OOM on a 743-page document.
+void testPinnedBytesRespectBudget() {
+    const std::size_t pageSize = 100 * 100 * 4; // 40,000 bytes
+    // Budget fits exactly 2 pages, but maxPages is 8, so only the byte rule can stop 8 pins.
+    PageTileCache cache(pageSize * 2, 8);
+
+    for (std::size_t p = 0; p < 4; ++p) {
+        cache.insert(p, createDummySurface(100, 100));
+    }
+    expect(cache.size() == 2, "byte budget caps residency at 2 pages");
+
+    std::vector<std::size_t> visible{0, 1, 2, 3};
+    cache.setPinnedPages(visible);
+
+    // All resident pages are now pinned, so a further insert must not be able to grow
+    // the cache: pinning stayed inside the budget, leaving eviction able to reclaim.
+    cache.insert(4, createDummySurface(100, 100));
+    expect(cache.size() == 2, "pinned set must not block reclamation");
+    expect(cache.currentBytes() <= pageSize * 2, "currentBytes must stay within budget");
+
+    std::cout << "[PASS] testPinnedBytesRespectBudget\n";
+}
+
+void testSurfaceDimensionClamp() {
+    // The clamp is what keeps a single page from becoming a multi-hundred-MB surface
+    // when DocumentPane is asked for an extreme zoom.
+    expect(PageTileCache::kMaxSurfaceDimension == 4096, "dimension ceiling is 4096");
+
+    PageTileCache cache(1000000, 4);
+    cache.insert(0, createDummySurface(PageTileCache::kMaxSurfaceDimension,
+                                       PageTileCache::kMaxSurfaceDimension));
+    expect(cache.currentBytes() == static_cast<std::size_t>(PageTileCache::kMaxSurfaceDimension) *
+                                       PageTileCache::kMaxSurfaceDimension * 4,
+           "clamped surface byte size is width*height*4");
+
+    std::cout << "[PASS] testSurfaceDimensionClamp\n";
+}
+
 int main() {
     testSurfaceHandleRefcounting();
     testLruEvictionAndPromotion();
     testPinnedPageProtection();
     testByteBudgetAndClear();
+    testPinnedBytesRespectBudget();
+    testSurfaceDimensionClamp();
     std::cout << "All PageTileCache tests passed successfully!\n";
     return 0;
 }

@@ -1,6 +1,10 @@
 #pragma once
 
+#include "input/PalmRejectionEngine.h"
+#include "services/CairoStrokeHelper.h"
+#include "services/StrokeRenderer.h"
 #include "services/StrokeStabilizer.h"
+#include "services/StylusButtonRouter.h"
 #include "services/TextSelectionService.h"
 #include "storage/AnnotationStore.h"
 #include "text/TextSelection.h"
@@ -42,7 +46,12 @@ class InkOverlay {
     void setColor(std::uint32_t color) { m_currentColor = color; }
     std::uint32_t color() const { return m_currentColor; }
 
-    void setStrokeWidth(double width) { m_currentWidth = width; }
+    // An explicit width from the toolbar supersedes any width a tool forced, so leaving
+    // the eraser must not reset a width the user chose.
+    void setStrokeWidth(double width) {
+        m_currentWidth = width;
+        m_widthForcedByTool = false;
+    }
     double strokeWidth() const { return m_currentWidth; }
 
     StrokeStabilizer& stabilizer() { return m_stabilizer; }
@@ -117,10 +126,19 @@ class InkOverlay {
 
     void renderStroke(cairo_t* cr, const FluidCore::Stroke& stroke) const;
     void renderActiveLiveStroke(cairo_t* cr) const;
-    void renderBezierSegment(cairo_t* cr, const StrokeStabilizer::BezierSegment& seg,
-                             double baseWidth) const;
     void renderTextSelection(cairo_t* cr, std::size_t pageIndex) const;
     void renderCropSelection(cairo_t* cr, std::size_t pageIndex) const;
+
+    // Union of every highlighter on the page, in page-local coordinates, padded to
+    // cover the antialiased outline. Bounds the isolated highlighter group so it does
+    // not allocate a surface the size of the whole slice.
+    StrokeClipBounds
+    highlighterPassClipBounds(const std::vector<FluidCore::Stroke>& pageStrokes) const;
+
+    // Resolves which tool a press should activate. A pen takes priority over the
+    // mouse-oriented "select"/"text" tools so that inking never requires first
+    // switching tools with the mouse.
+    std::string resolveToolForDevice(FluidCore::InputDeviceClass devClass) const;
 
     DocumentPane& m_pane;
     FluidCore::AnnotationStore& m_annotationStore;
@@ -156,7 +174,29 @@ class InkOverlay {
 
     std::string m_currentTool = "select";
     std::uint32_t m_currentColor = 0x000000;
+
+    // The eraser forces a wide stroke width because it sizes its hit radius and cursor
+    // ring from it. That width must not survive into the next ink stroke, so it is
+    // tracked and restored on tool change rather than reset unconditionally.
+    double m_defaultInkWidth = 2.0;
     double m_currentWidth = 2.0;
+    bool m_widthForcedByTool = false;
+
+    // Pen barrel button state. A barrel press borrows the eraser for its duration
+    // (or latches it, when held past the threshold) and the tool selected beforehand
+    // is restored on release.
+    StylusButtonRouter m_stylusRouter;
+    std::string m_toolBeforeBarrel;
+    uint32_t m_barrelDownAtMs = 0;
+
+    // Set while a stylus stroke is in progress with the highlighter modifier held, so
+    // Shift selects the highlighter nib for the whole stroke rather than per event.
+    bool m_stylusHighlighter = false;
+
+    // Latest stylus attributes for the active stroke. Each field is independently
+    // valid because digitizers differ in what they report. Captured for callers that
+    // want tilt-aware ink; the stroke geometry does not yet consume them.
+    StylusButtonRouter::Attributes m_stylusAttributes;
 
     FluidCore::PalmRejectionEngine* m_palmEngine = nullptr;
 };

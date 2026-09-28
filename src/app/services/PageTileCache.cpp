@@ -9,7 +9,8 @@
 namespace FluidCoreApp {
 
 PageTileCache::PageTileCache(std::size_t maxBytes, std::size_t maxPages)
-    : m_maxBytes(maxBytes), m_maxPages(maxPages) {}
+    : m_maxBytes(maxBytes == static_cast<std::size_t>(-1) ? defaultMaxBytes() : maxBytes),
+      m_maxPages(maxPages) {}
 
 PageTileCache::~PageTileCache() {
     clear();
@@ -79,6 +80,7 @@ void PageTileCache::insert(std::size_t pageIndex, CairoSurfaceHandle handle) {
     }
 
     const std::size_t bytes = handle.byteSize();
+    m_largestSurfaceBytes = std::max(m_largestSurfaceBytes, bytes);
     auto it = m_lookup.find(pageIndex);
     if (it != m_lookup.end()) {
         m_currentBytes -= it->second->bytes;
@@ -94,6 +96,46 @@ void PageTileCache::insert(std::size_t pageIndex, CairoSurfaceHandle handle) {
     }
 }
 
+std::size_t PageTileCache::trimToBytes(std::size_t targetBytes) {
+    const std::size_t before = m_currentBytes;
+    // Evicting a surface drops the Cairo reference, so the backing store is freed here
+    // rather than at the next draw. Skips pinned pages: those are the viewport the user
+    // is looking at right now. Deliberately does not call evict(), which would enforce
+    // the normal budget instead of the idle target.
+    while (m_currentBytes > targetBytes && !m_lruList.empty()) {
+        auto it = m_lruList.end();
+        bool foundUnpinned = false;
+        while (it != m_lruList.begin()) {
+            --it;
+            if (!it->pinned) {
+                foundUnpinned = true;
+                break;
+            }
+        }
+        if (!foundUnpinned) {
+            break;
+        }
+        m_lookup.erase(it->pageIndex);
+        m_currentBytes -= it->bytes;
+        m_lruList.erase(it);
+    }
+    return before - m_currentBytes;
+}
+
+std::size_t PageTileCache::releaseUnpinned() {
+    const std::size_t before = m_currentBytes;
+    for (auto it = m_lruList.begin(); it != m_lruList.end();) {
+        if (it->pinned) {
+            ++it;
+            continue;
+        }
+        m_lookup.erase(it->pageIndex);
+        m_currentBytes -= it->bytes;
+        it = m_lruList.erase(it);
+    }
+    return before - m_currentBytes;
+}
+
 CairoSurfaceHandle PageTileCache::renderPage(std::size_t pageIndex, PopplerPage* page,
                                              double targetWidth, double targetHeight) {
     if (!page) {
@@ -107,8 +149,15 @@ CairoSurfaceHandle PageTileCache::renderPage(std::size_t pageIndex, PopplerPage*
 
     const std::size_t beforeAllocPriv = MemoryTelemetry::getProcessPrivateBytes();
 
-    const int width = std::max(1, static_cast<int>(std::round(targetWidth)));
-    const int height = std::max(1, static_cast<int>(std::round(targetHeight)));
+    // Clamp the raster before allocating. A surface is width*height*4, so this is the
+    // only thing standing between an extreme zoom and a multi-hundred-megabyte single
+    // allocation (Fix 5D).
+    const int width =
+        std::clamp(static_cast<int>(std::round(targetWidth)), 1, kMaxSurfaceDimension);
+    const int height =
+        std::clamp(static_cast<int>(std::round(targetHeight)), 1, kMaxSurfaceDimension);
+    m_largestSurfaceBytes =
+        std::max(m_largestSurfaceBytes, static_cast<std::size_t>(width) * height * 4);
 
     double pageWidth = 0.0;
     double pageHeight = 0.0;
@@ -202,14 +251,26 @@ CairoSurfaceHandle PageTileCache::renderPage(std::size_t pageIndex, PopplerPage*
 void PageTileCache::setPinnedPages(const std::vector<std::size_t>& pages) {
     unpinAll();
     std::size_t pinnedCount = 0;
+    // Pins are byte-budgeted as well as count-budgeted. A count cap alone is not a safety
+    // bound: at 200% zoom a letter page surface is ~9.5 MB, so eight pinned pages hold
+    // ~76 MB against a 64 MB budget and evict() can never win them back. The original
+    // 743-page OOM happened exactly this way.
+    //
+    // The reserve matters as much as the cap. Pinning up to the full budget still starves
+    // eviction when the next page arrives, so pinned bytes must leave room for one more
+    // surface; that guarantees an incoming page either fits outright or has an unpinned
+    // victim to evict.
+    const std::size_t reserve = std::min(m_largestSurfaceBytes, m_maxBytes);
+    std::size_t pinnedBytes = 0;
     for (std::size_t p : pages) {
         if (pinnedCount >= m_maxPages) {
             break;
         }
         auto it = m_lookup.find(p);
-        if (it != m_lookup.end()) {
+        if (it != m_lookup.end() && pinnedBytes + it->second->bytes <= m_maxBytes - reserve) {
             it->second->pinned = true;
             ++pinnedCount;
+            pinnedBytes += it->second->bytes;
         }
     }
 }
