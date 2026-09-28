@@ -4,16 +4,80 @@ on:
   push:
     tags:
       - 'v*'
+  # Allows a release to be rebuilt without deleting and re-pushing the tag,
+  # which is the usual source of accidental duplicate releases.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v1.1.6)'
+        required: true
+        type: string
+
+# Serialise releases per tag. cancel-in-progress is false: a queued re-run must
+# not kill an in-flight publish and leave a half-uploaded release behind.
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
 
 permissions:
-  contents: write
+  contents: read
+
+env:
+  # Expected Cairo version on Windows. Upstream 1.18.6+ aborts in
+  # cairo-colr-glyph-render.c:1168 (assert(!"reached")) when the DirectWrite
+  # backend queries system fonts with COLRv1 colour tables, killing the app on
+  # launch with 0xC0000409. See ops/CONTEXT.md §4.
+  CAIRO_PINNED_VERSION: 1.18.4-4
 
 jobs:
-  release-windows:
-    name: release (windows-x64)
-    runs-on: windows-latest
+  # ==========================================================================
+  # 1. Verify the tag matches CMakeLists.txt. Catches the single most common
+  #    release mistake: bumping the tag but forgetting the version block.
+  # ==========================================================================
+  verify-tag:
+    name: verify tag matches CMakeLists.txt
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.check.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - name: Compare tag version to project version
+        id: check
+        env:
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$TAG" =~ ^v[0-9]+(\.[0-9]+)*$ ]]; then
+            echo "::error::Tag '$TAG' is not of the form v<major>.<minor>[.<patch>]"
+            exit 1
+          fi
+          TAG_VERSION="${TAG#v}"
+          # Anchored so `cmake_minimum_required(VERSION 3.20)` is not matched.
+          CMAKE_VERSION="$(grep -oP '^\s*VERSION\s+\K[0-9]+(\.[0-9]+)*' CMakeLists.txt | head -n 1)"
+          if [ -z "$CMAKE_VERSION" ]; then
+            echo "::error::Could not parse a project VERSION out of CMakeLists.txt"
+            exit 1
+          fi
+          echo "Tag: $TAG_VERSION   CMakeLists.txt: $CMAKE_VERSION"
+          if [ "$TAG_VERSION" != "$CMAKE_VERSION" ]; then
+            echo "::error::Tag version $TAG_VERSION does not match CMakeLists.txt version $CMAKE_VERSION. Bump CMakeLists.txt (and the packaging script defaults) before tagging."
+            exit 1
+          fi
+          echo "version=$TAG_VERSION" >> "$GITHUB_OUTPUT"
+
+  # ==========================================================================
+  # 2. Windows x64 build + package. Uploads artifacts only.
+  # ==========================================================================
+  build-windows:
+    name: build (windows-x64)
+    needs: verify-tag
+    runs-on: windows-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
       - uses: msys2/setup-msys2@v2
@@ -21,6 +85,8 @@ jobs:
         with:
           msystem: UCRT64
           update: true
+          # This package list is kept byte-identical to the windows-build job
+          # in ci.yml. Any change must be made in both files (ops/CONTEXT.md §4).
           install: >-
             mingw-w64-ucrt-x86_64-gcc
             mingw-w64-ucrt-x86_64-cmake
@@ -36,11 +102,24 @@ jobs:
             mingw-w64-ucrt-x86_64-librsvg
             mingw-w64-ucrt-x86_64-adwaita-icon-theme
             mingw-w64-ucrt-x86_64-hicolor-icon-theme
-      - name: Pin Cairo to stable 1.18.4-4 (workaround upstream 1.18.6 COLRv1 assert crash)
+            mingw-w64-ucrt-x86_64-gtk-update-icon-cache
+      - name: Pin Cairo to ${{ env.CAIRO_PINNED_VERSION }}
         shell: msys2 {0}
         run: |
-          curl -sSL --retry 3 "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-cairo-1.18.4-4-any.pkg.tar.zst" -o /tmp/cairo.pkg.tar.zst
+          set -euo pipefail
+          WANT="${{ env.CAIRO_PINNED_VERSION }}"
+          if pacman -Qi mingw-w64-ucrt-x86_64-cairo | grep -qE "^Version[[:space:]]*:[[:space:]]*${WANT}$"; then
+            echo "Cairo ${WANT} already installed; skipping pin."
+            exit 0
+          fi
+          # -f is load-bearing: without it a 404 body is written to disk with
+          # exit 0 and pacman then fails on a non-zstd file.
+          curl -fsSL --retry 3 \
+            "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-cairo-${WANT}-any.pkg.tar.zst" \
+            -o /tmp/cairo.pkg.tar.zst
           pacman -U --noconfirm /tmp/cairo.pkg.tar.zst
+          pacman -Qi mingw-w64-ucrt-x86_64-cairo | grep -qE "^Version[[:space:]]*:[[:space:]]*${WANT}$" \
+            || { echo "::error::Cairo pin did not take effect"; exit 1; }
       - name: Configure
         shell: msys2 {0}
         run: |
@@ -52,40 +131,70 @@ jobs:
         run: cmake --build build-win
       - name: Test (ctest)
         shell: msys2 {0}
-        run: ctest --test-dir build-win --output-on-failure
+        run: ctest --test-dir build-win --output-on-failure --timeout 300
       - name: Package Windows distribution and Inno Setup installer
+        shell: pwsh
         run: |
-          $Tag = "${{ github.ref_name }}"
-          $Version = $Tag.TrimStart('v')
-          powershell -ExecutionPolicy Bypass -File ops/scripts/package-windows.ps1 -BuildInstaller -AppVersion $Version -MsysRoot '${{ steps.msys2.outputs.msys2-location }}'
+          pwsh -NoProfile -ExecutionPolicy Bypass -File ./ops/scripts/package-windows.ps1 `
+            -BuildInstaller `
+            -AppVersion '${{ needs.verify-tag.outputs.version }}' `
+            -MsysRoot '${{ steps.msys2.outputs.msys2-location }}'
       - name: Compute SHA256 Checksums
+        # Two defects in the previous implementation:
+        #   1. Get-FileHash piped straight to Out-File emits a formatted table
+        #      whose Path column is ellipsis-truncated to console width, and
+        #      under Windows PowerShell 5.1 the file is UTF-16LE. Neither
+        #      `sha256sum -c` nor any checksum consumer can read it.
+        #   2. Set-Content -Encoding ascii would emit CRLF, which leaves a
+        #      trailing \r on every filename: sha256sum then fails with
+        #      "FluidCore-Setup-x64.exe'$'\r': No such file or directory".
+        # WriteAllText with an explicit "\n" join gives a plain LF-terminated
+        # <hash>  <bare-filename> file, identical to the Linux one.
+        shell: pwsh
         run: |
-          Get-FileHash build-win/dist/FluidCore-Setup-x64.exe, build-win/dist/fluidcore-windows-x64.zip -Algorithm SHA256 | Out-File -FilePath build-win/dist/checksums-windows-sha256.txt
-      - name: Locate release notes
-        id: release_notes
-        shell: bash
-        run: |
-          NOTES_FILE="ops/RELEASE_NOTES_${{ github.ref_name }}.md"
-          if [ -f "$NOTES_FILE" ]; then
-            echo "path=$NOTES_FILE" >> "$GITHUB_OUTPUT"
-          else
-            echo "path=" >> "$GITHUB_OUTPUT"
-          fi
-      - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+          $ErrorActionPreference = "Stop"
+          $files = @(
+            "build-win/dist/FluidCore-Setup-x64.exe",
+            "build-win/dist/fluidcore-windows-x64.zip"
+          )
+          foreach ($f in $files) {
+            if (-not (Test-Path $f)) { throw "Expected release asset missing: $f" }
+          }
+          $lines = $files | ForEach-Object {
+            $h = (Get-FileHash $_ -Algorithm SHA256).Hash.ToLowerInvariant()
+            "{0}  {1}" -f $h, (Split-Path -Leaf $_)
+          }
+          $out = "build-win/dist/checksums-windows-sha256.txt"
+          [System.IO.File]::WriteAllText(
+            $out,
+            (($lines -join "`n") + "`n"),
+            [System.Text.Encoding]::ASCII
+          )
+          Get-Content $out
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v6
         with:
-          body_path: ${{ steps.release_notes.outputs.path }}
-          files: |
+          name: fluidcore-windows-x64
+          # Explicit list, not the whole dist/ directory: dist/ also holds the
+          # ~117 MB fluidcore-windows-x64/ staging tree, which is intermediate
+          # and already inside the zip.
+          path: |
             build-win/dist/FluidCore-Setup-x64.exe
             build-win/dist/fluidcore-windows-x64.zip
             build-win/dist/checksums-windows-sha256.txt
-          generate_release_notes: true
+          if-no-files-found: error
+          retention-days: 7
 
-  release-linux:
-    name: release (linux-x64)
-    runs-on: ubuntu-22.04
+  # ==========================================================================
+  # 3. Linux x64 build + package. Uploads artifacts only.
+  # ==========================================================================
+  build-linux:
+    name: build (linux-x64)
+    needs: verify-tag
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
       - name: Install toolchain + GTK3/Poppler/Cairo dev headers
@@ -93,7 +202,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             ninja-build g++ pkg-config libgtk-3-dev libpoppler-glib-dev libcairo2-dev \
-            libsqlite3-dev zlib1g-dev dpkg-dev libmimalloc-dev
+            libsqlite3-dev zlib1g-dev dpkg-dev libmimalloc-dev \
+            squashfs-tools desktop-file-utils
+          # appimagetool hard-exits with "mksquashfs command is missing but
+          # required" / "desktop-file-validate command is missing but required"
+          # before doing any work, so these two packages are what make the
+          # AppImage step below possible at all.
       - name: Configure
         run: |
           cmake -S . -B build -G Ninja \
@@ -102,43 +216,153 @@ jobs:
       - name: Build
         run: cmake --build build
       - name: Test (ctest)
-        run: ctest --test-dir build --output-on-failure
+        run: ctest --test-dir build --output-on-failure --timeout 300
       - name: Package Linux distributions (.deb & AppImage)
+        env:
+          VERSION: ${{ needs.verify-tag.outputs.version }}
         run: |
-          TAG="${{ github.ref_name }}"
-          VERSION="${TAG#v}"
+          set -euo pipefail
           bash ops/scripts/package-deb.sh --build-dir build --version "${VERSION}"
           bash ops/scripts/package-appimage.sh --build-dir build --version "${VERSION}"
       - name: Smoke test Linux packages
+        env:
+          VERSION: ${{ needs.verify-tag.outputs.version }}
         run: |
-          TAG="${{ github.ref_name }}"
-          VERSION="${TAG#v}"
+          set -euo pipefail
           dpkg-deb -I "build/dist/fluidcore_${VERSION}_amd64.deb"
           dpkg-deb -c "build/dist/fluidcore_${VERSION}_amd64.deb"
           test -f "build/dist/FluidCore-${VERSION}-x86_64.AppImage"
           test -x "build/dist/FluidCore-${VERSION}-x86_64.AppImage"
-          test -x "build/dist/AppDir/AppRun"
+          test -x build/dist/AppDir/AppRun
       - name: Compute SHA256 Checksums
+        env:
+          VERSION: ${{ needs.verify-tag.outputs.version }}
         run: |
-          TAG="${{ github.ref_name }}"
-          VERSION="${TAG#v}"
+          set -euo pipefail
           cd build/dist
-          sha256sum "fluidcore_${VERSION}_amd64.deb" "FluidCore-${VERSION}-x86_64.AppImage" > checksums-linux-sha256.txt
+          sha256sum "fluidcore_${VERSION}_amd64.deb" "FluidCore-${VERSION}-x86_64.AppImage" \
+            > checksums-linux-sha256.txt
+          cat checksums-linux-sha256.txt
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: fluidcore-linux-x64
+          # Explicit list: dist/ also holds AppDir/, the intermediate staging
+          # tree that appimagetool already compressed into the AppImage.
+          path: |
+            build/dist/fluidcore_${{ needs.verify-tag.outputs.version }}_amd64.deb
+            build/dist/FluidCore-${{ needs.verify-tag.outputs.version }}-x86_64.AppImage
+            build/dist/checksums-linux-sha256.txt
+          if-no-files-found: error
+          retention-days: 7
+
+  # ==========================================================================
+  # 4. The ONLY job that creates the GitHub Release. Gated on both builds, so
+  #    a partial release can never go live: previously the windows and linux
+  #    jobs each published independently, meaning the first to finish made a
+  #    live release with 3 of 6 assets while the other was still building.
+  # ==========================================================================
+  publish:
+    name: publish release
+    needs: [verify-tag, build-windows, build-linux]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: fluidcore-windows-x64
+          path: release-assets/windows
+      - name: Download Linux artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: fluidcore-linux-x64
+          path: release-assets/linux
+      - name: Assemble and validate the release asset set
+        env:
+          VERSION: ${{ needs.verify-tag.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets/final
+          # Explicit list, not a glob: a glob silently succeeds when a file is
+          # missing, which is how a broken release ships green.
+          ASSETS=(
+            "release-assets/windows/FluidCore-Setup-x64.exe"
+            "release-assets/windows/fluidcore-windows-x64.zip"
+            "release-assets/windows/checksums-windows-sha256.txt"
+            "release-assets/linux/fluidcore_${VERSION}_amd64.deb"
+            "release-assets/linux/FluidCore-${VERSION}-x86_64.AppImage"
+            "release-assets/linux/checksums-linux-sha256.txt"
+          )
+          for a in "${ASSETS[@]}"; do
+            if [ ! -s "$a" ]; then
+              echo "::error::Missing or empty release asset: $a"
+              exit 1
+            fi
+            cp "$a" release-assets/final/
+            printf '  %10s  %s\n' "$(du -h "$a" | cut -f1)" "$(basename "$a")"
+          done
+          # The portable zip is the primary Windows download. Verify it carries
+          # POSIX separators, since a backslash here means it extracts as flat
+          # files on every non-Windows machine.
+          if command -v unzip >/dev/null 2>&1; then
+            if unzip -Z1 "release-assets/final/fluidcore-windows-x64.zip" | grep -q '\\'; then
+              echo "::error::fluidcore-windows-x64.zip contains backslash path separators"
+              exit 1
+            fi
+            echo "Portable zip uses POSIX separators."
+          fi
+          # Both checksum files must verify against the assets we just staged.
+          ( cd release-assets/final && sha256sum -c checksums-windows-sha256.txt )
+          ( cd release-assets/final && sha256sum -c checksums-linux-sha256.txt )
       - name: Locate release notes
         id: release_notes
+        env:
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
-          NOTES_FILE="ops/RELEASE_NOTES_${{ github.ref_name }}.md"
+          set -euo pipefail
+          NOTES_FILE="ops/RELEASE_NOTES_${TAG}.md"
           if [ -f "$NOTES_FILE" ]; then
             echo "path=$NOTES_FILE" >> "$GITHUB_OUTPUT"
+            echo "Using release notes from $NOTES_FILE"
           else
+            echo "::warning::No release notes at $NOTES_FILE; the release body will be auto-generated"
             echo "path=" >> "$GITHUB_OUTPUT"
           fi
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
+          # Explicit tag_name: on a workflow_dispatch run github.ref_name is the
+          # *branch*, not the tag being released, so relying on the default
+          # would create a release pointing at the wrong ref.
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          name: ${{ github.event.inputs.tag || github.ref_name }}
           body_path: ${{ steps.release_notes.outputs.path }}
+          # Auto-notes would be *prepended* to a curated body, duplicating the
+          # changelog, and the previous dual-publish setup re-ran generation on
+          # the second PATCH. Curated notes only, auto-notes only as fallback.
+          generate_release_notes: ${{ steps.release_notes.outputs.path == '' }}
+          draft: true
+          fail_on_unmatched_files: true
           files: |
-            build/dist/fluidcore_*_amd64.deb
-            build/dist/FluidCore-*-x86_64.AppImage
-            build/dist/checksums-linux-sha256.txt
-          generate_release_notes: true
+            release-assets/final/FluidCore-Setup-x64.exe
+            release-assets/final/fluidcore-windows-x64.zip
+            release-assets/final/checksums-windows-sha256.txt
+            release-assets/final/fluidcore_${{ needs.verify-tag.outputs.version }}_amd64.deb
+            release-assets/final/FluidCore-${{ needs.verify-tag.outputs.version }}-x86_64.AppImage
+            release-assets/final/checksums-linux-sha256.txt
+      - name: Publish the release (undraft)
+        # Published as a draft first, then flipped live in one step. Guarantees
+        # the release never exists in a publicly-visible partial state.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release edit "$TAG" --draft=false
+          echo "Release $TAG is live."

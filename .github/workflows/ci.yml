@@ -2,16 +2,54 @@ name: ci
 
 on:
   push:
-    branches: [main, develop, SearchFunctionFix]
-    tags:
-      - 'v*'
+    branches: [main, develop]
   pull_request:
 
+# Tag pushes intentionally do NOT trigger this workflow. release.yml owns
+# v* tags; duplicating them here would build every platform twice per release
+# and publish the two sets of artifacts under conflicting version labels.
+permissions:
+  contents: read
+
+# A new push supersedes an in-flight run on the same ref; a queued run for the
+# same PR is superseded rather than piling up.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  invariants:
-    runs-on: ubuntu-latest
+  # Single source of truth for the version. Every packaging job below consumes
+  # this output instead of repeating a hardcoded literal, so a release only has
+  # to bump CMakeLists.txt.
+  version:
+    name: resolve version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      value: ${{ steps.read.outputs.value }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - name: Read VERSION from CMakeLists.txt
+        id: read
+        run: |
+          set -euo pipefail
+          # Anchored so that `cmake_minimum_required(VERSION 3.20)` on line 1
+          # is not mistaken for the project version.
+          VALUE="$(grep -oP '^\s*VERSION\s+\K[0-9]+(\.[0-9]+)*' CMakeLists.txt | head -n 1)"
+          if [ -z "$VALUE" ]; then
+            echo "::error::Could not parse a project VERSION out of CMakeLists.txt"
+            exit 1
+          fi
+          echo "value=$VALUE" >> "$GITHUB_OUTPUT"
+          echo "FluidCore version: $VALUE"
+
+  invariants:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
           submodules: recursive
@@ -22,20 +60,26 @@ jobs:
         run: python3 ops/scripts/check_invariants.py --check-dco "origin/${{ github.base_ref }}..HEAD"
 
   format:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
       - name: Install clang-format
         run: pipx install clang-format==18.1.8
       - name: Check formatting
         run: |
-          find src -name '*.h' -o -name '*.hpp' -o -name '*.cpp' -o -name '*.cc' \
-            | xargs clang-format --dry-run --Werror
+          set -euo pipefail
+          # -r: if the find ever matches nothing, run nothing. Without it xargs
+          # would still invoke clang-format with zero paths and block on stdin
+          # until the job times out.
+          find src \( -name '*.h' -o -name '*.hpp' -o -name '*.cpp' -o -name '*.cc' \) -print0 \
+            | xargs -0 -r clang-format --dry-run --Werror
 
   build:
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -50,7 +94,7 @@ jobs:
             sanitize: ON
     name: build (${{ matrix.compiler }})
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
       - name: Install toolchain
@@ -68,14 +112,17 @@ jobs:
       - name: Build
         run: cmake --build build
       - name: Test (headless ctest)
-        run: ctest --test-dir build --output-on-failure
+        run: ctest --test-dir build --output-on-failure --timeout 300
 
   app-shell:
     # GUI code compiles on runners but cannot open displays: compile-link only.
     # Runtime/visual verification happens locally (WSLg / dev container).
-    runs-on: ubuntu-22.04
+    # All src/app tests render to Cairo image surfaces, so no xvfb is needed.
+    needs: version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
       - name: Install toolchain + GTK3/Poppler/Cairo dev headers
@@ -83,7 +130,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             ninja-build g++ pkg-config libgtk-3-dev libpoppler-glib-dev libcairo2-dev \
-            libsqlite3-dev zlib1g-dev dpkg-dev libmimalloc-dev
+            libsqlite3-dev zlib1g-dev dpkg-dev libmimalloc-dev \
+            squashfs-tools desktop-file-utils
+          # appimagetool hard-exits with "mksquashfs command is missing but
+          # required" / "desktop-file-validate command is missing but required"
+          # before doing any work, so these two packages are what make the
+          # AppImage step below possible at all. `file` and `zsyncmake` are
+          # already present on the runner image.
       - name: Configure
         run: |
           cmake -S . -B build -G Ninja \
@@ -92,35 +145,40 @@ jobs:
       - name: Build
         run: cmake --build build
       - name: Test (ctest)
-        run: ctest --test-dir build --output-on-failure
+        run: ctest --test-dir build --output-on-failure --timeout 300
       - name: Package Linux distributions (.deb & AppImage)
         run: |
-          bash ops/scripts/package-deb.sh --build-dir build --version 1.1.5
-          bash ops/scripts/package-appimage.sh --build-dir build --version 1.1.5
+          bash ops/scripts/package-deb.sh --build-dir build --version '${{ needs.version.outputs.value }}'
+          bash ops/scripts/package-appimage.sh --build-dir build --version '${{ needs.version.outputs.value }}'
       - name: Smoke test Linux packages
+        env:
+          VERSION: ${{ needs.version.outputs.value }}
         run: |
-          DEB_PKG=$(ls build/dist/fluidcore_*_amd64.deb | head -n 1)
-          APPIMAGE_PKG=$(ls build/dist/FluidCore-*-x86_64.AppImage | head -n 1)
-          dpkg-deb -I "${DEB_PKG}"
-          dpkg-deb -c "${DEB_PKG}"
-          test -f "${APPIMAGE_PKG}"
-          test -x "${APPIMAGE_PKG}"
+          set -euo pipefail
+          DEB_PKG="build/dist/fluidcore_${VERSION}_amd64.deb"
+          APPIMAGE_PKG="build/dist/FluidCore-${VERSION}-x86_64.AppImage"
+          dpkg-deb -I "$DEB_PKG"
+          dpkg-deb -c "$DEB_PKG"
+          test -f "$APPIMAGE_PKG"
+          test -x "$APPIMAGE_PKG"
           test -x build/dist/AppDir/AppRun
       - name: Upload Linux distribution artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: fluidcore-linux-x64
           path: |
             build/dist/fluidcore_*_amd64.deb
             build/dist/FluidCore-*-x86_64.AppImage
           if-no-files-found: error
-
+          retention-days: 14
 
   windows-build:
     name: windows (ucrt64)
+    needs: version
     runs-on: windows-latest
+    timeout-minutes: 75
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
       - uses: msys2/setup-msys2@v2
@@ -143,11 +201,27 @@ jobs:
             mingw-w64-ucrt-x86_64-librsvg
             mingw-w64-ucrt-x86_64-adwaita-icon-theme
             mingw-w64-ucrt-x86_64-hicolor-icon-theme
+            mingw-w64-ucrt-x86_64-gtk-update-icon-cache
       - name: Pin Cairo to stable 1.18.4-4 (workaround upstream 1.18.6 COLRv1 assert crash)
         shell: msys2 {0}
         run: |
-          curl -sSL --retry 3 "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-cairo-1.18.4-4-any.pkg.tar.zst" -o /tmp/cairo.pkg.tar.zst
+          set -euo pipefail
+          WANT="1.18.4-4"
+          # If the installed Cairo is already the pinned version there is
+          # nothing to do, and we avoid depending on a specific artifact URL
+          # that MSYS2 may garbage-collect on its next Cairo bump.
+          if pacman -Qi mingw-w64-ucrt-x86_64-cairo | grep -qE "^Version[[:space:]]*:[[:space:]]*${WANT}$"; then
+            echo "Cairo ${WANT} already installed; skipping pin."
+            exit 0
+          fi
+          # -f is load-bearing: without it a 404 body is written to disk with
+          # exit 0 and pacman then fails on a non-zstd file with a confusing error.
+          curl -fsSL --retry 3 \
+            "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-cairo-${WANT}-any.pkg.tar.zst" \
+            -o /tmp/cairo.pkg.tar.zst
           pacman -U --noconfirm /tmp/cairo.pkg.tar.zst
+          pacman -Qi mingw-w64-ucrt-x86_64-cairo | grep -qE "^Version[[:space:]]*:[[:space:]]*${WANT}$" \
+            || { echo "::error::Cairo pin did not take effect"; exit 1; }
       - name: Configure
         shell: msys2 {0}
         run: |
@@ -159,15 +233,25 @@ jobs:
         run: cmake --build build-win
       - name: Test (ctest)
         shell: msys2 {0}
-        run: ctest --test-dir build-win --output-on-failure
+        run: ctest --test-dir build-win --output-on-failure --timeout 300
       - name: Package Windows standalone distribution & installer
-        run: powershell -ExecutionPolicy Bypass -File ops/scripts/package-windows.ps1 -BuildInstaller -AppVersion 1.1.5 -MsysRoot '${{ steps.msys2.outputs.msys2-location }}'
+        # setup-msys2 exports its toolchain onto the process environment, so
+        # this nested pwsh inherits PATH/PKG_CONFIG_PATH. Invoking via -File with
+        # an explicit Bypass also makes the call immune to the runner's
+        # execution policy, and keeps PS 7 semantics (including the corrected
+        # zip path separators) rather than Windows PowerShell 5.1.
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -ExecutionPolicy Bypass -File ./ops/scripts/package-windows.ps1 `
+            -BuildInstaller `
+            -AppVersion '${{ needs.version.outputs.value }}' `
+            -MsysRoot '${{ steps.msys2.outputs.msys2-location }}'
       - name: Upload Windows distribution artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: fluidcore-windows-x64
           path: |
             build-win/dist/fluidcore-windows-x64.zip
             build-win/dist/FluidCore-Setup-x64.exe
           if-no-files-found: error
-
+          retention-days: 14
