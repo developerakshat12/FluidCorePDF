@@ -19,11 +19,11 @@ squeeze fps: 60.0
 - **Document Scale**: 50 PDF documents (5000 vector pages total)
 - **Cold Load Duration (T0 -> T1)**: 0.02 s (Budget: <= 8.00 s) -> PASS
 - **Baseline RAM**: 13.7 MB
-- **Working Set after Cold Load**: 21.0 MB
-- **Working Set after Pass 1 (50 docs)**: 28.2 MB
-- **Working Set after Pass 2 (50 docs)**: 28.8 MB
-- **Inter-Pass Working Set Growth**: 0.6 MB (demonstrates cache boundedness)
-- **Peak Working Set**: 0.029 GB (29.7 MB, Budget: <= 1.2 GB) -> PASS
+- **Working Set after Cold Load**: 20.8 MB
+- **Working Set after Pass 1 (50 docs)**: 28.1 MB
+- **Working Set after Pass 2 (50 docs)**: 28.5 MB
+- **Inter-Pass Working Set Growth**: 0.4 MB (demonstrates cache boundedness)
+- **Peak Working Set**: 0.029 GB (29.5 MB, Budget: <= 1.2 GB) -> PASS
 
 ## Verdict
 PASS

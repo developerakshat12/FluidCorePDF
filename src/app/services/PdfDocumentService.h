@@ -54,6 +54,14 @@ class PdfDocumentService {
     std::vector<std::pair<std::string, std::string>> allDocuments() const;
     bool repointDocumentPath(const std::string& docId, const std::string& newPath);
 
+    // Whether docId names a document this service can resolve. Uses the same alias table
+    // the renderer uses to fetch pages, so it answers for every registered alias
+    // (including synthetic ones such as "doc-primary.pdf" for a pane whose own id is
+    // "doc-primary"). Callers must use this rather than comparing identifiers themselves:
+    // the same logical document is reachable under several ids, and an ad-hoc string
+    // comparison silently rejects the valid ones.
+    bool hasDocument(const std::string& docId) const;
+
     // Background worker access (protected by m_workerPopplerMutex)
     PopplerPagePtr getBackgroundPage(const std::string& docId, std::size_t pageNo);
     CairoSurfaceHandle renderBackgroundCrop(const std::string& docId, std::size_t pageNo,

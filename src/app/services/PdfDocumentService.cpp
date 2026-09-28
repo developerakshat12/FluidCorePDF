@@ -156,6 +156,11 @@ std::string PdfDocumentService::getFilePath(const std::string& docId) const {
     return "";
 }
 
+bool PdfDocumentService::hasDocument(const std::string& docId) const {
+    std::lock_guard<std::mutex> lock(m_registryMutex);
+    return resolveEntryLocked(docId) != nullptr;
+}
+
 std::vector<std::pair<std::string, std::string>> PdfDocumentService::allDocuments() const {
     std::lock_guard<std::mutex> lock(m_registryMutex);
     std::vector<std::pair<std::string, std::string>> result;

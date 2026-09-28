@@ -438,6 +438,62 @@ int testSpatialInvalidationReleasesInFlightRequests() {
     return failures;
 }
 
+// A crop is keyed by a synthetic alias such as "doc-primary.pdf" (main.cpp seedDemoContent,
+// and the id registered with the document service), while the pane reports "doc-primary" and
+// has no file path at all. Every tier of DocumentPane::matchesDocId fails on that pair: Tier 1
+// needs exact equality, Tiers 2 and 4 need a non-empty path, and Tier 3 needs a directory
+// component. The crop therefore rendered with zero annotation strokes, so the page drew but
+// no ink ever appeared, and symmetrically the invalidation never evicted the tile.
+int testSyntheticAliasInvalidation() {
+    std::cout << "Running testSyntheticAliasInvalidation...\n";
+    int failures = 0;
+
+    PdfDocumentService docService;
+    // The service is the alias authority. Register the same file under the pane's own id
+    // and under the synthetic alias the cards are keyed by.
+    docService.registerMainDocument("doc-primary", nullptr, "D:/docs/paper.pdf");
+    docService.registerMainDocument("doc-primary.pdf", nullptr, "D:/docs/paper.pdf");
+
+    failures +=
+        check(docService.hasDocument("doc-primary.pdf"), "service resolves the synthetic alias");
+    failures += check(docService.hasDocument("doc-primary"), "service resolves the pane's own id");
+    failures +=
+        check(!docService.hasDocument("totally-unrelated-doc"), "service rejects an unknown id");
+
+    ExcerptTileCache cache(docService, 1000000);
+    // No alias resolver installed: this is the plain production wiring, and the cache must
+    // still recognise the two ids as one document via the service.
+    CropCacheKey kAlias = CropCacheKey::fromNormalizedRect("doc-primary.pdf", 0,
+                                                           {0.1, 0.1, 0.3, 0.3}, LodTier::Standard);
+    CropCacheKey kFar = CropCacheKey::fromNormalizedRect("doc-primary.pdf", 0, {0.7, 0.7, 0.2, 0.2},
+                                                         LodTier::Standard);
+    cache.insert(kAlias,
+                 CairoSurfaceHandle(cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 50, 50), true));
+    cache.insert(kFar,
+                 CairoSurfaceHandle(cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 50, 50), true));
+    failures += check(cache.size() == 2, "2 items cached initially");
+
+    // Invalidation arrives keyed by the pane's id, exactly as notifyAnnotationChangedSpatial
+    // sends it when the pane has no file path.
+    cache.invalidateSpatial("doc-primary", 0, {0.2, 0.2, 0.1, 0.1});
+
+    failures += check(cache.size() == 1, "aliased tile evicted across the doc-primary alias pair");
+    failures += check(!cache.get(kAlias), "the alias-keyed tile was the one evicted");
+    failures += check(static_cast<bool>(cache.get(kFar)), "non-overlapping tile preserved");
+
+    // Two genuinely different documents must not be conflated by the file-path fallback.
+    ExcerptTileCache other(docService, 1000000);
+    CropCacheKey kOther =
+        CropCacheKey::fromNormalizedRect("other.pdf", 0, {0.1, 0.1, 0.3, 0.3}, LodTier::Standard);
+    other.insert(kOther,
+                 CairoSurfaceHandle(cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 50, 50), true));
+    other.invalidateSpatial("doc-primary.pdf", 0, {0.2, 0.2, 0.1, 0.1});
+    failures += check(static_cast<bool>(other.get(kOther)),
+                      "an id the service cannot resolve is not evicted by alias fallback");
+
+    return failures;
+}
+
 int testStrokeProviderWiring() {
     std::cout << "Running testStrokeProviderWiring...\n";
     int failures = 0;
@@ -638,6 +694,7 @@ int main() {
     totalFailures += testSpatialInvalidation();
     totalFailures += testAliasAwareSpatialInvalidation();
     totalFailures += testSpatialInvalidationReleasesInFlightRequests();
+    totalFailures += testSyntheticAliasInvalidation();
     totalFailures += testStrokeProviderWiring();
     totalFailures += testNonStandardPageFilteringAndPointToPixelAlignment();
     totalFailures += testZeroLeakRefcounting();

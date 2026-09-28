@@ -97,21 +97,20 @@ class ExcerptTileCache {
     using StrokeProvider = std::function<void(const std::string& docId, std::size_t pageNo,
                                               const FluidCore::Rectangle& cropNormRect,
                                               std::vector<FluidCore::Stroke>& outStrokes)>;
-
     // Decides whether two document identifiers name the same document.
     //
-    // Crop tiles are keyed by ExcerptCardNode::sourceDocId(), and that string is not
-    // stable across a session. A card cropped live records the absolute PDF path
-    // (InkOverlay), while the same card reloaded from a saved project records the
-    // project-relative path (main.cpp). Invalidation, meanwhile, is notified with the
-    // pane's absolute path (DocumentPane::notifyAnnotationChangedSpatial). Comparing
-    // those with `==` silently matched nothing, so on any reloaded project no crop tile
-    // was ever evicted and excerpt cards kept showing pre-annotation imagery.
+    // One document is reachable under several ids at once. ExcerptCardNode::sourceDocId() is
+    // the tile key, and depending on how the card was made that is an absolute path, a
+    // "doc-primary.pdf" synthetic alias (main.cpp seedDemoContent), an "assets/images/..."
+    // project-relative path, or a bare document id, while invalidation arrives keyed by
+    // whatever the pane reports. Comparing those with `==` matched only by luck, so a crop
+    // keyed one way was never invalidated when annotated.
     //
-    // The resolver is supplied by the frontend (wired to DocumentPane::matchesDocId,
-    // which already resolves exact id, canonical path, filesystem equivalence and
-    // relative-path-suffix forms). Kept as a callback so the cache stays free of any
-    // document-service or filesystem dependency.
+    // The resolver is supplied by the frontend (wired to DocumentPane::matchesDocId, which
+    // resolves exact id, canonical path, filesystem equivalence and relative-path-suffix
+    // forms). ExcerptTileCache::sameDocument() falls back to the document service's own alias
+    // table when this returns false. Kept as a callback so the cache stays free of any
+    // document-pane dependency.
     using DocAliasResolver =
         std::function<bool(const std::string& cachedDocId, const std::string& otherDocId)>;
 

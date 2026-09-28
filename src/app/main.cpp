@@ -19,6 +19,7 @@
 
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -2730,53 +2731,60 @@ void onActivate(GtkApplication* app, gpointer userData) {
 
     workspace->setExcerptTileCache(excerptTileCache);
 
-    excerptTileCache->setStrokeProvider(
-        [documentPane, engine = context->engine](const std::string& docId, std::size_t pageNo,
-                                                 const FluidCore::Rectangle& cropNormRect,
-                                                 std::vector<FluidCore::Stroke>& outStrokes) {
-            if (!documentPane) {
-                return;
-            }
+    excerptTileCache->setStrokeProvider([documentPane, pdfDocService, engine = context->engine](
+                                            const std::string& docId, std::size_t pageNo,
+                                            const FluidCore::Rectangle& cropNormRect,
+                                            std::vector<FluidCore::Stroke>& outStrokes) {
+        if (!documentPane) {
+            return;
+        }
 
-            std::vector<std::string> allDocPaths;
-            if (engine && engine->isProjectOpen()) {
-                for (const auto& d : engine->projectStore().listDocuments()) {
-                    allDocPaths.push_back(d.docId);
-                    allDocPaths.push_back(d.relativePath);
+        std::vector<std::string> allDocPaths;
+        if (engine && engine->isProjectOpen()) {
+            for (const auto& d : engine->projectStore().listDocuments()) {
+                allDocPaths.push_back(d.docId);
+                allDocPaths.push_back(d.relativePath);
+            }
+        }
+
+        // Whether this crop belongs to the document the pane is showing. The document
+        // service is the authority: it holds the alias table the renderer itself uses to
+        // fetch the page, so it accepts every registered id, including synthetic ones such
+        // as "doc-primary.pdf" for a pane whose own id is "doc-primary". Comparing ids
+        // directly -- or asking only DocumentPane::matchesDocId -- rejects valid ids and
+        // renders the crop with zero annotation strokes, so the page draws but the ink
+        // never appears.
+        const bool knownToService = pdfDocService && pdfDocService->hasDocument(docId);
+        const bool matchesPane = documentPane->matchesDocId(docId, allDocPaths);
+        if (!knownToService && !matchesPane) {
+            return;
+        }
+
+        double pw = 0.0, ph = 0.0;
+        if (!documentPane->getPageDimensions(pageNo, &pw, &ph)) {
+            return;
+        }
+
+        FluidCore::Rectangle cropPdfRect{cropNormRect.x * pw, cropNormRect.y * ph,
+                                         cropNormRect.w * pw, cropNormRect.h * ph};
+
+        const auto& allStrokes = documentPane->annotationStore().strokes();
+        for (const auto& s : allStrokes) {
+            if (s.pageIndex == pageNo) {
+                if (FluidCore::rectanglesIntersect(FluidCore::computeStrokeBounds(s),
+                                                   cropPdfRect)) {
+                    outStrokes.push_back(s);
                 }
             }
+        }
+    });
 
-            if (!documentPane->matchesDocId(docId, allDocPaths)) {
-                return;
-            }
-
-            double pw = 0.0, ph = 0.0;
-            if (!documentPane->getPageDimensions(pageNo, &pw, &ph)) {
-                std::cerr << "[CropFilter] ERROR: missing page geometry for doc=" << docId
-                          << " p=" << pageNo << " (aborting filtering)\n";
-                return;
-            }
-
-            FluidCore::Rectangle cropPdfRect{cropNormRect.x * pw, cropNormRect.y * ph,
-                                             cropNormRect.w * pw, cropNormRect.h * ph};
-
-            const auto& allStrokes = documentPane->annotationStore().strokes();
-            for (const auto& s : allStrokes) {
-                if (s.pageIndex == pageNo) {
-                    if (FluidCore::rectanglesIntersect(FluidCore::computeStrokeBounds(s),
-                                                       cropPdfRect)) {
-                        outStrokes.push_back(s);
-                    }
-                }
-            }
-        });
-
-    // Crop tiles are keyed by ExcerptCardNode::sourceDocId(), which is the absolute PDF
-    // path for a card cropped in this session but the project-relative path once the
-    // project has been saved and reloaded. Annotation-driven invalidation arrives keyed
-    // by the pane's absolute path, so the cache needs to resolve the two forms instead
-    // of comparing them verbatim -- otherwise a reloaded project's excerpt cards never
-    // refresh and keep showing pre-annotation crops.
+    // Crop tiles are keyed by ExcerptCardNode::sourceDocId(), and one document is reachable
+    // under several ids at once: a seeded card uses "doc-primary.pdf", a pasted image uses
+    // "assets/images/<name>.png", a project card can use a relative path, and the pane reports
+    // either its own id or an absolute path. Annotation invalidation arrives keyed by whatever
+    // the pane reports. Exact comparison matched only by luck, so the cache resolves aliases
+    // here and, failing that, through the document service's own alias table.
     excerptTileCache->setDocAliasResolver(
         [documentPane](const std::string& cachedDocId, const std::string& otherDocId) {
             if (!documentPane) {

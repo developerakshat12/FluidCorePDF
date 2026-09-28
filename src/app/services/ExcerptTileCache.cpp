@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <string>
 
 namespace FluidCoreApp {
 
@@ -407,14 +408,18 @@ bool ExcerptTileCache::sameDocument(const std::string& cachedDocId,
     if (cachedDocId == otherDocId) {
         return true;
     }
-    if (!m_docAliasResolver) {
-        return false;
+    if (m_docAliasResolver && (m_docAliasResolver(cachedDocId, otherDocId) ||
+                               m_docAliasResolver(otherDocId, cachedDocId))) {
+        return true;
     }
-    // Resolve in both directions: DocumentPane::matchesDocId anchors on the pane's own
-    // id and path, so which argument is the "known" one determines which forms it can
-    // compare. Trying both keeps this correct regardless of how the caller ordered them.
-    return m_docAliasResolver(cachedDocId, otherDocId) ||
-           m_docAliasResolver(otherDocId, cachedDocId);
+    // Last resort: ask the document service, which owns the alias table the renderer uses
+    // to fetch pages. A crop keyed by a synthetic alias such as "doc-primary.pdf" is the
+    // same document as a pane reporting "doc-primary", and neither DocumentPane's id/path
+    // comparison nor a plain string compare can see that. Compared by resolved file path
+    // so two genuinely different documents are never conflated.
+    const std::string a = m_docService.getFilePath(cachedDocId);
+    const std::string b = m_docService.getFilePath(otherDocId);
+    return !a.empty() && !b.empty() && a == b;
 }
 
 void ExcerptTileCache::invalidate(const std::string& docId) {
