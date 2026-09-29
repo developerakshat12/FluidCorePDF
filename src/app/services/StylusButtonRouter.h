@@ -19,6 +19,15 @@ namespace FluidCoreApp {
 // Left alone, a barrel press looks identical to a middle click, so it triggers canvas
 // panning or a context menu instead of erasing. This router lets the ink surfaces claim
 // barrel presses while leaving genuine mouse clicks untouched.
+//
+// Note what this router deliberately does NOT do: it never rewrites the selected tool
+// for a stylus press. Earlier revisions mapped "select", "text", "crop", and
+// "rect_select" to the pen for stylus input so that annotating never required first
+// switching tools with a mouse. That made the Select and Crop tools lay down ink
+// whenever a digitizer was used. A pen is a pointing device and the most precise one
+// available, so it is the best tool for selecting a region, not the worst; the rule now
+// is that a stylus honours the selected tool exactly as a mouse does. The accepted cost
+// is that inking requires selecting Pen first.
 class StylusButtonRouter {
   public:
     enum class Intent {
@@ -44,19 +53,6 @@ class StylusButtonRouter {
     // the pen end of a stylus. Used to hold the eraser for the duration of the press.
     static bool isBarrelButton(guint button, GdkInputSource source);
 
-    // Resolves which tool a press should activate given the currently selected tool.
-    //
-    // "select", "text", "crop", and "rect_select" are mouse-oriented modes: they start a
-    // selection and consume the press. A stylus overrides them, otherwise touching the
-    // page with a pen while the select tool was active selects text instead of drawing,
-    // which forces the user to switch tools with a mouse before every annotation.
-    //
-    // Every other tool is honoured as selected, including the eraser. An earlier version
-    // overrode unconditionally, which meant a stylus press with the eraser selected drew
-    // a stroke at the eraser's forced width instead of erasing.
-    static std::string resolveInkTool(const std::string& activeTool, GdkInputSource source,
-                                      bool highlighterModifier);
-
     // --- Barrel-button state machine ---
     //
     // Tracks the eraser bind across a barrel press/release pair so the previously
@@ -75,6 +71,12 @@ class StylusButtonRouter {
     // Pins the eraser until the next press, for users who would rather not hold the
     // barrel button down. Called once the press has exceeded kBarrelLatchMs.
     void latchBarrel();
+
+    // Clears a latch so the eraser can be borrowed again. Without this a single latch
+    // makes endBarrel() return false for the rest of the session, so no later borrow is
+    // ever unwound. An explicit tool change is the user's way of saying the eraser is
+    // no longer wanted, so that is where this belongs.
+    void clearBarrelLatch() { m_barrelLatched = false; }
 
     // True when the pen barrel press borrows the eraser.
     bool barrelActive() const { return m_barrelActive; }

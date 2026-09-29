@@ -79,44 +79,6 @@ void testBarrelButtonClaimsEraserWithoutStealingMouseClicks() {
     std::cout << "  [PASS] testBarrelButtonClaimsEraserWithoutStealingMouseClicks\n";
 }
 
-// The reported bug: a pen touch while the select tool was active started a text
-// selection and consumed the press, so annotating required switching tools with a
-// mouse first.
-void testPenOverridesMouseOrientedTools() {
-    // The mouse-only modes are exactly the ones a stylus must bypass.
-    for (const char* tool : {"select", "text", "crop", "rect_select"}) {
-        REQUIRE(StylusButtonRouter::resolveInkTool(tool, GDK_SOURCE_PEN, false) == "pen");
-        REQUIRE(StylusButtonRouter::resolveInkTool(tool, GDK_SOURCE_ERASER, false) == "pen");
-    }
-
-    // Shift picks the highlighter nib.
-    REQUIRE(StylusButtonRouter::resolveInkTool("select", GDK_SOURCE_PEN, true) == "highlighter");
-    REQUIRE(StylusButtonRouter::resolveInkTool("text", GDK_SOURCE_ERASER, true) == "highlighter");
-
-    // An explicitly chosen inking tool is honoured as selected. The eraser case is a
-    // regression guard: an earlier version overrode unconditionally, so a stylus press
-    // with the eraser selected drew a stroke at the eraser's forced width instead of
-    // deleting anything.
-    for (const char* tool : {"pen", "highlighter", "eraser"}) {
-        REQUIRE(StylusButtonRouter::resolveInkTool(tool, GDK_SOURCE_PEN, false) == tool);
-        REQUIRE(StylusButtonRouter::resolveInkTool(tool, GDK_SOURCE_ERASER, false) == tool);
-    }
-
-    // The highlighter modifier must not change an already-explicit tool choice.
-    REQUIRE(StylusButtonRouter::resolveInkTool("pen", GDK_SOURCE_PEN, true) == "pen");
-    REQUIRE(StylusButtonRouter::resolveInkTool("eraser", GDK_SOURCE_PEN, true) == "eraser");
-
-    // A mouse keeps whatever tool the user selected.
-    REQUIRE(StylusButtonRouter::resolveInkTool("select", GDK_SOURCE_MOUSE, false) == "select");
-    REQUIRE(StylusButtonRouter::resolveInkTool("highlighter", GDK_SOURCE_MOUSE, false) ==
-            "highlighter");
-    REQUIRE(StylusButtonRouter::resolveInkTool("eraser", GDK_SOURCE_MOUSE, false) == "eraser");
-    REQUIRE(StylusButtonRouter::resolveInkTool("select", GDK_SOURCE_TOUCHSCREEN, false) ==
-            "select");
-
-    std::cout << "  [PASS] testPenOverridesMouseOrientedTools\n";
-}
-
 void testBarrelRestoresPreviousTool() {
     StylusButtonRouter router;
 
@@ -147,6 +109,28 @@ void testBarrelRestoresPreviousTool() {
     REQUIRE(!reused.barrelLatched());
 
     std::cout << "  [PASS] testBarrelRestoresPreviousTool\n";
+}
+
+// Regression: once a press latched, endBarrel() returned false for the rest of the
+// session, so no later borrow could ever be unwound and the tool stayed stuck on the
+// eraser. An explicit tool change is the user saying the eraser is no longer wanted, so
+// it has to clear the latch.
+void testClearBarrelLatchAllowsAFurtherBorrow() {
+    StylusButtonRouter router;
+    router.beginBarrel("crop");
+    router.latchBarrel();
+    REQUIRE(router.barrelLatched());
+    REQUIRE(!router.endBarrel());
+
+    router.clearBarrelLatch();
+    REQUIRE(!router.barrelLatched());
+
+    // The borrow now unwinds normally.
+    router.beginBarrel("crop");
+    REQUIRE(router.endBarrel());
+    REQUIRE(!router.barrelActive());
+
+    std::cout << "  [PASS] testClearBarrelLatchAllowsAFurtherBorrow\n";
 }
 
 void testLatchThresholdIsReasonable() {
@@ -208,8 +192,8 @@ int main() {
     testDeviceSourceClassification();
     testBarrelButtonIsRecognizedOnPenOnly();
     testBarrelButtonClaimsEraserWithoutStealingMouseClicks();
-    testPenOverridesMouseOrientedTools();
     testBarrelRestoresPreviousTool();
+    testClearBarrelLatchAllowsAFurtherBorrow();
     testToolChangeDuringStrokeSurvivesRelease();
     testLatchThresholdIsReasonable();
     testAttributeReadsAreSafeWithoutADevice();

@@ -42,6 +42,7 @@ class InkOverlay {
 
     void setTool(const std::string& tool);
     const std::string& tool() const { return m_currentTool; }
+    void cancelCurrentInteraction();
 
     void setColor(std::uint32_t color) { m_currentColor = color; }
     std::uint32_t color() const { return m_currentColor; }
@@ -104,6 +105,9 @@ class InkOverlay {
     static gboolean proximityOutCallback(GtkWidget* widget, GdkEventProximity* event,
                                          gpointer userData);
     static gboolean touchCallback(GtkWidget* widget, GdkEventTouch* event, gpointer userData);
+    static gboolean leaveNotifyCallback(GtkWidget* widget, GdkEventCrossing* event,
+                                        gpointer userData);
+    static gboolean focusOutCallback(GtkWidget* widget, GdkEventFocus* event, gpointer userData);
     static void dragDataGetCallback(GtkWidget* widget, GdkDragContext* context,
                                     GtkSelectionData* data, guint info, guint time,
                                     gpointer userData);
@@ -116,7 +120,10 @@ class InkOverlay {
     gboolean onProximityIn(GdkEventProximity* event);
     gboolean onProximityOut(GdkEventProximity* event);
     gboolean onTouch(GdkEventTouch* event);
+    gboolean onLeaveNotify(GdkEventCrossing* event);
+    gboolean onFocusOut(GdkEventFocus* event);
     void cancelActiveTouches(const std::vector<uint32_t>& touchIds);
+    void restoreBorrowedBarrelTool();
     void onDragDataGet(GdkDragContext* context, GtkSelectionData* data, guint info, guint time);
     void onDragEnd(GdkDragContext* context);
 
@@ -134,11 +141,6 @@ class InkOverlay {
     // not allocate a surface the size of the whole slice.
     StrokeClipBounds
     highlighterPassClipBounds(const std::vector<FluidCore::Stroke>& pageStrokes) const;
-
-    // Resolves which tool a press should activate. A pen takes priority over the
-    // mouse-oriented "select"/"text" tools so that inking never requires first
-    // switching tools with the mouse.
-    std::string resolveToolForDevice(FluidCore::InputDeviceClass devClass) const;
 
     DocumentPane& m_pane;
     FluidCore::AnnotationStore& m_annotationStore;
@@ -188,10 +190,6 @@ class InkOverlay {
     StylusButtonRouter m_stylusRouter;
     std::string m_toolBeforeBarrel;
     uint32_t m_barrelDownAtMs = 0;
-
-    // Set while a stylus stroke is in progress with the highlighter modifier held, so
-    // Shift selects the highlighter nib for the whole stroke rather than per event.
-    bool m_stylusHighlighter = false;
 
     // Latest stylus attributes for the active stroke. Each field is independently
     // valid because digitizers differ in what they report. Captured for callers that

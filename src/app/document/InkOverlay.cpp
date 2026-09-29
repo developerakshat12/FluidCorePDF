@@ -191,7 +191,7 @@ InkOverlay::InkOverlay(DocumentPane& pane, FluidCore::AnnotationStore& store)
                                         GDK_POINTER_MOTION_MASK | GDK_ENTER_NOTIFY_MASK |
                                         GDK_LEAVE_NOTIFY_MASK | GDK_PROXIMITY_IN_MASK |
                                         GDK_PROXIMITY_OUT_MASK | GDK_TOUCH_MASK | GDK_SCROLL_MASK |
-                                        GDK_SMOOTH_SCROLL_MASK);
+                                        GDK_SMOOTH_SCROLL_MASK | GDK_FOCUS_CHANGE_MASK);
 
     g_signal_connect(m_widget, "draw", G_CALLBACK(InkOverlay::drawCallback), this);
     g_signal_connect(m_widget, "button-press-event", G_CALLBACK(InkOverlay::buttonPressCallback),
@@ -205,6 +205,9 @@ InkOverlay::InkOverlay(DocumentPane& pane, FluidCore::AnnotationStore& store)
     g_signal_connect(m_widget, "proximity-out-event", G_CALLBACK(InkOverlay::proximityOutCallback),
                      this);
     g_signal_connect(m_widget, "touch-event", G_CALLBACK(InkOverlay::touchCallback), this);
+    g_signal_connect(m_widget, "leave-notify-event", G_CALLBACK(InkOverlay::leaveNotifyCallback),
+                     this);
+    g_signal_connect(m_widget, "focus-out-event", G_CALLBACK(InkOverlay::focusOutCallback), this);
     g_signal_connect(m_widget, "drag-data-get", G_CALLBACK(InkOverlay::dragDataGetCallback), this);
     g_signal_connect(m_widget, "drag-end", G_CALLBACK(InkOverlay::dragEndCallback), this);
     g_signal_connect(m_widget, "enter-notify-event",
@@ -229,18 +232,101 @@ void InkOverlay::queueDrawArea(int x, int y, int width, int height) {
     }
 }
 
+void InkOverlay::cancelCurrentInteraction() {
+    bool needsRedraw = false;
+
+    if (m_isDrawing) {
+        m_isDrawing = false;
+        m_stabilizer.endStroke();
+        m_stabilizer = StrokeStabilizer{};
+        m_activeBezierSegments.clear();
+        m_activeStroke = FluidCore::Stroke{};
+        m_hasWetSegment = false;
+        needsRedraw = true;
+    }
+
+    if (m_isSelectingCrop) {
+        m_isSelectingCrop = false;
+        clearCropSelection();
+        needsRedraw = true;
+    }
+
+    if (m_isSelectingText) {
+        m_isSelectingText = false;
+        clearSelection();
+        needsRedraw = true;
+    }
+
+    if (m_isPotentialExcerptDrag) {
+        m_isPotentialExcerptDrag = false;
+    }
+
+    if (!m_toolBeforeBarrel.empty()) {
+        restoreBorrowedBarrelTool();
+        needsRedraw = true;
+    }
+
+    if (needsRedraw) {
+        queueDraw();
+    }
+}
+
+// Unwinds the eraser the barrel button borrowed, restoring both the tool and the width
+// the borrow forced. The barrel press writes m_currentTool and m_currentWidth directly
+// rather than through setTool, so it also has to own the width bookkeeping. Shared by
+// the ordinary release, the tool-change teardown, and the pointer-leave teardown: when
+// these were separate the release path restored the tool but not the width, which left
+// the pen permanently pinned at the eraser radius.
+void InkOverlay::restoreBorrowedBarrelTool() {
+    if (m_toolBeforeBarrel.empty()) {
+        return;
+    }
+
+    const bool wasLatched = !m_stylusRouter.endBarrel();
+    // A tool the user picked while the barrel was held outranks the borrow, and a latch
+    // is meant to survive the release. In both cases the borrow is retired without
+    // touching the current tool.
+    if (wasLatched || !StylusButtonRouter::shouldRestoreBorrowedTool(m_toolBeforeBarrel, "eraser",
+                                                                     m_currentTool)) {
+        m_toolBeforeBarrel.clear();
+        m_barrelDownAtMs = 0;
+        return;
+    }
+
+    m_currentTool = m_toolBeforeBarrel;
+    m_toolBeforeBarrel.clear();
+    m_barrelDownAtMs = 0;
+    if (m_widthForcedByTool) {
+        // Only the eraser sets this flag, so this cannot clobber a width the user chose.
+        m_currentWidth = m_defaultInkWidth;
+        m_widthForcedByTool = false;
+    }
+    updateCursor();
+    queueDraw();
+}
+
 void InkOverlay::setTool(const std::string& tool) {
+    cancelCurrentInteraction();
+    if (m_currentTool == tool) {
+        return;
+    }
     m_currentTool = tool;
     if (tool == "eraser") {
         m_currentWidth = kEraserWidth;
         m_widthForcedByTool = true;
-    } else if (m_widthForcedByTool) {
-        // The eraser forces a wide radius for its hit test, and that width must not leak
-        // into the next ink stroke. Reset only if the eraser is what set it, so this
-        // cannot clobber a width the user chose, whatever order the toolbar calls the
-        // two setters in.
-        m_currentWidth = m_defaultInkWidth;
-        m_widthForcedByTool = false;
+    } else {
+        // Picking a tool by hand is an explicit request for it, so it clears a latched
+        // barrel eraser. Otherwise one long barrel press would leave endBarrel()
+        // refusing to unwind for the rest of the session.
+        m_stylusRouter.clearBarrelLatch();
+        if (m_widthForcedByTool) {
+            // The eraser forces a wide radius for its hit test, and that width must not leak
+            // into the next ink stroke. Reset only if the eraser is what set it, so this
+            // cannot clobber a width the user chose, whatever order the toolbar calls the
+            // two setters in.
+            m_currentWidth = m_defaultInkWidth;
+            m_widthForcedByTool = false;
+        }
     }
     updateCursor();
 }
@@ -429,8 +515,46 @@ gboolean InkOverlay::touchCallback(GtkWidget*, GdkEventTouch* event, gpointer us
     return self ? self->onTouch(event) : FALSE;
 }
 
+gboolean InkOverlay::leaveNotifyCallback(GtkWidget*, GdkEventCrossing* event, gpointer userData) {
+    auto* self = static_cast<InkOverlay*>(userData);
+    return self ? self->onLeaveNotify(event) : FALSE;
+}
+
+gboolean InkOverlay::focusOutCallback(GtkWidget*, GdkEventFocus* event, gpointer userData) {
+    auto* self = static_cast<InkOverlay*>(userData);
+    return self ? self->onFocusOut(event) : FALSE;
+}
+
+gboolean InkOverlay::onLeaveNotify(GdkEventCrossing* event) {
+    // While a button is held, GDK keeps an implicit grab on the device, so a release
+    // outside this widget still arrives in onButtonRelease and there is nothing to
+    // recover. Cancelling on a grab-mode leave would therefore throw away a live stroke
+    // every time the pointer merely drifted over the scrollbar. GRAB crossings are
+    // skipped and only genuine exits cancel.
+    if (event && (event->mode == GDK_CROSSING_GRAB || event->mode == GDK_CROSSING_GTK_GRAB)) {
+        return FALSE;
+    }
+    cancelCurrentInteraction();
+    return FALSE;
+}
+
+gboolean InkOverlay::onFocusOut(GdkEventFocus* event) {
+    // Focus loss is how a lost grab usually shows up: the window is deactivated or
+    // another window takes the pointer, GDK stops routing the release here, and without
+    // this the in-flight flag survives to swallow every later press and release.
+    if (event && event->in) {
+        return FALSE;
+    }
+    cancelCurrentInteraction();
+    return FALSE;
+}
+
 gboolean InkOverlay::onButtonPress(GdkEventButton* event) {
     m_pane.notifyActivated();
+
+    if (m_isDrawing || m_isSelectingCrop || m_isSelectingText || m_isPotentialExcerptDrag) {
+        cancelCurrentInteraction();
+    }
 
     GdkDevice* device = gdk_event_get_source_device(reinterpret_cast<GdkEvent*>(event));
     if (!device) {
@@ -445,6 +569,10 @@ gboolean InkOverlay::onButtonPress(GdkEventButton* event) {
         m_toolBeforeBarrel = m_stylusRouter.beginBarrel(m_currentTool);
         m_currentTool = "eraser";
         m_currentWidth = kEraserWidth;
+        // The borrow forces the eraser radius, so it has to mark that it did. Without the
+        // flag the restore cannot tell its own forced width from one the user picked and
+        // would leave the pen stuck at kEraserWidth.
+        m_widthForcedByTool = true;
         updateCursor();
         m_barrelDownAtMs = static_cast<uint32_t>(g_get_real_time() / 1000);
         return TRUE;
@@ -493,15 +621,10 @@ gboolean InkOverlay::onButtonPress(GdkEventButton* event) {
         return FALSE;
     }
 
-    // A stylus never enters the mouse-oriented select/text/crop modes. Without this,
-    // a pen touch while the select tool was active started a text selection and
-    // consumed the press, so annotating required switching tools with a mouse first.
-    const bool isStylus = StylusButtonRouter::isStylusSource(source);
-    const bool highlighterModifier = (event->state & GDK_SHIFT_MASK) != 0;
-    const std::string effectiveTool = resolveToolForDevice(devClass);
-    if (isStylus) {
-        m_stylusHighlighter = highlighterModifier;
-    }
+    // A stylus is treated exactly like a mouse: it honours the selected tool. Earlier
+    // revisions rewrote the selection tools to the pen for stylus presses, which meant a
+    // pen could not select text or place a crop rectangle and instead drew ink.
+    const std::string& effectiveTool = m_currentTool;
 
     const double zoom = m_pane.zoom();
     GtkAllocation allocation;
@@ -513,7 +636,7 @@ gboolean InkOverlay::onButtonPress(GdkEventButton* event) {
     const double screenX = event->x / zoom;
     const double docY = m_pane.screenYToDoc(event->y);
 
-    if (!isStylus && (effectiveTool == "crop" || effectiveTool == "rect_select")) {
+    if (effectiveTool == "crop" || effectiveTool == "rect_select") {
         // Visual diagram crop selection mode
         auto targetIdxOpt = findPageIndexAt(pages, docY, screenX, pageX);
         if (!targetIdxOpt.has_value()) {
@@ -549,7 +672,7 @@ gboolean InkOverlay::onButtonPress(GdkEventButton* event) {
         return TRUE;
     }
 
-    if (!isStylus && (effectiveTool == "select" || effectiveTool == "text")) {
+    if (effectiveTool == "select" || effectiveTool == "text") {
         // Text selection mode
         auto targetIdxOpt = findPageIndexAt(pages, docY, screenX, pageX);
         if (!targetIdxOpt.has_value()) {
@@ -715,6 +838,11 @@ gboolean InkOverlay::onMotionNotify(GdkEventMotion* event) {
             queueDraw();
             return TRUE;
         }
+        // The page layout can be rebuilt between the press and this motion (zoom, reload,
+        // relayout), invalidating m_dragStartPageIndex. Returning here stops the motion
+        // from falling through into the text and ink branches, which would feed a crop
+        // drag into a pen stroke.
+        return TRUE;
     }
 
     if (m_isSelectingText) {
@@ -821,16 +949,7 @@ gboolean InkOverlay::onButtonRelease(GdkEventButton* event) {
         if (heldMs >= StylusButtonRouter::kBarrelLatchMs) {
             m_stylusRouter.latchBarrel();
         }
-        if (m_stylusRouter.endBarrel() && !m_toolBeforeBarrel.empty() &&
-            m_currentTool == "eraser") {
-            // Only restore if the tool is still the eraser the barrel installed. A tool
-            // change made while the barrel was held must win, otherwise releasing the
-            // barrel silently reverts the user's newer choice.
-            m_currentTool = m_toolBeforeBarrel;
-        }
-        m_toolBeforeBarrel.clear();
-        updateCursor();
-        queueDraw();
+        restoreBorrowedBarrelTool();
         return TRUE;
     }
 
@@ -998,16 +1117,6 @@ void InkOverlay::renderTextSelection(cairo_t* cr, std::size_t pageIndex) const {
             cairo_restore(cr);
         }
     }
-}
-
-std::string InkOverlay::resolveToolForDevice(FluidCore::InputDeviceClass devClass) const {
-    const bool isStylus = devClass == FluidCore::InputDeviceClass::Pen ||
-                          devClass == FluidCore::InputDeviceClass::Eraser;
-    const GdkInputSource source =
-        isStylus
-            ? (devClass == FluidCore::InputDeviceClass::Pen ? GDK_SOURCE_PEN : GDK_SOURCE_ERASER)
-            : GDK_SOURCE_MOUSE;
-    return StylusButtonRouter::resolveInkTool(m_currentTool, source, m_stylusHighlighter);
 }
 
 StrokeClipBounds
@@ -1443,6 +1552,10 @@ gboolean InkOverlay::onProximityOut(GdkEventProximity* /*event*/) {
         uint64_t nowMs = static_cast<uint64_t>(g_get_real_time() / 1000);
         m_palmEngine->onPenProximity(false, nowMs);
     }
+    // Lifting the pen out of the digitizer's range produces no release event, so an
+    // in-flight stroke or crop drag has to be torn down here or it stays live until the
+    // next press. This is the commoner way to strand a gesture than leaving the widget.
+    cancelCurrentInteraction();
     return FALSE;
 }
 
@@ -1473,22 +1586,11 @@ gboolean InkOverlay::onTouch(GdkEventTouch* event) {
 }
 
 void InkOverlay::cancelActiveTouches(const std::vector<uint32_t>& /*touchIds*/) {
-    if (m_isSelectingCrop) {
-        m_isSelectingCrop = false;
-        clearCropSelection();
-    }
-    if (m_isSelectingText) {
-        m_isSelectingText = false;
-        clearSelection();
-    }
-    m_isPotentialExcerptDrag = false;
-    if (m_isDrawing) {
-        m_isDrawing = false;
-        m_activeStroke = FluidCore::Stroke{};
-        m_activeBezierSegments.clear();
-        m_hasWetSegment = false;
-    }
-    queueDraw();
+    // A palm-rejection cancellation means the contact driving the current gesture is no
+    // longer the user's, so everything in flight is suspect. Delegating keeps a single
+    // teardown: this used to duplicate it, and the copy already missed the barrel borrow
+    // that the shared version handles.
+    cancelCurrentInteraction();
 }
 
 } // namespace FluidCoreApp

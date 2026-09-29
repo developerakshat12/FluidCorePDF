@@ -1058,22 +1058,6 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
         }
     }
 
-    // A stylus inks regardless of the tool the mouse last selected. "select" is a
-    // mouse-oriented mode that would otherwise consume a pen press as a card
-    // selection, forcing the user to switch tools with a mouse before annotating.
-    // The override lasts only for this stroke and is undone on release, so the mouse
-    // selection is preserved for when the pen is put down.
-    if (event->button == GDK_BUTTON_PRIMARY && StylusButtonRouter::isStylusSource(source) &&
-        !m_stylusToolOverride) {
-        m_toolBeforeStylus = m_state.inking.currentTool;
-        m_state.inking.currentTool = StylusButtonRouter::resolveInkTool(
-            m_state.inking.currentTool, source, (event->state & GDK_SHIFT_MASK) != 0);
-        // Remember what was installed, so the release unwind can tell "still ours"
-        // from "the user changed tools while the pen was down".
-        m_stylusToolInstalled = m_state.inking.currentTool;
-        m_stylusToolOverride = true;
-    }
-
     if (event->button == GDK_BUTTON_MIDDLE ||
         (event->button == GDK_BUTTON_PRIMARY &&
          (m_state.isSpacePressed || (event->state & GDK_MOD1_MASK) ||
@@ -1417,32 +1401,6 @@ gboolean WorkspaceView::onButtonPress(GdkEventButton* event) {
 }
 
 gboolean WorkspaceView::onButtonRelease(GdkEventButton* event) {
-    // The stylus tool override spans a whole press/motion/release sequence, and the
-    // release handler has many early returns, so it is unwound here rather than at each
-    // exit.
-    //
-    // The unwind is conditional on the tool still being the one the override installed.
-    // Restoring unconditionally is wrong: the user can change tools while the pen is
-    // still down, and ToolManager writes straight to currentTool, bypassing the
-    // override's saved value. An unconditional restore then overwrites that newer
-    // choice with a value captured at some earlier point, which made the eraser revert
-    // to the pen and needed several presses of E to take effect again.
-    struct ToolOverrideGuard {
-        WorkspaceView& view;
-        ~ToolOverrideGuard() {
-            if (!view.m_stylusToolOverride) {
-                return;
-            }
-            view.m_stylusToolOverride = false;
-            if (StylusButtonRouter::shouldRestoreBorrowedTool(view.m_toolBeforeStylus,
-                                                              view.m_stylusToolInstalled,
-                                                              view.m_state.inking.currentTool)) {
-                view.m_state.inking.currentTool = view.m_toolBeforeStylus;
-            }
-            view.m_toolBeforeStylus.clear();
-        }
-    } guard{*this};
-
     return handleButtonRelease(event);
 }
 

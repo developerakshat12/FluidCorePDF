@@ -199,17 +199,12 @@ class WorkspaceView {
     // Pen barrel button and stylus tool override.
     //
     // A barrel press borrows the eraser for its duration (or latches it, when held past
-    // the threshold) and the tool selected beforehand is restored on release. A pen
-    // primary press overrides the mouse-oriented "select" tool for the duration of one
-    // stroke, so annotating never requires first switching tools with a mouse.
+    // the threshold) and the tool selected beforehand is restored on release. A stylus
+    // press does not otherwise change the tool: it honours the selection exactly as a
+    // mouse does, so Select and Crop remain usable with a digitizer.
     StylusButtonRouter m_stylusRouter;
     std::string m_toolBeforeBarrel;
-    std::string m_toolBeforeStylus;
-    // What the stylus override actually installed, so the release unwind can detect a
-    // tool change the user made while the pen was down and must not clobber.
-    std::string m_stylusToolInstalled;
     uint32_t m_barrelDownAtMs = 0;
-    bool m_stylusToolOverride = false;
 
     NavigateToSourceCallback m_onNavigateToSource;
     ExcerptAddedCallback m_onExcerptAdded;

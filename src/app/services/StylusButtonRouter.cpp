@@ -41,29 +41,6 @@ StylusButtonRouter::Intent StylusButtonRouter::classifyPress(guint button, GdkIn
     }
 }
 
-// Tools that only make sense driven by a mouse. A stylus must not fall into these: a
-// pen press in "select" starts a text or card selection and is consumed, which is what
-// forced users to switch tools with a mouse before annotating.
-static bool isMouseOnlyTool(const std::string& tool) {
-    return tool == "select" || tool == "text" || tool == "crop" || tool == "rect_select";
-}
-
-std::string StylusButtonRouter::resolveInkTool(const std::string& activeTool, GdkInputSource source,
-                                               bool highlighterModifier) {
-    if (!isStylusSource(source)) {
-        return activeTool;
-    }
-
-    // An explicitly chosen inking tool is honoured as-is. In particular the eraser must
-    // survive a stylus press: overriding it to "pen" meant a selected eraser drew a
-    // stroke at the eraser's forced width instead of deleting anything.
-    if (!isMouseOnlyTool(activeTool)) {
-        return activeTool;
-    }
-
-    return highlighterModifier ? "highlighter" : "pen";
-}
-
 std::string StylusButtonRouter::beginBarrel(const std::string& activeTool) {
     m_toolBeforeBarrel = activeTool;
     m_barrelActive = true;

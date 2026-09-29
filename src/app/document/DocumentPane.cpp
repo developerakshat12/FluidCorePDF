@@ -1352,6 +1352,12 @@ void DocumentPane::clearCropSelection() {
     }
 }
 
+void DocumentPane::cancelCurrentInteraction() {
+    if (m_inkOverlay) {
+        m_inkOverlay->cancelCurrentInteraction();
+    }
+}
+
 bool DocumentPane::copySelection() {
     return m_inkOverlay ? m_inkOverlay->copySelection() : false;
 }

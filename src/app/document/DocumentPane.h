@@ -81,6 +81,7 @@ class DocumentPane {
     bool hasTextSelection() const;
     void clearTextSelection();
     void clearCropSelection();
+    void cancelCurrentInteraction();
     bool copySelection();
 
     PopplerDocument* document() const { return m_document; }

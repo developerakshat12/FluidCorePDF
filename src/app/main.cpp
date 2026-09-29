@@ -3422,6 +3422,7 @@ void onActivate(GtkApplication* app, gpointer userData) {
                     ws->cancelCurrentInteraction();
                 }
                 if (pane) {
+                    pane->cancelCurrentInteraction();
                     pane->clearTextSelection();
                     pane->clearCropSelection();
                 }
