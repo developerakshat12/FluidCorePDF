@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/developerakshat12/FluidCorePDF/security/advisories/new
+    about: Report privately via GitHub's private vulnerability reporting. Never file security issues as public issues.
+  - name: Code of Conduct report
+    url: https://github.com/developerakshat12/FluidCorePDF/discussions
+    about: Behaviour or conduct concerns. See CODE_OF_CONDUCT.md.
+  - name: Question or design discussion
+    url: https://github.com/developerakshat12/FluidCorePDF/discussions
+    about: Usage help, design proposals, and architecture questions. Governance uses lazy consensus over Discussions.

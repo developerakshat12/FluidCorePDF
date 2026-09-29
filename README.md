@@ -238,5 +238,7 @@ FluidCore operates strictly on local files:
 
 ## 📜 License & Governance
 
-- **License**: GPL-2.0-or-later (inherited from Xournal++); `libfluidcore` relicensing candidate tracked in [GOVERNANCE.md §3](GOVERNANCE.md).
+- **License**: **GPL-2.0-or-later** — full text in [`LICENSE`](LICENSE). The `-or-later` option is granted here, so you may use this software under the terms of the GNU GPL version 2 *or, at your option, any later version*. Inherited from the Xournal++ lineage; `libfluidcore` relicensing is a tracked candidate in [GOVERNANCE.md §3](GOVERNANCE.md).
 - **Contributing**: See [CONTRIBUTING.md](CONTRIBUTING.md) for code style (`.clang-format`), architectural invariants, and PR submission guidelines.
+- **Code of Conduct**: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) (Contributor Covenant v2.1). Enforcement in [GOVERNANCE.md §6](GOVERNANCE.md).
+- **Security**: [SECURITY.md](SECURITY.md). Report privately via GitHub's private vulnerability reporting — never as a public issue.

@@ -1,0 +1,81 @@
+name: Feature request
+description: Suggest a capability or improvement
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please read the project's scope rules before filing:
+        [MVP-SPEC.md §3](https://github.com/developerakshat12/FluidCorePDF/blob/main/planning/MVP-SPEC.md)
+        lists what is deliberately **out** of scope. Requests that duplicate an
+        existing PDF/notes product feature are usually a duplicate, not a gap.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the situation, not the solution. Who hits it, and how often?
+      placeholder: >
+        As a researcher reading a 300-page paper, I want to pull three
+        figures onto one canvas and relate them, but currently ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which area?
+      options:
+        - Reading / squeeze
+        - Inking / stylus
+        - Excerpts / crops
+        - Infinite canvas
+        - Links / graph
+        - Search
+        - Export
+        - Persistence / .ltproj
+        - Packaging / release
+        - Accessibility
+        - Localization
+    validations:
+      required: true
+
+  - type: dropdown
+    id: offline
+    attributes:
+      label: Does this require network access at runtime?
+      description: >
+        FluidCore has a hard offline-first guarantee. Anything that needs a
+        network call will be rejected unless it is opt-in and clearly
+        separated from the offline core.
+      options:
+        - "No — works fully offline"
+        - "Yes — this would break the offline guarantee"
+        - "Unsure"
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope reasoning
+      description: >
+        Per [CONTRIBUTING.md](https://github.com/developerakshat12/FluidCorePDF/blob/main/CONTRIBUTING.md),
+        features should trace to a persona, a PRD requirement, and a milestone.
+        If this maps to an existing one, say which.
+    validations:
+      required: false

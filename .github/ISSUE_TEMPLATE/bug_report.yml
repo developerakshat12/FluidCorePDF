@@ -1,0 +1,105 @@
+name: Bug report
+description: Something behaves incorrectly
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing this. If this is a **security** issue, do not use this
+        form — see [SECURITY.md](../blob/main/SECURITY.md) and use GitHub's
+        private vulnerability reporting instead.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you observe, and what did you expect instead?
+      placeholder: |
+        Expected: dragging with the Crop tool selects a region.
+        Actual: a pen stroke was drawn instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Select the Crop tool (C)
+        2. Drag across a region of the page
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: pane
+    attributes:
+      label: Which pane?
+      options:
+        - Document pane (PDF reader, left)
+        - Workspace canvas (infinite 2D, right)
+        - Both
+        - Somewhere else
+    validations:
+      required: true
+
+  - type: textarea
+    id: input-device
+    attributes:
+      label: Input device
+      description: >
+        Required for anything involving pen, touch, or selection. Report what
+        GDK sees, not just what hardware you plugged in — device source
+        classification (pen vs mouse) is a known source of device-dependent
+        bugs.
+      placeholder: |
+        Digitizer: Wacom Intuos Pro
+        GDK source: GDK_SOURCE_PEN
+        Reproduces with: pen only / mouse only / both
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: FluidCore version
+      placeholder: v1.1.7
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: |
+        Windows: Windows version, MSYS2 UCRT64 package versions for GTK, Cairo,
+        and Poppler.
+        Linux: distro, GTK version, Cairo version, Poppler version.
+      placeholder: |
+        OS: Windows 11
+        GTK: 3.24.49
+        Cairo: 1.18.4
+        Poppler: 25.x
+    validations:
+      required: true
+
+  - type: textarea
+    id: sample
+    attributes:
+      label: Sample document
+      description: >
+        Optional. A `.ltproj` project or PDF that triggers the issue is the
+        single most useful thing you can attach. Please only attach documents
+        you are comfortable sharing.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues for this already.
+          required: true
+        - label: This is not a security vulnerability (those go through SECURITY.md).
+          required: true
