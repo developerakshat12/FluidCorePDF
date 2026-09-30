@@ -9,6 +9,8 @@ This workspace consolidates all developer diagnostic tooling, live memory teleme
 ```
 debug/
 ├── README.md               # Master navigation index (this file)
+├── reports/                # In-repo post-mortems for shipped platform fixes
+│   └── bug_report_excerpt_card_placeholder_flicker_and_aspect_distortion.md # Concise shipped post-mortem
 ├── telemetry/              # Live process memory & telemetry tracking headers
 │   └── MemoryTelemetry.h   # Windows heap/LFH metrics, mimalloc tracking & telemetry logger
 ├── scripts/                # Diagnostic PowerShell scripts
@@ -16,14 +18,20 @@ debug/
 │   └── run-probe.ps1       # Runner for search isolation probe
 ├── probes/                 # Standalone empirical diagnostic binaries
 │   └── SearchIsolationProbe.cpp # Out-of-process vs in-process search probe with IAT hooking
-├── reports/                # Catalog of 20 verified historical bug reports
-│   ├── bug_report_*.md     # Post-mortem analyses indexed across 5 major subsystems
 ├── investigations/         # Deep-dive root cause analyses & audit chronologies
 │   ├── MEMORY_LEAK_INVESTIGATION_CHRONOLOGY_AND_TEST_CASES.md # Complete multi-phase leak chronology
 │   └── context.md          # Navigation index for the memory leak chronology
 └── logs/                   # Target directory for runtime telemetry output logs (*.log ignored)
     └── .gitkeep
+
+../reports/                # Catalog of 20 historical bug reports (SIBLING of this
+│   └── bug_report_*.md     # repo, one level up — historical backlog and external archive).
 ```
+
+> **Note on report locations.** Shipped post-mortems for fixes committed to this tree live in
+> `debug/reports/` under version control. The pre-existing 20 historical bug reports live in
+> the workspace-level `reports/` directory (`D:\FluidCorePDF\reports\`), a sibling of `fluidcore-platform/`,
+> outside version control. Links below reflect their canonical locations.
 
 ---
 
@@ -54,39 +62,40 @@ debug/
 
 ---
 
-## 4. Bug Reports Archive (`debug/reports/`)
+## 4. Bug Reports Archive
 
-Historical bug reports indexed across 5 core subsystems:
+Post-mortems of shipped platform fixes are tracked in-repo under [`debug/reports/`](file:///d:/FluidCorePDF/fluidcore-platform/debug/reports/), while historical bug reports are archived in [`../reports/`](file:///d:/FluidCorePDF/reports/). ⚠ Reports marked *Diagnosed* are root-cause analyses with **no fix applied yet**; the remainder are post-mortems of shipped fixes.
 
 ### Rendering, Caching & Memory
-- [`bug_report_large_pdf_oom_and_unbounded_draw_clipping.md`](file:///d:/FluidCorePDF/fluidcore-platform/debug/reports/bug_report_large_pdf_oom_and_unbounded_draw_clipping.md)
-- [`bug_report_save_project_as_crash_and_residual_oom.md`](file:///d:/FluidCorePDF/fluidcore-platform/debug/reports/bug_report_save_project_as_crash_and_residual_oom.md)
-- [`bug_report_workspace_renderer_radius_redeclaration.md`](file:///d:/FluidCorePDF/fluidcore-platform/debug/reports/bug_report_workspace_renderer_radius_redeclaration.md)
+- [`bug_report_excerpt_card_placeholder_flicker_and_aspect_distortion.md`](file:///d:/FluidCorePDF/fluidcore-platform/debug/reports/bug_report_excerpt_card_placeholder_flicker_and_aspect_distortion.md) — Excerpt card crops aspect-distorted by per-axis tile clamping and flashing "Visual Diagram Crop" placeholder under Retina zoom and idle trim; remediated via `TileSizingPolicy`, pinned crop identity retention, fallback tier preservation, and canonical layout geometry.
+- [`bug_report_large_pdf_oom_and_unbounded_draw_clipping.md`](file:///d:/FluidCorePDF/reports/bug_report_large_pdf_oom_and_unbounded_draw_clipping.md)
+- [`bug_report_save_project_as_crash_and_residual_oom.md`](file:///d:/FluidCorePDF/reports/bug_report_save_project_as_crash_and_residual_oom.md)
+- [`bug_report_workspace_renderer_radius_redeclaration.md`](file:///d:/FluidCorePDF/reports/bug_report_workspace_renderer_radius_redeclaration.md)
 
 ### Search & Document Lifecycle
-- [`bug_report_search_target_classification_precedence.md`](file:///d:/FluidCorePDF/fluidcore-platform/debug/reports/bug_report_search_target_classification_precedence.md)
-- [`bug_report_workspace_search_stub_api_compilation.md`](file:///d:/FluidCorePDF/fluidcore-platform/debug/reports/bug_report_workspace_search_stub_api_compilation.md)
-- [`bug_report_startup_crash_unregistered_squeeze_document.md`](file:///d:/FluidCorePDF/fluidcore-platform/debug/reports/bug_report_startup_crash_unregistered_squeeze_document.md)
+- [`bug_report_search_target_classification_precedence.md`](file:///d:/FluidCorePDF/reports/bug_report_search_target_classification_precedence.md)
+- [`bug_report_workspace_search_stub_api_compilation.md`](file:///d:/FluidCorePDF/reports/bug_report_workspace_search_stub_api_compilation.md)
+- [`bug_report_startup_crash_unregistered_squeeze_document.md`](file:///d:/FluidCorePDF/reports/bug_report_startup_crash_unregistered_squeeze_document.md)
 
 ### Inking, Stylus & Tools
-- [`bug_report_eraser_bounding_box_false_trigger.md`](file:///d:/FluidCorePDF/fluidcore-platform/debug/reports/bug_report_eraser_bounding_box_false_trigger.md)
-- [`bug_report_eraser_drag_cursor_latency_and_redraw_gating.md`](file:///d:/FluidCorePDF/fluidcore-platform/debug/reports/bug_report_eraser_drag_cursor_latency_and_redraw_gating.md)
-- [`bug_report_vector_pen_stroke_persistence_and_safe_loader.md`](file:///d:/FluidCorePDF/fluidcore-platform/debug/reports/bug_report_vector_pen_stroke_persistence_and_safe_loader.md)
-- [`bug_report_card_movement_and_tool_locking.md`](file:///d:/FluidCorePDF/fluidcore-platform/debug/reports/bug_report_card_movement_and_tool_locking.md)
+- [`bug_report_eraser_bounding_box_false_trigger.md`](file:///d:/FluidCorePDF/reports/bug_report_eraser_bounding_box_false_trigger.md)
+- [`bug_report_eraser_drag_cursor_latency_and_redraw_gating.md`](file:///d:/FluidCorePDF/reports/bug_report_eraser_drag_cursor_latency_and_redraw_gating.md)
+- [`bug_report_vector_pen_stroke_persistence_and_safe_loader.md`](file:///d:/FluidCorePDF/reports/bug_report_vector_pen_stroke_persistence_and_safe_loader.md)
+- [`bug_report_card_movement_and_tool_locking.md`](file:///d:/FluidCorePDF/reports/bug_report_card_movement_and_tool_locking.md)
 
 ### UI Chrome, GTK3 & Window Management
-- [`bug_report_gtk_critical_queue_draw.md`](file:///d:/FluidCorePDF/fluidcore-platform/debug/reports/bug_report_gtk_critical_queue_draw.md)
-- [`bug_report_gtk_critical_top_toolbar_widget.md`](file:///d:/FluidCorePDF/fluidcore-platform/debug/reports/bug_report_gtk_critical_top_toolbar_widget.md)
-- [`bug_report_right_click_context_menu_lockout.md`](file:///d:/FluidCorePDF/fluidcore-platform/debug/reports/bug_report_right_click_context_menu_lockout.md)
-- [`bug_report_canvas_double_click_viewport_jump.md`](file:///d:/FluidCorePDF/fluidcore-platform/debug/reports/bug_report_canvas_double_click_viewport_jump.md)
-- [`bug_report_stack_rename_lag_and_dnd_hierarchy.md`](file:///d:/FluidCorePDF/fluidcore-platform/debug/reports/bug_report_stack_rename_lag_and_dnd_hierarchy.md)
-- [`bug_report_cross_pane_undo_routing.md`](file:///d:/FluidCorePDF/fluidcore-platform/debug/reports/bug_report_cross_pane_undo_routing.md)
+- [`bug_report_gtk_critical_queue_draw.md`](file:///d:/FluidCorePDF/reports/bug_report_gtk_critical_queue_draw.md)
+- [`bug_report_gtk_critical_top_toolbar_widget.md`](file:///d:/FluidCorePDF/reports/bug_report_gtk_critical_top_toolbar_widget.md)
+- [`bug_report_right_click_context_menu_lockout.md`](file:///d:/FluidCorePDF/reports/bug_report_right_click_context_menu_lockout.md)
+- [`bug_report_canvas_double_click_viewport_jump.md`](file:///d:/FluidCorePDF/reports/bug_report_canvas_double_click_viewport_jump.md)
+- [`bug_report_stack_rename_lag_and_dnd_hierarchy.md`](file:///d:/FluidCorePDF/reports/bug_report_stack_rename_lag_and_dnd_hierarchy.md)
+- [`bug_report_cross_pane_undo_routing.md`](file:///d:/FluidCorePDF/reports/bug_report_cross_pane_undo_routing.md)
 
 ### OS Integration & Environment
-- [`bug_report_assert_ndebug_project_store_test.md`](file:///d:/FluidCorePDF/fluidcore-platform/debug/reports/bug_report_assert_ndebug_project_store_test.md)
-- [`bug_report_pdf_export_ui_blocking_and_lifetime.md`](file:///d:/FluidCorePDF/fluidcore-platform/debug/reports/bug_report_pdf_export_ui_blocking_and_lifetime.md)
-- [`bug_report_wsl2_virtual_storage_root_in_file_chooser.md`](file:///d:/FluidCorePDF/fluidcore-platform/debug/reports/bug_report_wsl2_virtual_storage_root_in_file_chooser.md)
-- [`bug_report_wslg_window_maximize_skew_and_csd_shadows.md`](file:///d:/FluidCorePDF/fluidcore-platform/debug/reports/bug_report_wslg_window_maximize_skew_and_csd_shadows.md)
+- [`bug_report_assert_ndebug_project_store_test.md`](file:///d:/FluidCorePDF/reports/bug_report_assert_ndebug_project_store_test.md)
+- [`bug_report_pdf_export_ui_blocking_and_lifetime.md`](file:///d:/FluidCorePDF/reports/bug_report_pdf_export_ui_blocking_and_lifetime.md)
+- [`bug_report_wsl2_virtual_storage_root_in_file_chooser.md`](file:///d:/FluidCorePDF/reports/bug_report_wsl2_virtual_storage_root_in_file_chooser.md)
+- [`bug_report_wslg_window_maximize_skew_and_csd_shadows.md`](file:///d:/FluidCorePDF/reports/bug_report_wslg_window_maximize_skew_and_csd_shadows.md)
 
 ---
 

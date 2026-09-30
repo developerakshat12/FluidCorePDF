@@ -1,5 +1,6 @@
 #include "PdfDocumentService.h"
 #include "services/PdfExportService.h"
+#include "services/TileSizing.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -374,7 +375,13 @@ CairoSurfaceHandle PdfDocumentService::renderBackgroundCrop(
     double cropW = std::clamp(normRect.w, 0.001, 1.0) * origWidth;
     double cropH = std::clamp(normRect.h, 0.001, 1.0) * origHeight;
 
-    cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, targetW, targetH);
+    auto sizing =
+        TileSizingPolicy::computeAspectPreservingDimensions(cropW, cropH, targetW, targetH);
+    int outW = sizing.width;
+    int outH = sizing.height;
+    double s = sizing.scale;
+
+    cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, outW, outH);
     if (!surface || cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
         if (surface) {
             cairo_surface_destroy(surface);
@@ -387,7 +394,7 @@ CairoSurfaceHandle PdfDocumentService::renderBackgroundCrop(
     cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
     cairo_paint(cr);
 
-    cairo_scale(cr, static_cast<double>(targetW) / cropW, static_cast<double>(targetH) / cropH);
+    cairo_scale(cr, s, s);
     cairo_translate(cr, -cropX, -cropY);
 
     poppler_page_render(page, cr);

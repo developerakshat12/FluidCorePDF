@@ -42,6 +42,8 @@ bool isRasterImageDoc(const std::string& docId) {
            lower.ends_with(".bmp") || lower.ends_with(".webp") || lower.ends_with(".gif") ||
            lower.ends_with(".tiff") || lower.ends_with(".ico");
 }
+
+static std::unordered_set<CropIdentity, CropIdentityHash> s_visibleFramePinnedCrops;
 } // namespace
 
 constexpr double kBaseGridStep = 32.0;
@@ -526,12 +528,19 @@ void WorkspaceRenderer::drawExcerptCard(cairo_t* cr, const WorkspaceState& state
     // Body Content Rendering
     if (excerpt) {
         if (excerpt->isImageExcerpt()) {
-            const double bodyX = sx + anchorW + 8.0 * zoom;
-            const double bodyY = sy + headerH + 6.0 * zoom;
-            const double bodyW = sw - anchorW - 16.0 * zoom;
-            const double bodyH = sh - headerH - 12.0 * zoom;
+            const auto screenBody = FluidCore::CardLayoutEngine::cardImageBodyScreenRect(
+                excerpt->bounds(), state.viewport.originX, state.viewport.originY, zoom);
+            const double bodyX = screenBody.x;
+            const double bodyY = screenBody.y;
+            const double bodyW = screenBody.w;
+            const double bodyH = screenBody.h;
 
             if (bodyW > 8.0 && bodyH > 8.0) {
+                if (tileCache) {
+                    s_visibleFramePinnedCrops.insert(CropIdentity::fromNormalizedRect(
+                        excerpt->sourceDocId(), excerpt->sourcePageNo(),
+                        excerpt->sourceNormalizedRect()));
+                }
                 CairoSurfaceHandle surface;
                 if (isRasterImageDoc(excerpt->sourceDocId())) {
                     std::filesystem::path fullImgPath(excerpt->sourceDocId());
@@ -584,10 +593,11 @@ void WorkspaceRenderer::drawExcerptCard(cairo_t* cr, const WorkspaceState& state
                         surface = tileCache->getBestAvailableSurface(
                             excerpt->sourceDocId(), excerpt->sourcePageNo(),
                             excerpt->sourceNormalizedRect());
+                        const auto worldBody =
+                            FluidCore::CardLayoutEngine::cardImageBodyWorldRect(excerpt->bounds());
                         tileCache->requestCropAsync(
                             excerpt->id(), excerpt->sourceDocId(), excerpt->sourcePageNo(),
-                            excerpt->sourceNormalizedRect(), excerpt->bounds().w - 20.0,
-                            excerpt->bounds().h - 36.0, zoom);
+                            excerpt->sourceNormalizedRect(), worldBody.w, worldBody.h, zoom);
                     }
                 }
 
@@ -1146,6 +1156,7 @@ void WorkspaceRenderer::drawSearchAura(cairo_t* cr, const WorkspaceState& state,
 
 void WorkspaceRenderer::draw(cairo_t* cr, const WorkspaceState& state, FluidCore::FluidCoreAPI& api,
                              ExcerptTileCache* excerptTileCache, int width, int height) {
+    s_visibleFramePinnedCrops.clear();
     cairo_set_source_rgb(cr, 0.975, 0.982, 0.990);
     cairo_paint(cr);
 
@@ -1493,6 +1504,10 @@ void WorkspaceRenderer::draw(cairo_t* cr, const WorkspaceState& state, FluidCore
     }
 
     drawMinimap(cr, state, api, width, height);
+
+    if (excerptTileCache) {
+        excerptTileCache->setPinnedCrops(s_visibleFramePinnedCrops);
+    }
 }
 
 } // namespace FluidCoreApp

@@ -303,10 +303,11 @@ void WorkspaceView::onZoomSettled() {
     for (const auto* node : visibleNodes) {
         const auto* excerpt = dynamic_cast<const FluidCore::ExcerptCardNode*>(node);
         if (excerpt && excerpt->isImageExcerpt()) {
+            const auto worldBody =
+                FluidCore::CardLayoutEngine::cardImageBodyWorldRect(excerpt->bounds());
             m_excerptTileCache->requestCropAsync(
                 excerpt->id(), excerpt->sourceDocId(), excerpt->sourcePageNo(),
-                excerpt->sourceNormalizedRect(), excerpt->bounds().w - 16.0,
-                excerpt->bounds().h - 40.0, m_state.viewport.zoom);
+                excerpt->sourceNormalizedRect(), worldBody.w, worldBody.h, m_state.viewport.zoom);
         }
     }
     if (m_area && GTK_IS_WIDGET(m_area)) {
@@ -1488,9 +1489,15 @@ gboolean WorkspaceView::handleButtonRelease(GdkEventButton* event) {
             // dimensions
             if (m_state.cardResize.isImageExcerpt && m_excerptTileCache) {
                 if (const auto* excerpt = dynamic_cast<const FluidCore::ExcerptCardNode*>(node)) {
+                    m_excerptTileCache->invalidateCrop(
+                        excerpt->sourceDocId(), excerpt->sourcePageNo(),
+                        excerpt->sourceNormalizedRect(),
+                        computeLodTierFromZoom(m_state.viewport.zoom));
+                    const auto worldBody =
+                        FluidCore::CardLayoutEngine::cardImageBodyWorldRect(newBounds);
                     m_excerptTileCache->requestCropAsync(
                         excerpt->id(), excerpt->sourceDocId(), excerpt->sourcePageNo(),
-                        excerpt->sourceNormalizedRect(), newBounds.w - 16.0, newBounds.h - 40.0,
+                        excerpt->sourceNormalizedRect(), worldBody.w, worldBody.h,
                         m_state.viewport.zoom);
                 }
             }

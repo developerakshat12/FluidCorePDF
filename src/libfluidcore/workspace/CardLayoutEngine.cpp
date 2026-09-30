@@ -42,10 +42,33 @@ CardLayoutEngine::computeExcerptCardDimensions(const ExcerptDropPayload& payload
     const double imgH = s * cropH_pt;
 
     // Outer card container: width floor of 200pt ensures title and left anchor bar fit cleanly
-    const double cardW = std::max(200.0, imgW + 28.0);
-    const double cardH = imgH + 46.0; // 28pt header + 6pt top gap + 12pt bottom margin
+    const double cardW = std::max(200.0, imgW + kTotalChromeWidth);
+    const double cardH = imgH + kTotalChromeHeight;
 
     return {cardW, cardH};
+}
+
+Rectangle CardLayoutEngine::cardImageBodyWorldRect(const Rectangle& cardWorldBounds) {
+    const double bodyW = std::max(1.0, cardWorldBounds.w - kTotalChromeWidth);
+    const double bodyH = std::max(1.0, cardWorldBounds.h - kTotalChromeHeight);
+    const double bodyX = cardWorldBounds.x + kCardAnchorWidth + kCardMarginLeft;
+    const double bodyY = cardWorldBounds.y + kCardHeaderHeight + kCardMarginTop;
+    return {bodyX, bodyY, bodyW, bodyH};
+}
+
+Rectangle CardLayoutEngine::cardImageBodyScreenRect(const Rectangle& cardWorldBounds,
+                                                    double originX, double originY, double zoom) {
+    const double sx = (cardWorldBounds.x - originX) * zoom;
+    const double sy = (cardWorldBounds.y - originY) * zoom;
+    const double sw = cardWorldBounds.w * zoom;
+    const double sh = cardWorldBounds.h * zoom;
+    const double anchorW = kCardAnchorWidth * zoom;
+    const double headerH = std::min(kCardHeaderHeight * zoom, sh * 0.35);
+    const double bodyX = sx + anchorW + kCardMarginLeft * zoom;
+    const double bodyY = sy + headerH + kCardMarginTop * zoom;
+    const double bodyW = sw - anchorW - (kCardMarginLeft + kCardMarginRight) * zoom;
+    const double bodyH = sh - headerH - (kCardMarginTop + kCardMarginBottom) * zoom;
+    return {bodyX, bodyY, std::max(1.0, bodyW), std::max(1.0, bodyH)};
 }
 
 Rectangle CardLayoutEngine::getExcerptAnchorRect(const Rectangle& cardWorldBounds, double originX,
@@ -53,7 +76,7 @@ Rectangle CardLayoutEngine::getExcerptAnchorRect(const Rectangle& cardWorldBound
     const double sx = (cardWorldBounds.x - originX) * zoom;
     const double sy = (cardWorldBounds.y - originY) * zoom;
     const double sh = cardWorldBounds.h * zoom;
-    const double anchorW = 16.0 * zoom;
+    const double anchorW = kCardAnchorWidth * zoom;
     return {sx, sy, anchorW, sh};
 }
 

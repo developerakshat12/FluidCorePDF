@@ -108,9 +108,10 @@ int main() {
             std::cout << "Initial WorkspaceRenderer::draw completed successfully!\n";
 
             std::cout << "5. Testing tileCache.requestCropAsync for excerpt-crop-1...\n";
+            const auto worldBody1 = FluidCore::CardLayoutEngine::cardImageBodyWorldRect(cardBounds);
             uint64_t req1 = tileCache.requestCropAsync("excerpt-crop-1", testPdf, 0,
-                                                       payload.sourceNormalizedRect, cardW - 20.0,
-                                                       cardH - 36.0, 1.0);
+                                                       payload.sourceNormalizedRect, worldBody1.w,
+                                                       worldBody1.h, 1.0);
             std::cout << "Initial requestCropAsync dispatched request: " << req1 << "\n";
 
             std::cout
@@ -163,9 +164,10 @@ int main() {
             FluidCore::InsertNodeCommand cmd2(engine.workspaceModel(), std::move(card2));
             cmd2.execute();
 
+            const auto worldBody2 = FluidCore::CardLayoutEngine::cardImageBodyWorldRect(cardBounds);
             uint64_t req2 = tileCache.requestCropAsync("excerpt-crop-2", bundledPath, 10,
-                                                       payload2.sourceNormalizedRect, cardW - 20.0,
-                                                       cardH - 36.0, 1.0);
+                                                       payload2.sourceNormalizedRect, worldBody2.w,
+                                                       worldBody2.h, 1.0);
             std::cout << "Second requestCropAsync dispatched request: " << req2 << "\n";
 
             FluidCoreApp::CropCacheKey key2 = FluidCoreApp::CropCacheKey::fromNormalizedRect(

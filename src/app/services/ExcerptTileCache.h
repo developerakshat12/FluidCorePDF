@@ -3,6 +3,7 @@
 #include "services/MemoryBudget.h"
 #include "services/PageTileCache.h"
 #include "services/PdfDocumentService.h"
+#include "services/TileSizing.h"
 #include "storage/AnnotationStore.h"
 #include "workspace/ExcerptCardNode.h"
 
@@ -21,6 +22,43 @@
 #include <glib.h>
 
 namespace FluidCoreApp {
+
+// Unique crop region identity across all LoD zoom tiers (for viewport pinning)
+struct CropIdentity {
+    std::string docId;
+    std::size_t pageNo = 0;
+    uint16_t xNorm = 0;
+    uint16_t yNorm = 0;
+    uint16_t wNorm = 0;
+    uint16_t hNorm = 0;
+
+    static CropIdentity fromNormalizedRect(const std::string& docId, std::size_t pageNo,
+                                           const FluidCore::Rectangle& normRect) {
+        CropIdentity id;
+        id.docId = docId;
+        id.pageNo = pageNo;
+        id.xNorm = static_cast<uint16_t>(std::clamp(normRect.x, 0.0, 1.0) * 65535.0 + 0.5);
+        id.yNorm = static_cast<uint16_t>(std::clamp(normRect.y, 0.0, 1.0) * 65535.0 + 0.5);
+        id.wNorm = static_cast<uint16_t>(std::clamp(normRect.w, 0.0, 1.0) * 65535.0 + 0.5);
+        id.hNorm = static_cast<uint16_t>(std::clamp(normRect.h, 0.0, 1.0) * 65535.0 + 0.5);
+        return id;
+    }
+
+    bool operator==(const CropIdentity& o) const {
+        return docId == o.docId && pageNo == o.pageNo && xNorm == o.xNorm && yNorm == o.yNorm &&
+               wNorm == o.wNorm && hNorm == o.hNorm;
+    }
+};
+
+struct CropIdentityHash {
+    std::size_t operator()(const CropIdentity& k) const {
+        std::size_t h1 = std::hash<std::string>{}(k.docId);
+        std::size_t h2 = std::hash<std::size_t>{}(k.pageNo);
+        std::size_t h3 = (static_cast<std::size_t>(k.xNorm) << 16) | k.yNorm;
+        std::size_t h4 = (static_cast<std::size_t>(k.wNorm) << 16) | k.hNorm;
+        return h1 ^ (h2 << 1) ^ (h3 << 2) ^ (h4 << 3);
+    }
+};
 
 // Discrete Level-of-Detail (LoD) zoom tiers relative to base PDF points:
 // 1.0x corresponds to 1 pixel per PDF point (72 DPI).
@@ -85,11 +123,6 @@ class ExcerptTileCache {
         return MemoryBudget::instance().sliceBytes(MemoryBudget::Slice::ExcerptTiles);
     }
     static constexpr std::size_t kDefaultMaxBytes = 64 * 1024 * 1024; // legacy per-cache ceiling
-    static constexpr int kMaxTileDimension = 1536;                    // 1536 px clamp
-    static constexpr int kMinTileDimension = 16;                      // 16 px minimum
-    // 4 MB ceiling for one crop tile (~1024x1024). The 1536 px clamp permits 9.44 MB,
-    // which is a large share of the whole excerpt slice for a single card thumbnail.
-    static constexpr std::size_t kMaxTileBytes = 4 * 1024 * 1024;
 
     using RenderReadyCallback =
         std::function<void(const std::string& excerptId, uint64_t requestId)>;
@@ -148,11 +181,20 @@ class ExcerptTileCache {
     // Inserts a pre-rendered surface directly into the LRU cache
     void insert(const CropCacheKey& key, CairoSurfaceHandle handle);
 
+    void setPinnedCrops(const std::unordered_set<CropIdentity, CropIdentityHash>& pinned) {
+        m_pinnedCrops = pinned;
+    }
+
     void cancelRequest(uint64_t requestId);
     void cancelDocumentRequests(const std::string& docId);
     // Drops every cached tile and cancels every in-flight render for docId, matching
     // through the alias resolver.
     void invalidate(const std::string& docId);
+
+    // Evicts cached crop tiles for a specific crop region (used when card is resized).
+    // Purges purgeTier while retaining the single lowest resident tier that is not purgeTier.
+    void invalidateCrop(const std::string& docId, std::size_t pageNo,
+                        const FluidCore::Rectangle& normRect, LodTier purgeTier);
 
     // Evicts cached crop tiles for docId and pageNo intersecting changedNormRect.
     //
@@ -174,6 +216,8 @@ class ExcerptTileCache {
     std::size_t currentBytes() const { return m_currentBytes; }
     std::size_t maxBytes() const { return m_maxBytes; }
     void setMaxBytes(std::size_t maxBytes) { m_maxBytes = maxBytes; }
+    std::size_t skippedRasters() const { return m_skippedRasters.load(); }
+    std::size_t droppedRasters() const { return m_droppedRasters.load(); }
 
     std::size_t size() const { return m_lruList.size(); }
 
@@ -191,6 +235,8 @@ class ExcerptTileCache {
         std::size_t currentBytes = 0;
         std::size_t maxBytes = 0;
         std::size_t activeRequests = 0;
+        std::size_t skippedRasters = 0;
+        std::size_t droppedRasters = 0;
         std::unordered_map<int, std::size_t> tierCounts;
         std::vector<ExcerptCropInfo> residentCrops;
     };
@@ -201,6 +247,7 @@ class ExcerptTileCache {
   private:
     struct CacheNode {
         CropCacheKey key;
+        CropIdentity cropId;
         CairoSurfaceHandle surface;
         std::size_t bytes = 0;
     };
@@ -217,6 +264,12 @@ class ExcerptTileCache {
         std::vector<FluidCore::Stroke> intersectingStrokes;
         ExcerptTileCache* cache = nullptr;
         std::weak_ptr<std::atomic<bool>> aliveToken;
+        std::shared_ptr<std::atomic<bool>> cancelToken;
+    };
+
+    struct InFlightEntry {
+        uint64_t requestId = 0;
+        std::shared_ptr<std::atomic<bool>> cancelToken;
     };
 
     void evict(std::size_t incomingBytes);
@@ -240,16 +293,18 @@ class ExcerptTileCache {
 
     std::list<CacheNode> m_lruList;
     std::unordered_map<CropCacheKey, std::list<CacheNode>::iterator, CropCacheKeyHash> m_lookup;
+    std::unordered_set<CropIdentity, CropIdentityHash> m_pinnedCrops;
 
     GThreadPool* m_threadPool = nullptr;
     std::shared_ptr<std::atomic<bool>> m_alive;
     std::atomic<uint64_t> m_nextRequestId{1};
     std::unordered_set<uint64_t> m_activeRequestIds;
-    std::unordered_set<uint64_t> m_cancelledRequestIds;
     std::unordered_set<CropCacheKey, CropCacheKeyHash> m_inFlightKeys;
-    // In-flight key -> request id, so invalidation can cancel precisely the renders
-    // covering an edited region. m_inFlightKeys alone cannot identify them.
-    std::unordered_map<CropCacheKey, uint64_t, CropCacheKeyHash> m_inFlightIds;
+    // In-flight key -> {request id, cancelToken}, so invalidation and stale dispatch
+    // can cancel precisely the renders covering an edited or zoom-superseded crop.
+    std::unordered_map<CropCacheKey, InFlightEntry, CropCacheKeyHash> m_inFlightIds;
+    std::atomic<std::size_t> m_skippedRasters{0};
+    std::atomic<std::size_t> m_droppedRasters{0};
 
     RenderReadyCallback m_onRenderReady;
     StrokeProvider m_strokeProvider;

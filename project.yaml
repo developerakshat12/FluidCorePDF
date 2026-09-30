@@ -2,8 +2,8 @@ project:
   name: fluidcore-platform
   codename: Fluid Document Synthesis Platform
   description: Open-source, offline-first fluid document synthesis platform. Fluid PDF reader + infinite 2D synthesis workspace.
-  version: 1.1.6
-  status: v1.1.6 release: constant-width ink model, unified stroke renderer across all four ink surfaces, RAM-derived memory budget with idle trim, stylus barrel button routing, and Linux release pipeline repair, 42/42 test suites passing
+  version: 1.1.8
+  status: v1.1.8 release: aspect-correct excerpt crop tiles via a single uniform fit-inside scale, viewport-pinned crop identity with fallback tier retention so cards never flash the placeholder, stale-tier render cancellation at dispatch, and canonical card body geometry, 42/42 test suites passing
   license: GPL-2.0-or-later
   engine_relicense_candidate: LGPL-2.1-or-later
   created: 2026-08-26

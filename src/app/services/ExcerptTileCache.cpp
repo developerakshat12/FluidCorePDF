@@ -61,6 +61,7 @@ struct AsyncRenderResult {
     CairoSurfaceHandle surface;
     ExcerptTileCache* cache = nullptr;
     std::weak_ptr<std::atomic<bool>> aliveToken;
+    std::shared_ptr<std::atomic<bool>> cancelToken;
 };
 
 ExcerptTileCache::ExcerptTileCache(PdfDocumentService& docService, std::size_t maxBytes)
@@ -118,20 +119,40 @@ CairoSurfaceHandle ExcerptTileCache::getBestAvailableSurface(const std::string& 
 
 void ExcerptTileCache::evict(std::size_t incomingBytes) {
     while (!m_lruList.empty() && m_currentBytes + incomingBytes > m_maxBytes) {
-        auto& victim = m_lruList.back();
-        m_currentBytes -= victim.bytes;
-        m_lookup.erase(victim.key);
-        m_lruList.pop_back();
+        auto it = m_lruList.end();
+        bool foundUnpinned = false;
+        while (it != m_lruList.begin()) {
+            --it;
+            if (m_pinnedCrops.find(it->cropId) == m_pinnedCrops.end()) {
+                foundUnpinned = true;
+                break;
+            }
+        }
+        if (!foundUnpinned) {
+            // All resident tiles belong to on-screen cards: halt eviction to prevent flicker
+            break;
+        }
+        m_lookup.erase(it->key);
+        m_currentBytes -= it->bytes;
+        m_lruList.erase(it);
     }
 }
 
 std::size_t ExcerptTileCache::evictSiblingTiers(const CropCacheKey& key) {
-    // Collect first: erasing from m_lookup while iterating it would invalidate the
-    // iterator, and every erase is a hash lookup over a 4-byte-payload key.
+    // Sibling tier eviction: retire older resolution tiers of the same crop,
+    // but preserve at most one lightweight fallback tier (e.g. Overview or Standard)
+    // so getBestAvailableSurface() always has a valid fallback during zoom transitions.
     std::vector<CropCacheKey> doomed;
+    bool hasFallback = false;
+
     for (const auto& node : m_lruList) {
         if (node.key.tier != key.tier && node.key.sameCropAs(key)) {
-            doomed.push_back(node.key);
+            if (!hasFallback &&
+                (node.key.tier == LodTier::Overview || node.key.tier == LodTier::Standard)) {
+                hasFallback = true;
+            } else {
+                doomed.push_back(node.key);
+            }
         }
     }
 
@@ -177,6 +198,7 @@ void ExcerptTileCache::insert(const CropCacheKey& key, CairoSurfaceHandle handle
 
     CacheNode node;
     node.key = key;
+    node.cropId = CropIdentity{key.docId, key.pageNo, key.xNorm, key.yNorm, key.wNorm, key.hNorm};
     node.surface = handle;
     node.bytes = bytes;
 
@@ -211,22 +233,12 @@ CairoSurfaceHandle ExcerptTileCache::renderCropSync(const std::string& docId, st
     double cropW = std::clamp(normRect.w, 0.001, 1.0) * origWidth;
     double cropH = std::clamp(normRect.h, 0.001, 1.0) * origHeight;
 
-    int w = std::clamp(static_cast<int>(std::round(targetWidthPx)), kMinTileDimension,
-                       kMaxTileDimension);
-    int h = std::clamp(static_cast<int>(std::round(targetHeightPx)), kMinTileDimension,
-                       kMaxTileDimension);
-
-    // Byte ceiling on a single tile. The dimension clamp alone permits 1536x1536 ARGB =
-    // 9.44 MB, which is ~40% of the whole excerpt slice for one card thumbnail. Cards are
-    // ~400 pt wide on the canvas, so a tile is already well oversampled well below this.
-    // Scale down uniformly rather than distorting the crop's aspect ratio.
-    const std::size_t bytes = static_cast<std::size_t>(w) * h * 4;
-    if (bytes > kMaxTileBytes) {
-        const double shrink =
-            std::sqrt(static_cast<double>(kMaxTileBytes) / static_cast<double>(bytes));
-        w = std::max(kMinTileDimension, static_cast<int>(w * shrink));
-        h = std::max(kMinTileDimension, static_cast<int>(h * shrink));
-    }
+    auto sizing = TileSizingPolicy::computeAspectPreservingDimensions(
+        cropW, cropH, static_cast<int>(std::round(targetWidthPx)),
+        static_cast<int>(std::round(targetHeightPx)));
+    int w = sizing.width;
+    int h = sizing.height;
+    double s = sizing.scale;
 
     std::size_t incomingBytes = static_cast<std::size_t>(w) * h * 4;
     evict(incomingBytes);
@@ -244,8 +256,8 @@ CairoSurfaceHandle ExcerptTileCache::renderCropSync(const std::string& docId, st
     cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
     cairo_paint(cr);
 
-    // Apply scale and translation transformation
-    cairo_scale(cr, static_cast<double>(w) / cropW, static_cast<double>(h) / cropH);
+    // Apply uniform scale and translation transformation
+    cairo_scale(cr, s, s);
     cairo_translate(cr, -cropX, -cropY);
 
     {
@@ -288,16 +300,35 @@ uint64_t ExcerptTileCache::requestCropAsync(const std::string& excerptId, const 
         return 0;
     }
 
-    double scale = getLodTierScale(tier);
-    int targetW = std::clamp(static_cast<int>(std::round(cardWidthPt * scale)), kMinTileDimension,
-                             kMaxTileDimension);
-    int targetH = std::clamp(static_cast<int>(std::round(cardHeightPt * scale)), kMinTileDimension,
-                             kMaxTileDimension);
+    // Stale tier cancellation at dispatch: cancel any in-flight render for the same crop
+    // at a different tier (e.g. user zoomed from 100% to 200% while HiDpi was queued).
+    std::vector<CropCacheKey> staleInFlight;
+    for (const auto& kv : m_inFlightIds) {
+        if (kv.first.tier != tier && kv.first.sameCropAs(key)) {
+            staleInFlight.push_back(kv.first);
+        }
+    }
+    for (const auto& staleKey : staleInFlight) {
+        auto it = m_inFlightIds.find(staleKey);
+        if (it != m_inFlightIds.end()) {
+            if (it->second.cancelToken) {
+                it->second.cancelToken->store(true);
+            }
+            m_activeRequestIds.erase(it->second.requestId);
+            m_inFlightKeys.erase(staleKey);
+            m_inFlightIds.erase(it);
+        }
+    }
 
+    double scale = getLodTierScale(tier);
+    int targetW = std::max(1, static_cast<int>(std::round(cardWidthPt * scale)));
+    int targetH = std::max(1, static_cast<int>(std::round(cardHeightPt * scale)));
+
+    auto cancelToken = std::make_shared<std::atomic<bool>>(false);
     uint64_t requestId = m_nextRequestId.fetch_add(1);
     m_activeRequestIds.insert(requestId);
     m_inFlightKeys.insert(key);
-    m_inFlightIds.emplace(key, requestId);
+    m_inFlightIds.emplace(key, InFlightEntry{requestId, cancelToken});
 
     auto* task = new AsyncRenderTask();
     task->requestId = requestId;
@@ -310,6 +341,7 @@ uint64_t ExcerptTileCache::requestCropAsync(const std::string& excerptId, const 
     task->targetPixelH = targetH;
     task->cache = this;
     task->aliveToken = m_alive;
+    task->cancelToken = cancelToken;
 
     if (m_strokeProvider) {
         m_strokeProvider(docId, pageNo, normRect, task->intersectingStrokes);
@@ -350,6 +382,12 @@ void ExcerptTileCache::asyncWorkerFunc(gpointer data, gpointer /*userData*/) {
         return;
     }
 
+    if (task->cancelToken && task->cancelToken->load()) {
+        cache->m_skippedRasters.fetch_add(1);
+        delete task;
+        return;
+    }
+
     CairoSurfaceHandle surface = cache->m_docService.renderBackgroundCrop(
         task->docId, task->pageNo, task->normRect, task->targetPixelW, task->targetPixelH,
         task->intersectingStrokes);
@@ -362,6 +400,7 @@ void ExcerptTileCache::asyncWorkerFunc(gpointer data, gpointer /*userData*/) {
     result->surface = surface;
     result->cache = cache;
     result->aliveToken = task->aliveToken;
+    result->cancelToken = task->cancelToken;
 
     delete task;
 
@@ -379,7 +418,13 @@ gboolean ExcerptTileCache::onRenderCompletedIdle(gpointer data) {
         ExcerptTileCache* cache = result->cache;
         cache->m_inFlightKeys.erase(result->cacheKey);
         cache->m_inFlightIds.erase(result->cacheKey);
-        if (result->surface && cache->m_cancelledRequestIds.count(result->requestId) == 0 &&
+
+        const bool isCancelled = (result->cancelToken && result->cancelToken->load());
+        if (isCancelled && result->surface) {
+            cache->m_droppedRasters.fetch_add(1);
+        }
+
+        if (result->surface && !isCancelled &&
             !cache->m_docService.isDocumentCancelled(result->docId)) {
             cache->insert(result->cacheKey, result->surface);
             if (cache->m_onRenderReady) {
@@ -387,7 +432,6 @@ gboolean ExcerptTileCache::onRenderCompletedIdle(gpointer data) {
             }
         }
         cache->m_activeRequestIds.erase(result->requestId);
-        cache->m_cancelledRequestIds.erase(result->requestId);
     }
 
     delete result;
@@ -395,8 +439,17 @@ gboolean ExcerptTileCache::onRenderCompletedIdle(gpointer data) {
 }
 
 void ExcerptTileCache::cancelRequest(uint64_t requestId) {
-    m_cancelledRequestIds.insert(requestId);
     m_activeRequestIds.erase(requestId);
+    for (auto it = m_inFlightIds.begin(); it != m_inFlightIds.end(); ++it) {
+        if (it->second.requestId == requestId) {
+            if (it->second.cancelToken) {
+                it->second.cancelToken->store(true);
+            }
+            m_inFlightKeys.erase(it->first);
+            m_inFlightIds.erase(it);
+            break;
+        }
+    }
 }
 
 void ExcerptTileCache::cancelDocumentRequests(const std::string& docId) {
@@ -466,8 +519,66 @@ void ExcerptTileCache::invalidateSpatial(const std::string& docId, std::size_t p
     // make requestCropAsync() return early and pin the card to the stale surface.
     for (auto fit = m_inFlightIds.begin(); fit != m_inFlightIds.end();) {
         if (sameDocument(fit->first.docId, docId) && tileIntersects(fit->first)) {
-            m_cancelledRequestIds.insert(fit->second);
-            m_activeRequestIds.erase(fit->second);
+            if (fit->second.cancelToken) {
+                fit->second.cancelToken->store(true);
+            }
+            m_activeRequestIds.erase(fit->second.requestId);
+            m_inFlightKeys.erase(fit->first);
+            fit = m_inFlightIds.erase(fit);
+        } else {
+            ++fit;
+        }
+    }
+}
+
+void ExcerptTileCache::invalidateCrop(const std::string& docId, std::size_t pageNo,
+                                      const FluidCore::Rectangle& normRect, LodTier purgeTier) {
+    CropIdentity targetId = CropIdentity::fromNormalizedRect(docId, pageNo, normRect);
+    std::vector<CropCacheKey> matchingKeys;
+
+    for (const auto& node : m_lruList) {
+        if (node.cropId.pageNo == pageNo && node.cropId.xNorm == targetId.xNorm &&
+            node.cropId.yNorm == targetId.yNorm && node.cropId.wNorm == targetId.wNorm &&
+            node.cropId.hNorm == targetId.hNorm && sameDocument(node.cropId.docId, docId)) {
+            matchingKeys.push_back(node.key);
+        }
+    }
+
+    std::optional<CropCacheKey> fallbackKey;
+    for (const auto& key : matchingKeys) {
+        if (key.tier != purgeTier) {
+            if (!fallbackKey || key.tier < fallbackKey->tier) {
+                fallbackKey = key;
+            }
+        }
+    }
+
+    std::vector<CropCacheKey> doomed;
+    for (const auto& key : matchingKeys) {
+        if (fallbackKey && key == *fallbackKey) {
+            // retain the single lowest resident tier that is not purgeTier
+            continue;
+        }
+        doomed.push_back(key);
+    }
+
+    for (const auto& key : doomed) {
+        auto it = m_lookup.find(key);
+        if (it != m_lookup.end()) {
+            m_currentBytes -= it->second->bytes;
+            m_lruList.erase(it->second);
+            m_lookup.erase(it);
+        }
+    }
+
+    for (auto fit = m_inFlightIds.begin(); fit != m_inFlightIds.end();) {
+        if (fit->first.pageNo == pageNo && fit->first.xNorm == targetId.xNorm &&
+            fit->first.yNorm == targetId.yNorm && fit->first.wNorm == targetId.wNorm &&
+            fit->first.hNorm == targetId.hNorm && sameDocument(fit->first.docId, docId)) {
+            if (fit->second.cancelToken) {
+                fit->second.cancelToken->store(true);
+            }
+            m_activeRequestIds.erase(fit->second.requestId);
             m_inFlightKeys.erase(fit->first);
             fit = m_inFlightIds.erase(fit);
         } else {
@@ -478,19 +589,32 @@ void ExcerptTileCache::invalidateSpatial(const std::string& docId, std::size_t p
 
 std::size_t ExcerptTileCache::trimToBytes(std::size_t targetBytes) {
     const std::size_t before = m_currentBytes;
-    // Drop the LRU tail until the target is met. Surfaces are released on eviction, so
-    // the backing stores are freed here and _heapmin() can then hand the pages back.
     while (m_currentBytes > targetBytes && !m_lruList.empty()) {
-        CacheNode& victim = m_lruList.back();
-        m_currentBytes -= victim.bytes;
-        m_lookup.erase(victim.key);
-        m_lruList.pop_back();
+        auto it = m_lruList.end();
+        bool foundUnpinned = false;
+        while (it != m_lruList.begin()) {
+            --it;
+            if (m_pinnedCrops.find(it->cropId) == m_pinnedCrops.end()) {
+                foundUnpinned = true;
+                break;
+            }
+        }
+        if (!foundUnpinned) {
+            break;
+        }
+        m_lookup.erase(it->key);
+        m_currentBytes -= it->bytes;
+        m_lruList.erase(it);
     }
     return before - m_currentBytes;
 }
 
 void ExcerptTileCache::clear() {
-    m_cancelledRequestIds.insert(m_activeRequestIds.begin(), m_activeRequestIds.end());
+    for (auto& [key, entry] : m_inFlightIds) {
+        if (entry.cancelToken) {
+            entry.cancelToken->store(true);
+        }
+    }
     m_activeRequestIds.clear();
     m_inFlightKeys.clear();
     m_inFlightIds.clear();
@@ -505,6 +629,8 @@ ExcerptTileCache::ExcerptTileCacheStats ExcerptTileCache::getStats() const {
     stats.currentBytes = m_currentBytes;
     stats.maxBytes = m_maxBytes;
     stats.activeRequests = m_activeRequestIds.size();
+    stats.skippedRasters = m_skippedRasters.load();
+    stats.droppedRasters = m_droppedRasters.load();
 
     for (const auto& node : m_lruList) {
         int tierInt = static_cast<int>(node.key.tier);
@@ -535,8 +661,10 @@ void ExcerptTileCache::dumpStats(const std::string& tag) const {
                          " === " + "Entries: " + std::to_string(stats.entryCount) +
                          " | Bytes: " + MemoryTelemetry::formatMB(stats.currentBytes) + "/" +
                          MemoryTelemetry::formatMB(stats.maxBytes) +
-                         " | Active Req: " + std::to_string(stats.activeRequests) + " | Tiers: [" +
-                         tierBreakdown + "]");
+                         " | Active Req: " + std::to_string(stats.activeRequests) +
+                         " | Skipped Rasters: " + std::to_string(stats.skippedRasters) +
+                         " | Dropped Rasters: " + std::to_string(stats.droppedRasters) +
+                         " | Tiers: [" + tierBreakdown + "]");
 }
 
 } // namespace FluidCoreApp
